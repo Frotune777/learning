@@ -838,7 +838,12 @@ class StockScreener:
             & (df_analyzed["CAR_RATING"] == "Buy/Average Out")
         ].copy()
 
-        df_filtered_a = df_filtered_a.sort_values(by="TURNOVER", ascending=False)
+        if "TOTAL_TRADED_VALUE" in df_filtered_a.columns:
+            df_filtered_a = df_filtered_a.sort_values(
+                by="TOTAL_TRADED_VALUE", ascending=False
+            )
+        else:
+            df_filtered_a = df_filtered_a.sort_values(by="TURNOVER", ascending=False)
 
         final_list_df: pd.DataFrame = df_filtered_a[
             [
@@ -922,7 +927,12 @@ class StockScreener:
                 "TECH_SCORE": "Tech Score",
             }
         )
-        final_b_df = final_b_df.sort_values(by="Volume", ascending=False)
+        if "Total Traded Value" in final_b_df.columns:
+            final_b_df = final_b_df.sort_values(
+                by="Total Traded Value", ascending=False
+            )
+        else:
+            final_b_df = final_b_df.sort_values(by="Volume", ascending=False)
 
         final_b_filename: str = f"swing_list_{date_str}.csv"
         final_b_filepath: str = os.path.join(self.processed_dir, final_b_filename)
@@ -978,7 +988,12 @@ class StockScreener:
                 "SWING_ADVICE": "Action",
             }
         )
-        final_c_df = final_c_df.sort_values(by="Volume", ascending=False)
+        if "Total Traded Value" in final_c_df.columns:
+            final_c_df = final_c_df.sort_values(
+                by="Total Traded Value", ascending=False
+            )
+        else:
+            final_c_df = final_c_df.sort_values(by="Volume", ascending=False)
 
         final_c_filename: str = f"super_list_{date_str}.csv"
         final_c_filepath: str = os.path.join(self.processed_dir, final_c_filename)
@@ -992,7 +1007,116 @@ class StockScreener:
 
         self._generate_strategy_reports(df_analyzed, date_str)
 
+        # ── Enrichment pass: consensus, MTF, position sizing, quant metrics ──
+        try:
+            df_analyzed = self.enrich_analysis(df_analyzed)
+            enriched_path = os.path.join(
+                self.processed_dir, f"top_250_enriched_{date_str}.csv"
+            )
+            df_analyzed.to_csv(enriched_path, index=False)
+            LOGGER.info("Enriched analysis saved at: %s", enriched_path)
+        except Exception as enrich_exc:
+            LOGGER.warning("Enrichment pass failed (non-fatal): %s", enrich_exc)
+
         return final_c_filepath
+
+    def enrich_analysis(
+        self,
+        df: pd.DataFrame,
+        weekly_dir: str = "data/historical/1W",
+        daily_dir: str = "data/historical/1d",
+        portfolio_size: float = 500_000.0,
+        risk_pct: float = 0.01,
+    ) -> pd.DataFrame:
+        """
+        Enrich the analyzed screener DataFrame with consensus, MTF,
+        sizing, and quant columns.
+
+        Applies all four post-processing modules in sequence:
+            1. Signal Consensus Engine  → CONSENSUS_SCORE, CONSENSUS_CALLOUT
+            2. Multi-Timeframe Confirm  → MTF_CONFIRMED, MTF_CALLOUT
+            3. ATR Position Sizer       → SUGGESTED_QTY, STOP_PRICE, etc.
+            4. Quant Metrics            → HURST_EXP, VAR_1D_95, callouts
+
+        Each step is fault-tolerant: if a module raises an exception it is
+        logged and skipped so downstream steps still execute.
+
+        Parameters:
+            df (pd.DataFrame): Analyzed screener DataFrame from screen_stocks().
+            weekly_dir (str): Path to 1W parquet directory. |
+                Default: "data/historical/1W"
+            daily_dir (str): Path to 1d parquet directory. |
+                Default: "data/historical/1d"
+            portfolio_size (float): Portfolio size for position sizing. |
+                Default: 500_000 (₹5L)
+            risk_pct (float): Per-trade risk fraction. | Default: 0.01 (1%)
+
+        Returns:
+            pd.DataFrame: Input DataFrame enriched with up to 14 new columns.
+
+        Raises:
+            None (all module failures are caught and logged as warnings)
+
+        Complexity:
+            Time: O(N x W) where N = stocks, W = avg parquet rows
+            Space: O(N x 14) [New columns added in-place on copy]
+
+        Example:
+            >>> screener = StockScreener()
+            >>> df_raw = pd.read_csv("data/historical/top_250_analyzed_20260527.csv")
+            >>> df_rich = screener.enrich_analysis(df_raw)
+            >>> print(df_rich.columns.tolist())
+        """
+        from src.nse_bhavcopy.consensus_engine import add_consensus_score
+        from src.nse_bhavcopy.mtf_confirmation import add_mtf_confirmation
+        from src.nse_bhavcopy.position_sizer import add_position_sizing
+        from src.nse_bhavcopy.quant_metrics import add_quant_metrics
+
+        # Step 1: Consensus Score
+        try:
+            df = add_consensus_score(df)
+            LOGGER.info("Enrichment: consensus score applied.")
+        except Exception as exc:
+            LOGGER.warning("Enrichment: consensus step failed: %s", exc)
+
+        # Step 2: Multi-Timeframe Confirmation
+        try:
+            if os.path.isdir(weekly_dir):
+                df = add_mtf_confirmation(df, weekly_dir=weekly_dir)
+                LOGGER.info("Enrichment: MTF confirmation applied.")
+            else:
+                LOGGER.warning(
+                    "Enrichment: weekly_dir '%s' not found, skipping MTF.",
+                    weekly_dir,
+                )
+        except Exception as exc:
+            LOGGER.warning("Enrichment: MTF step failed: %s", exc)
+
+        # Step 3: ATR Position Sizing
+        try:
+            df = add_position_sizing(
+                df,
+                portfolio_size=portfolio_size,
+                risk_pct=risk_pct,
+            )
+            LOGGER.info("Enrichment: position sizing applied.")
+        except Exception as exc:
+            LOGGER.warning("Enrichment: position sizing failed: %s", exc)
+
+        # Step 4: Quant Metrics (Hurst + VaR)
+        try:
+            if os.path.isdir(daily_dir):
+                df = add_quant_metrics(df, daily_dir=daily_dir)
+                LOGGER.info("Enrichment: quant metrics applied.")
+            else:
+                LOGGER.warning(
+                    "Enrichment: daily_dir '%s' not found, skipping quant.",
+                    daily_dir,
+                )
+        except Exception as exc:
+            LOGGER.warning("Enrichment: quant metrics failed: %s", exc)
+
+        return df
 
     def _generate_strategy_reports(
         self, df_analyzed: pd.DataFrame, date_str: str
@@ -1034,7 +1158,12 @@ class StockScreener:
             if col_action in df_analyzed.columns:
                 df_strat = df_analyzed[df_analyzed[col_action] != ignore_val].copy()
                 if not df_strat.empty:
-                    df_strat = df_strat.sort_values(by="TURNOVER", ascending=False)
+                    if "TOTAL_TRADED_VALUE" in df_strat.columns:
+                        df_strat = df_strat.sort_values(
+                            by="TOTAL_TRADED_VALUE", ascending=False
+                        )
+                    else:
+                        df_strat = df_strat.sort_values(by="TURNOVER", ascending=False)
 
                     strat_cols = [*base_cols, col_action]
                     if col_target in df_strat.columns:

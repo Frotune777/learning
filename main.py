@@ -43,6 +43,7 @@ import glob
 import logging
 import os
 import sys
+from collections.abc import Callable
 from datetime import datetime
 
 import pandas as pd
@@ -663,6 +664,10 @@ def _print_main_menu() -> None:
         f"  {cyan('16')}  {bold('Momentum Squeeze Indicator')}      "
         f"{dim('BB / KC coiled-spring detector')}"
     )
+    print(
+        f"  {cyan('17')}  {bold('Live NSE Data Hub')}               "
+        f"{dim('Pre-market, price info, option chain…')}"
+    )
     print()
     print(f"   {dim('0')}  {dim('Exit')}")
     print()
@@ -1008,9 +1013,18 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
         print(_rule("─"))
         print(f"  {bold('Screener Results')}  {dim(f'({date_str})')}")
         print(_rule("─"))
-        print(f"   {cyan('1')}  Final List   {dim('Buy / Average Out signals')}")
-        print(f"   {cyan('2')}  Swing List   {dim('Start GTT signals')}")
-        print(f"   {cyan('3')}  Super List   {dim('Combined — the holy grail')}")
+        print(
+            f"   {cyan('1')}  Final List   "
+            f"{dim('Bull Run + CAR Buy/Average Out — pure breakout candidates')}"
+        )
+        print(
+            f"   {cyan('2')}  Swing List   "
+            f"{dim('Start GTT signals — 20D low bounce setups with GTT entry')}"
+        )
+        print(
+            f"   {cyan('3')}  Super List   "
+            f"{dim('Combined Holy Grail — Bull + CAR + GTT bounce at once')}"
+        )
 
         idx = 4
         for name, path, desc in strategies:
@@ -1074,11 +1088,11 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
                     ]:
                         agg_dict[col] = "first"
                     elif col in ["Strategy", "Action"]:
-                        agg_dict[col] = lambda x: " | ".join(
+                        agg_dict[col] = lambda x: " | ".join(  # type: ignore[assignment]
                             x.dropna().astype(str).unique()
                         )
                     elif col in ["Target", "Stop Loss"]:
-                        agg_dict[col] = lambda x: " | ".join(
+                        agg_dict[col] = lambda x: " | ".join(  # type: ignore[assignment]
                             str(round(float(v), 2))
                             for v in x.dropna().unique()
                             if pd.notna(v)
@@ -1399,13 +1413,13 @@ def menu_ta_dashboard(hist_dir: str) -> None:
         atr = row.get("ATR_14")
         cci = row.get("CCI_14")
 
-        def _fmt(v) -> str:
-            return f"{float(v):,.2f}" if v is not None and not pd.isna(v) else "N/A"
+        def _fmt(v: object) -> str:
+            return f"{float(v):,.2f}" if v is not None and not pd.isna(v) else "N/A"  # type: ignore[arg-type]
 
-        def _cmp_str(price, ma) -> str:
+        def _cmp_str(price: float, ma: object) -> str:
             if ma is None or pd.isna(ma):
                 return dim("N/A")
-            return green("ABOVE") if price > float(ma) else red("BELOW")
+            return green("ABOVE") if price > float(ma) else red("BELOW")  # type: ignore[arg-type]
 
         # RSI
         if pd.isna(rsi):
@@ -1824,6 +1838,217 @@ def menu_squeeze() -> None:
     _pause()
 
 
+def menu_nse_live() -> None:
+    """
+    Interactive Live NSE Data Hub powered by NseUtils.
+
+    Exposes key on-demand live data endpoints (pre-market snapshot, live price,
+    index constituents, FII/DII activity) via an interactive sub-menu. All
+    network calls are isolated so a failure in one option does not affect others.
+
+    Parameters:
+        None
+
+    Returns:
+        None
+
+    Raises:
+        None
+
+    Example:
+        >>> menu_nse_live()
+    """
+    from src.nse_live.nse_utils import NseUtils
+
+    _header(
+        "Live NSE Data Hub",
+        "Pre-market · Price Info · Index · FII/DII · Holidays",
+    )
+    tip("Each query makes a live request to NSE. Ensure internet is available.")
+
+    sub_opts = [
+        ("1", "Pre-Market Snapshot", "Live pre-market data (NIFTY 50, BANK, F&O…)"),
+        ("2", "Live Price Info", "Real-time price, VWAP, circuits for a symbol"),
+        ("3", "Index Constituents", "All stocks in a selected Nifty index"),
+        ("4", "FII / DII Activity", "Today's institutional buying/selling"),
+        ("5", "Trading Holidays", "NSE trading holiday calendar"),
+        ("6", "Check Holiday Status", "Is a given date a trading holiday?"),
+        ("0", "Back", ""),
+    ]
+
+    while True:
+        print()
+        print(_rule("─"))
+        for num, label, hint in sub_opts:
+            if num == "0":
+                print(f"   {dim(num)}  {dim(label)}")
+            elif hint:
+                print(f"   {cyan(num)}  {bold(label)}  {dim(hint)}")
+            else:
+                print(f"   {cyan(num)}  {bold(label)}")
+        print()
+
+        sub = input(f"  {dim('Select')}: ").strip()
+
+        if sub == "0":
+            break
+
+        # Initialise NseUtils fresh per query (re-cookies on each session)
+        print(f"\n  {dim('Connecting to NSE…')}")
+        try:
+            nse = NseUtils()
+        except Exception as exc:
+            err(f"Failed to connect to NSE: {exc}")
+            _pause()
+            continue
+
+        if sub == "1":
+            _subheader("Pre-Market Snapshot")
+            print(
+                f"  {dim('Categories:')} "
+                f"NIFTY 50 · Nifty Bank · Securities in F&O · Others · All"
+            )
+            cat = input("  Category [All]: ").strip() or "All"
+            try:
+                df_pm = nse.pre_market_info(category=cat)
+                if df_pm.empty:
+                    warn("No pre-market data returned.")
+                else:
+                    from rich import box
+                    from rich.console import Console
+                    from rich.table import Table
+
+                    console = Console()
+                    tbl = Table(
+                        show_header=True,
+                        header_style="bold cyan",
+                        box=box.ROUNDED,
+                    )
+                    display_cols = [
+                        c
+                        for c in [
+                            "lastPrice",
+                            "change",
+                            "pChange",
+                            "totalTradedVolume",
+                            "iep",
+                        ]
+                        if c in df_pm.columns
+                    ]
+                    tbl.add_column("Symbol", justify="left")
+                    for c in display_cols:
+                        tbl.add_column(c, justify="right")
+                    for sym, row in df_pm.head(25).iterrows():
+                        tbl.add_row(
+                            str(sym),
+                            *[
+                                f"{row[c]:,.2f}" if pd.notna(row[c]) else ""
+                                for c in display_cols
+                            ],
+                        )
+                    console.print(tbl)
+                    print(f"\n  {dim(f'{len(df_pm)} total rows (showing 25)')}")
+            except Exception as exc:
+                err(f"Pre-market query failed: {exc}")
+
+        elif sub == "2":
+            _subheader("Live Price Info")
+            symbol = input("  NSE Symbol (e.g. RELIANCE): ").strip().upper()
+            if not symbol:
+                warn("No symbol entered.")
+            else:
+                try:
+                    info = nse.price_info(symbol)
+                    if not info:
+                        warn(f"No data found for {symbol}.")
+                    else:
+                        print()
+                        print(_rule("─"))
+                        for k, v in info.items():
+                            print(f"  {cyan(f'{k:<20}')} {bold(str(v))}")
+                        print(_rule("─"))
+                except Exception as exc:
+                    err(f"Price info query failed: {exc}")
+
+        elif sub == "3":
+            _subheader("Index Constituents")
+            print(
+                f"  {dim('Examples:')} NIFTY 50 · NIFTY BANK · NIFTY IT · "
+                f"NIFTY PHARMA"
+            )
+            index = input("  Index name [NIFTY 50]: ").strip() or "NIFTY 50"
+            list_only = _confirm("Return symbol list only (vs full table)?")
+            try:
+                result = nse.get_index_details(index, list_only=list_only)
+                if list_only and isinstance(result, list):
+                    print(f"\n  {bold(str(len(result)))} symbols in {index}:")
+                    print(
+                        "  "
+                        + "  ".join(result[:50])
+                        + (" …" if len(result) > 50 else "")
+                    )
+                elif isinstance(result, pd.DataFrame) and not result.empty:
+                    show_cols = [
+                        c
+                        for c in [
+                            "lastPrice",
+                            "change",
+                            "pChange",
+                            "totalTradedVolume",
+                        ]
+                        if c in result.columns
+                    ]
+                    print(result[show_cols].head(20).to_string())
+                    print(f"\n  {dim(f'{len(result)} constituents (showing 20)')}")
+                else:
+                    warn("No data returned for that index.")
+            except Exception as exc:
+                err(f"Index query failed: {exc}")
+
+        elif sub == "4":
+            _subheader("FII / DII Activity (Today)")
+            try:
+                df_fii = nse.fii_dii_activity()
+                if df_fii.empty:
+                    warn("No FII/DII data returned.")
+                else:
+                    print(df_fii.to_string(index=False))
+            except Exception as exc:
+                err(f"FII/DII query failed: {exc}")
+
+        elif sub == "5":
+            _subheader("NSE Trading Holidays")
+            try:
+                holidays = nse.trading_holidays(list_only=True)
+                print(f"\n  {bold(str(len(holidays)))} trading holidays:")
+                for h in holidays:
+                    print(f"  {dim('·')} {h}")
+            except Exception as exc:
+                err(f"Holidays query failed: {exc}")
+
+        elif sub == "6":
+            _subheader("Check Holiday Status")
+            date_inp = (
+                input("  Date in DD-MMM-YYYY (e.g. 02-Oct-2025) [today]: ").strip()
+                or None
+            )
+            try:
+                is_hol = nse.is_nse_trading_holiday(date_inp)
+                if is_hol is None:
+                    warn("Invalid date format provided.")
+                elif is_hol:
+                    warn(f"{date_inp or 'Today'} is a NSE TRADING HOLIDAY.")
+                else:
+                    ok(f"{date_inp or 'Today'} is a NORMAL TRADING DAY.")
+            except Exception as exc:
+                err(f"Holiday check failed: {exc}")
+
+        else:
+            warn(f"Invalid option '{sub}'.")
+
+        _pause()
+
+
 # ===========================================================================
 # REPL loop
 # ===========================================================================
@@ -1867,7 +2092,7 @@ def interactive_menu(
 
     _print_banner()
 
-    _DISPATCH = {
+    _DISPATCH: dict[str, Callable[[], None]] = {
         "1": lambda: menu_build_master(data_dir),
         "2": lambda: menu_sync_history(data_dir, hist_dir),
         "3": lambda: menu_sync_filtered(data_dir, hist_dir),
@@ -1884,6 +2109,7 @@ def interactive_menu(
         "14": lambda: menu_mmi(),
         "15": lambda: menu_ma_slope(),
         "16": lambda: menu_squeeze(),
+        "17": lambda: menu_nse_live(),
     }
 
     while True:
@@ -1902,7 +2128,7 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-16.")
+            warn(f"'{choice}' is not a valid option — enter 0-17.")
 
 
 # ===========================================================================
