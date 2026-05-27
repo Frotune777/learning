@@ -596,6 +596,8 @@ class StockScreener:
                     {
                         "SYMBOL": symbol,
                         "TURNOVER": turnover,
+                        "VOLUME_QTY": np.nan,
+                        "TOTAL_TRADED_VALUE": np.nan,
                         "PREVIOUS_CLOSE": np.nan,
                         "CMP": np.nan,
                         "DMA_50": np.nan,
@@ -631,6 +633,8 @@ class StockScreener:
                     {
                         "SYMBOL": symbol,
                         "TURNOVER": turnover,
+                        "VOLUME_QTY": np.nan,
+                        "TOTAL_TRADED_VALUE": np.nan,
                         "PREVIOUS_CLOSE": np.nan,
                         "CMP": np.nan,
                         "DMA_50": np.nan,
@@ -656,34 +660,85 @@ class StockScreener:
             cmp: float = float(df_ticker["Close"].iloc[-1])
             # Previous close is close of second to last day
             prev_close: float = float(df_ticker["Close"].iloc[-2])
+            # Volume and Total Traded Value
+            latest_volume: float = (
+                float(df_ticker["Volume"].iloc[-1]) if "Volume" in df_ticker else 0.0
+            )
+            total_traded_value: float = cmp * latest_volume
 
-            # DMA calculations over trading days with minimum history guards
-            close_series: pd.Series = df_ticker["Close"].dropna()
-            available_days: int = len(close_series)
+            # Add TA-Lib Indicators
+            from src.nse_bhavcopy.ta_indicators import (
+                add_ta_indicators,
+                calculate_technical_score,
+            )
 
-            dma_50: float = (
-                float(close_series.tail(50).mean()) if available_days >= 50 else np.nan
-            )
-            dma_100: float = (
-                float(close_series.tail(100).mean())
-                if available_days >= 100
-                else np.nan
-            )
-            dma_200: float = (
-                float(close_series.tail(200).mean())
-                if available_days >= 200
-                else np.nan
-            )
+            df_ticker = add_ta_indicators(df_ticker)
+
+            # Additional Rolling Metrics for Strategies
+            df_ticker["SMA_20"] = df_ticker["Close"].rolling(window=20).mean()
+            df_ticker["SMA_150"] = df_ticker["Close"].rolling(window=150).mean()
+
+            if "Low" in df_ticker.columns:
+                df_ticker["20D_LOW"] = df_ticker["Low"].rolling(window=20).min()
+                df_ticker["126D_LOW"] = df_ticker["Low"].rolling(window=126).min()
+                df_ticker["200D_LOW"] = df_ticker["Low"].rolling(window=200).min()
+
+            if "High" in df_ticker.columns:
+                df_ticker["55D_HIGH"] = df_ticker["High"].rolling(window=55).max()
+
+            # Statistical Unusual Activity (Z-Score of Daily Returns)
+            df_ticker["DAILY_RETURN"] = df_ticker["Close"].pct_change()
+            df_ticker["RET_MEAN"] = df_ticker["DAILY_RETURN"].rolling(window=20).mean()
+            df_ticker["RET_STD"] = df_ticker["DAILY_RETURN"].rolling(window=20).std()
+            df_ticker["PRICE_Z_SCORE"] = (
+                df_ticker["DAILY_RETURN"] - df_ticker["RET_MEAN"]
+            ) / df_ticker["RET_STD"]
+
+            if "Volume" in df_ticker.columns:
+                df_ticker["VOL_20D_AVG"] = df_ticker["Volume"].rolling(window=20).mean()
+
+            latest_row = df_ticker.iloc[-1]
+            prev_row = df_ticker.iloc[-2] if len(df_ticker) > 1 else latest_row
+
+            vol_20d_avg = float(latest_row.get("VOL_20D_AVG", np.nan))
+            vol_spike = 0.0
+            if not pd.isna(vol_20d_avg) and vol_20d_avg > 0:
+                vol_spike = latest_volume / vol_20d_avg
+
+            change_pct = 0.0
+            if prev_close > 0:
+                change_pct = ((cmp - prev_close) / prev_close) * 100.0
+
+            price_z_score = float(latest_row.get("PRICE_Z_SCORE", np.nan))
+            if pd.isna(price_z_score) or np.isinf(price_z_score):
+                price_z_score = 0.0
+
+            dma_50 = float(latest_row.get("SMA_50", np.nan))
+            dma_100 = float(latest_row.get("SMA_100", np.nan))
+            dma_150 = float(latest_row.get("SMA_150", np.nan))
+            dma_200 = float(latest_row.get("SMA_200", np.nan))
+            sma_20 = float(latest_row.get("SMA_20", np.nan))
+            atr = float(latest_row.get("ATR_14", np.nan))
+            rsi_val = float(latest_row.get("RSI_14", np.nan))
+            adx_val = float(latest_row.get("ADX_14", np.nan))
+            plus_di = float(latest_row.get("PLUS_DI_14", np.nan))
+            minus_di = float(latest_row.get("MINUS_DI_14", np.nan))
+
+            low_20d = float(latest_row.get("20D_LOW", np.nan))
+            high_55d = float(latest_row.get("55D_HIGH", np.nan))
+            low_126d = float(latest_row.get("126D_LOW", np.nan))
+            low_200d = float(latest_row.get("200D_LOW", np.nan))
+            prev_sma_100 = float(prev_row.get("SMA_100", np.nan))
 
             # Percentage difference from 200 DMA
-            diff_200_dma: float = 0.0
+            diff_200_dma = 0.0
             if not pd.isna(dma_200) and dma_200 > 0:
                 diff_200_dma = ((cmp - dma_200) * 100.0) / dma_200
             else:
                 diff_200_dma = np.nan
 
-            # Trend Status matching with Insufficient History check
-            trend_status: str = "Unconfirmed"
+            # Trend Status
+            trend_status = "Unconfirmed"
             if any(pd.isna(v) for v in [dma_50, dma_100, dma_200]):
                 trend_status = "Insufficient History"
             else:
@@ -694,31 +749,39 @@ class StockScreener:
                     if -10.0 <= diff_200_dma <= -0.01:
                         trend_status = "In Bear Run"
 
-            # CAR Rating calculations
-            car_rating: str = self._calculate_car_rating(df_ticker)
-
-            # Bottom Out calculations
-            bottom_out: dict[str, Any] = self._calculate_bottom_out(df_ticker)
-
-            # Calculate TA-Lib indicators and score on the fly
-            from src.nse_bhavcopy.ta_indicators import (
-                add_ta_indicators,
-                calculate_technical_score,
-            )
-
-            df_ticker = add_ta_indicators(df_ticker)
-            latest_row = df_ticker.iloc[-1]
+            # Base existing calculations
+            car_rating = self._calculate_car_rating(df_ticker)
+            bottom_out = self._calculate_bottom_out(df_ticker)
             ta_info = calculate_technical_score(latest_row)
-            rsi_val = latest_row.get("RSI_14", np.nan)
             tech_score = ta_info["score"]
             tech_rating = ta_info["rating"]
+
+            # Strategy Evaluations
+            str_nifty_shop = self._calc_nifty_shop(rsi_val, cmp)
+            str_buy_low = self._calc_buy_low_sell_high(cmp, low_200d, atr)
+            str_turtle = self._calc_turtle_trading(cmp, high_55d, low_20d, atr)
+            str_rdx = self._calc_rdx(adx_val, plus_di, minus_di, rsi_val, atr, cmp)
+            str_100sma = self._calc_100sma_breakout(
+                cmp, prev_close, dma_100, prev_sma_100, low_126d, atr
+            )
+            str_etf_shop = self._calc_etf_shop(cmp, sma_20)
+            str_super_bo = self._calc_super_bo(
+                cmp, dma_50, dma_100, dma_150, dma_200, atr
+            )
+            str_dma_rev = self._calc_dmadma_reverse(cmp, dma_150, dma_200, atr)
+            str_dma_nosl = self._calc_dmadma_no_sl(cmp, dma_50, dma_200)
 
             analyzed_records.append(
                 {
                     "SYMBOL": symbol,
                     "TURNOVER": turnover,
+                    "VOLUME_QTY": latest_volume,
+                    "TOTAL_TRADED_VALUE": total_traded_value,
                     "PREVIOUS_CLOSE": prev_close,
                     "CMP": cmp,
+                    "CHANGE_PCT": change_pct,
+                    "PRICE_Z_SCORE": price_z_score,
+                    "VOL_SPIKE": vol_spike,
                     "DMA_50": dma_50,
                     "DMA_100": dma_100,
                     "DMA_200": dma_200,
@@ -734,6 +797,30 @@ class StockScreener:
                     "RSI_14": rsi_val,
                     "TECH_SCORE": tech_score,
                     "TECH_RATING": tech_rating,
+                    "STR_NIFTY_SHOP_ACTION": str_nifty_shop["action"],
+                    "STR_NIFTY_SHOP_TARGET": str_nifty_shop["target"],
+                    "STR_BUY_LOW_ACTION": str_buy_low["action"],
+                    "STR_BUY_LOW_TARGET": str_buy_low["target"],
+                    "STR_BUY_LOW_SL": str_buy_low["sl"],
+                    "STR_TURTLE_ACTION": str_turtle["action"],
+                    "STR_TURTLE_TARGET": str_turtle["target"],
+                    "STR_TURTLE_SL": str_turtle["sl"],
+                    "STR_RDX_ACTION": str_rdx["action"],
+                    "STR_RDX_TARGET": str_rdx["target"],
+                    "STR_RDX_SL": str_rdx["sl"],
+                    "STR_100SMA_ACTION": str_100sma["action"],
+                    "STR_100SMA_TARGET": str_100sma["target"],
+                    "STR_100SMA_SL": str_100sma["sl"],
+                    "STR_ETF_SHOP_ACTION": str_etf_shop["action"],
+                    "STR_ETF_SHOP_DIFF": str_etf_shop["diff_pct"],
+                    "STR_SUPER_BO_ACTION": str_super_bo["action"],
+                    "STR_SUPER_BO_TARGET": str_super_bo["target"],
+                    "STR_SUPER_BO_SL": str_super_bo["sl"],
+                    "STR_DMA_REV_ACTION": str_dma_rev["action"],
+                    "STR_DMA_REV_TARGET": str_dma_rev["target"],
+                    "STR_DMA_REV_SL": str_dma_rev["sl"],
+                    "STR_DMA_NOSL_ACTION": str_dma_nosl["action"],
+                    "STR_DMA_NOSL_TARGET": str_dma_nosl["target"],
                 }
             )
 
@@ -757,6 +844,8 @@ class StockScreener:
             [
                 "SYMBOL",
                 "TURNOVER",
+                "VOLUME_QTY",
+                "TOTAL_TRADED_VALUE",
                 "PREVIOUS_CLOSE",
                 "CMP",
                 "DIFF_200_DMA",
@@ -771,6 +860,8 @@ class StockScreener:
             columns={
                 "SYMBOL": "NSE Code",
                 "TURNOVER": "Volume",
+                "VOLUME_QTY": "Qty",
+                "TOTAL_TRADED_VALUE": "Total Traded Value",
                 "PREVIOUS_CLOSE": "Previous Close",
                 "CMP": "CMP",
                 "DIFF_200_DMA": "Difference from 200 DMA",
@@ -800,6 +891,8 @@ class StockScreener:
             [
                 "SYMBOL",
                 "TURNOVER",
+                "VOLUME_QTY",
+                "TOTAL_TRADED_VALUE",
                 "CMP",
                 "20D_HIGH",
                 "20D_LOW",
@@ -816,6 +909,8 @@ class StockScreener:
             columns={
                 "SYMBOL": "NSE Code",
                 "TURNOVER": "Volume",
+                "VOLUME_QTY": "Qty",
+                "TOTAL_TRADED_VALUE": "Total Traded Value",
                 "CMP": "CMP",
                 "20D_HIGH": "20 Day High",
                 "20D_LOW": "20 Day Low",
@@ -850,6 +945,8 @@ class StockScreener:
             [
                 "SYMBOL",
                 "TURNOVER",
+                "VOLUME_QTY",
+                "TOTAL_TRADED_VALUE",
                 "CMP",
                 "DIFF_200_DMA",
                 "CAR_RATING",
@@ -867,6 +964,8 @@ class StockScreener:
             columns={
                 "SYMBOL": "NSE Code",
                 "TURNOVER": "Volume",
+                "VOLUME_QTY": "Qty",
+                "TOTAL_TRADED_VALUE": "Total Traded Value",
                 "CMP": "CMP",
                 "DIFF_200_DMA": "Diff 200 DMA",
                 "CAR_RATING": "CAR",
@@ -891,4 +990,213 @@ class StockScreener:
             len(final_c_df),
         )
 
+        self._generate_strategy_reports(df_analyzed, date_str)
+
         return final_c_filepath
+
+    def _generate_strategy_reports(
+        self, df_analyzed: pd.DataFrame, date_str: str
+    ) -> None:
+        """
+        Filter the analyzed dataframe by various strategies and save to separate CSVs.
+        """
+        strategies = {
+            "nifty_shop": ("STR_NIFTY_SHOP", "No Action"),
+            "buy_low": ("STR_BUY_LOW", "Hold"),
+            "turtle": ("STR_TURTLE", "No need to fresh start"),
+            "rdx": ("STR_RDX", "Hold"),
+            "100sma_breakout": ("STR_100SMA", "Hold"),
+            "etf_shop": ("STR_ETF_SHOP", "Hold"),
+            "super_bo": ("STR_SUPER_BO", "Hold"),
+            "dmadma_reverse": ("STR_DMA_REV", "Hold"),
+            "dmadma_no_sl": ("STR_DMA_NOSL", "Hold"),
+        }
+
+        base_cols = [
+            "SYMBOL",
+            "TURNOVER",
+            "VOLUME_QTY",
+            "TOTAL_TRADED_VALUE",
+            "CMP",
+            "CHANGE_PCT",
+            "PRICE_Z_SCORE",
+            "VOL_SPIKE",
+            "RSI_14",
+            "TECH_SCORE",
+        ]
+
+        for strat_name, (prefix, ignore_val) in strategies.items():
+            col_action = f"{prefix}_ACTION"
+            col_target = f"{prefix}_TARGET"
+            col_sl = f"{prefix}_SL"
+            col_diff = f"{prefix}_DIFF"
+
+            if col_action in df_analyzed.columns:
+                df_strat = df_analyzed[df_analyzed[col_action] != ignore_val].copy()
+                if not df_strat.empty:
+                    df_strat = df_strat.sort_values(by="TURNOVER", ascending=False)
+
+                    strat_cols = [*base_cols, col_action]
+                    if col_target in df_strat.columns:
+                        strat_cols.append(col_target)
+                    if col_sl in df_strat.columns:
+                        strat_cols.append(col_sl)
+                    if col_diff in df_strat.columns:
+                        strat_cols.append(col_diff)
+
+                    df_strat = df_strat[strat_cols]
+
+                    df_strat = df_strat.rename(
+                        columns={
+                            "SYMBOL": "NSE Code",
+                            "TURNOVER": "Volume",
+                            "VOLUME_QTY": "Qty",
+                            "TOTAL_TRADED_VALUE": "Total Traded Value",
+                            "CMP": "CMP",
+                            "CHANGE_PCT": "Change %",
+                            "PRICE_Z_SCORE": "Return Z-Score",
+                            "VOL_SPIKE": "Vol Spike (x)",
+                            "RSI_14": "RSI",
+                            "TECH_SCORE": "Tech Score",
+                            col_action: "Action",
+                            col_target: "Target",
+                            col_sl: "Stop Loss",
+                            col_diff: "Diff %",
+                        }
+                    )
+
+                    filename = f"strategy_{strat_name}_{date_str}.csv"
+                    filepath = os.path.join(self.processed_dir, filename)
+                    df_strat.to_csv(filepath, index=False)
+                    LOGGER.info(
+                        "Strategy report '%s' saved at: %s (%d records)",
+                        strat_name,
+                        filepath,
+                        len(df_strat),
+                    )
+
+    def _calc_nifty_shop(self, rsi: float, cmp: float) -> dict[str, Any]:
+        level = "No Action"
+        target = cmp * 1.0628 if not pd.isna(cmp) else np.nan
+        sl = np.nan
+        if not pd.isna(rsi):
+            if rsi < 25.0:
+                level = "Level 3 Buy"
+            elif rsi < 30.0:
+                level = "Level 2 Buy"
+            elif rsi < 35.0:
+                level = "Level 1 Buy"
+        return {"action": level, "target": target, "sl": sl}
+
+    def _calc_buy_low_sell_high(
+        self, cmp: float, low_200d: float, atr: float
+    ) -> dict[str, Any]:
+        action = "Hold"
+        if not pd.isna(cmp) and not pd.isna(low_200d):
+            diff = ((cmp - low_200d) / low_200d) * 100.0
+            if diff <= 2.0:
+                action = "Buy on Support / Demand Level"
+        target = cmp + (2 * atr) if not pd.isna(atr) else np.nan
+        sl = low_200d - (0.5 * atr) if not pd.isna(atr) else np.nan
+        return {"action": action, "target": target, "sl": sl}
+
+    def _calc_turtle_trading(
+        self, cmp: float, high_55d: float, low_20d: float, atr: float
+    ) -> dict[str, Any]:
+        action = "No need to fresh start"
+        if not pd.isna(cmp) and not pd.isna(high_55d):
+            if cmp >= high_55d:
+                action = "Buy (55D Breakout)"
+        target = cmp + (3 * atr) if not pd.isna(atr) else np.nan
+        sl = low_20d
+        return {"action": action, "target": target, "sl": sl}
+
+    def _calc_rdx(
+        self,
+        adx: float,
+        plus_di: float,
+        minus_di: float,
+        rsi: float,
+        atr: float,
+        cmp: float,
+    ) -> dict[str, Any]:
+        action = "Hold"
+        if not any(pd.isna(v) for v in [adx, plus_di, minus_di, rsi]):
+            if adx > 25.0 and plus_di > minus_di and rsi > 60.0:
+                action = "Explosive Buy"
+            elif adx > 25.0 and minus_di > plus_di and rsi < 40.0:
+                action = "Explosive Sell"
+        target = cmp + (2 * atr) if not pd.isna(atr) else np.nan
+        sl = cmp - (1.5 * atr) if not pd.isna(atr) else np.nan
+        return {"action": action, "target": target, "sl": sl}
+
+    def _calc_100sma_breakout(
+        self,
+        cmp: float,
+        prev_close: float,
+        sma_100: float,
+        prev_sma_100: float,
+        low_6m: float,
+        atr: float,
+    ) -> dict[str, Any]:
+        action = "Hold"
+        if not any(
+            pd.isna(v) for v in [cmp, prev_close, sma_100, prev_sma_100, low_6m]
+        ):
+            crossed = (prev_close <= prev_sma_100) and (cmp > sma_100)
+            diff_from_low = ((cmp - low_6m) / low_6m) * 100.0
+            if crossed and diff_from_low >= 20.0:
+                action = "Breakout Buy"
+        target = cmp + (3 * atr) if not pd.isna(atr) else np.nan
+        sl = sma_100
+        return {"action": action, "target": target, "sl": sl}
+
+    def _calc_etf_shop(self, cmp: float, sma_20: float) -> dict[str, Any]:
+        diff_pct = np.nan
+        action = "Hold"
+        if not pd.isna(cmp) and not pd.isna(sma_20) and sma_20 > 0:
+            diff_pct = ((cmp - sma_20) / sma_20) * 100.0
+            if diff_pct < -2.0:
+                action = "Buy"
+        return {"diff_pct": diff_pct, "action": action}
+
+    def _calc_super_bo(
+        self,
+        cmp: float,
+        sma_50: float,
+        sma_100: float,
+        sma_150: float,
+        sma_200: float,
+        atr: float,
+    ) -> dict[str, Any]:
+        action = "Hold"
+        if not any(pd.isna(v) for v in [cmp, sma_50, sma_100, sma_150, sma_200]):
+            if cmp > sma_50 and cmp > sma_100 and cmp > sma_150 and cmp < sma_200:
+                action = "Super BO Buy"
+        target = sma_200
+        sl = cmp - (2 * atr) if not pd.isna(atr) else np.nan
+        return {"action": action, "target": target, "sl": sl}
+
+    def _calc_dmadma_reverse(
+        self, cmp: float, sma_150: float, sma_200: float, atr: float
+    ) -> dict[str, Any]:
+        action = "Hold"
+        if not any(pd.isna(v) for v in [cmp, sma_150, sma_200]):
+            if cmp > sma_200 and cmp > sma_150:
+                diff = ((sma_150 - sma_200) / sma_200) * 100.0
+                if diff > 0.0:
+                    action = "150 DMA Breakout | CMP > 200 DMA"
+        target = cmp + (2 * atr) if not pd.isna(atr) else np.nan
+        sl = sma_150
+        return {"action": action, "target": target, "sl": sl}
+
+    def _calc_dmadma_no_sl(
+        self, cmp: float, sma_50: float, sma_200: float
+    ) -> dict[str, Any]:
+        action = "Hold"
+        if not any(pd.isna(v) for v in [cmp, sma_50, sma_200]):
+            if cmp > sma_200 and cmp > sma_50:
+                diff = ((sma_50 - sma_200) / sma_200) * 100.0
+                if diff > 0.0:
+                    action = "50 DMA Breakout | CMP > 200 DMA"
+        return {"action": action, "target": cmp * 1.0628, "sl": np.nan}

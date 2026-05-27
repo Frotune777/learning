@@ -534,6 +534,8 @@ def test_screen_stocks_success(tmp_path: Path) -> None:
         assert list(final_df.columns) == [
             "NSE Code",
             "Volume",
+            "Qty",
+            "Total Traded Value",
             "Previous Close",
             "CMP",
             "Difference from 200 DMA",
@@ -551,6 +553,8 @@ def test_screen_stocks_success(tmp_path: Path) -> None:
         assert list(swing_df.columns) == [
             "NSE Code",
             "Volume",
+            "Qty",
+            "Total Traded Value",
             "CMP",
             "20 Day High",
             "20 Day Low",
@@ -569,6 +573,8 @@ def test_screen_stocks_success(tmp_path: Path) -> None:
         assert list(super_df.columns) == [
             "NSE Code",
             "Volume",
+            "Qty",
+            "Total Traded Value",
             "CMP",
             "Diff 200 DMA",
             "CAR",

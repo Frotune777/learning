@@ -76,6 +76,117 @@ DEFAULT_MASTER_DIR: str = "data"
 DEFAULT_START_DATE: str = "2000-01-01"
 DEFAULT_TIMEFRAME: str = "1d"
 
+# ---------------------------------------------------------------------------
+# ANSI colour helpers  (gracefully degrade on Windows / dumb terminals)
+# ---------------------------------------------------------------------------
+_USE_COLOR = sys.stdout.isatty()
+
+
+def _c(code: str, text: str) -> str:
+    """Wrap *text* in an ANSI escape *code* if the terminal supports it."""
+    return f"\033[{code}m{text}\033[0m" if _USE_COLOR else text
+
+
+def dim(t: str) -> str:
+    return _c("2", t)
+
+
+def bold(t: str) -> str:
+    return _c("1", t)
+
+
+def green(t: str) -> str:
+    return _c("32", t)
+
+
+def yellow(t: str) -> str:
+    return _c("33", t)
+
+
+def red(t: str) -> str:
+    return _c("31", t)
+
+
+def cyan(t: str) -> str:
+    return _c("36", t)
+
+
+def white(t: str) -> str:
+    return _c("97", t)
+
+
+def blue(t: str) -> str:
+    return _c("34", t)
+
+
+# ---------------------------------------------------------------------------
+# Shared UI primitives
+# ---------------------------------------------------------------------------
+_W = 68  # console width
+
+
+def _rule(char: str = "─", width: int = _W) -> str:
+    return dim(char * width)
+
+
+def _header(title: str, subtitle: str = "") -> None:
+    """Print a section header with an optional subtitle."""
+    print()
+    print(_rule("━"))
+    print(f"  {bold(white(title))}")
+    if subtitle:
+        print(f"  {dim(subtitle)}")
+    print(_rule("━"))
+
+
+def _subheader(title: str) -> None:
+    print()
+    print(f"  {cyan('▸')} {bold(title)}")
+    print(_rule("╌"))
+
+
+def ok(msg: str) -> None:
+    print(f"\n  {green('✔')}  {msg}")
+
+
+def warn(msg: str) -> None:
+    print(f"\n  {yellow('!')}  {msg}")
+
+
+def err(msg: str) -> None:
+    print(f"\n  {red('✘')}  {msg}")
+
+
+def tip(msg: str) -> None:
+    print(f"  {dim('→')}  {dim(msg)}")
+
+
+def _pause() -> None:
+    """Wait for the user to press Enter before returning to the main menu."""
+    print()
+    input(dim("  Press Enter to return to the menu… "))
+
+
+def _confirm(prompt: str = "Proceed?") -> bool:
+    """Ask a yes/no question; default is No."""
+    answer = input(f"  {prompt} {dim('[y/N]')} ").strip().lower()
+    return answer == "y"
+
+
+def _ask(prompt: str, default: str) -> str:
+    """Prompt with a default value shown inline."""
+    raw = input(f"  {prompt} {dim(f'[{default}]')} ").strip()
+    return raw or default
+
+
+def _ask_float(prompt: str, default: float) -> float:
+    raw = input(f"  {prompt} {dim(f'[{default}]')} ").strip()
+    try:
+        return float(raw) if raw else default
+    except ValueError:
+        warn(f"Invalid number — using {default}")
+        return default
+
 
 # ===========================================================================
 # Helpers
@@ -206,7 +317,6 @@ def _load_symbols_from_bhavcopy(
     symbols = dl.get_eq_symbols(file_bytes)
     LOGGER.info("Bhavcopy EQ symbols: %d", len(symbols))
 
-    # Optionally intersect with master filters
     if (cap_filter or index_filter) and master_path:
         master_symbols = set(_load_symbols(master_path, cap_filter, index_filter))
         before = len(symbols)
@@ -287,7 +397,7 @@ def _load_symbols(
 
 
 # ===========================================================================
-# Subcommand handlers (non-interactive)
+# Subcommand handlers (non-interactive / CLI mode)
 # ===========================================================================
 
 
@@ -326,7 +436,7 @@ def cmd_build_master(args: argparse.Namespace) -> None:
     )
     try:
         path = builder.build_and_save(delay=args.delay)
-        print(f"\n✅ Master table saved: {path}")
+        print(f"\n✔  Master table saved: {path}")
     except RuntimeError as exc:
         LOGGER.error("Master build failed: %s", exc)
         sys.exit(1)
@@ -396,11 +506,11 @@ def cmd_sync_history(args: argparse.Namespace) -> None:
     )
     results = hs.sync(symbols, resume=args.resume)
 
-    ok = sum(v for v in results.values())
+    ok_count = sum(v for v in results.values())
     failed = [s for s, v in results.items() if not v]
-    print(f"\n✅ Sync complete: {ok}/{len(symbols)} symbols succeeded.")
+    print(f"\n✔  Sync complete: {ok_count}/{len(symbols)} symbols succeeded.")
     if failed:
-        print(f"⚠️  Failed symbols ({len(failed)}): " f"{', '.join(failed[:20])}")
+        print(f"!   Failed ({len(failed)}): {', '.join(failed[:20])}")
 
 
 def cmd_screen(args: argparse.Namespace) -> None:
@@ -435,13 +545,12 @@ def cmd_screen(args: argparse.Namespace) -> None:
     """
     LOGGER.info("=== PHASE 3: STOCK SCREENING ===")
 
-    # Find the latest processed Bhavcopy CSV
     processed_dir: str = args.processed_dir
     csv_pattern = os.path.join(processed_dir, "*.csv")
     csv_files = sorted(glob.glob(csv_pattern), reverse=True)
     if not csv_files:
         LOGGER.error(
-            "No processed Bhavcopy CSV found in '%s'. " "Run 'sync-history' first.",
+            "No processed Bhavcopy CSV found in '%s'. Run 'sync-history' first.",
             processed_dir,
         )
         sys.exit(1)
@@ -449,40 +558,76 @@ def cmd_screen(args: argparse.Namespace) -> None:
     top_csv: str = csv_files[0]
     LOGGER.info("Using Bhavcopy: %s", top_csv)
 
-    screener = StockScreener(
-        processed_dir=args.hist_dir,
-    )
-    screener.screen_stocks(
-        top_250_path=top_csv,
-        date_obj=datetime.now(),
-    )
-    print(f"\n✅ Screening complete. Results saved to: {args.hist_dir}")
+    screener = StockScreener(processed_dir=args.hist_dir)
+    screener.screen_stocks(top_250_path=top_csv, date_obj=datetime.now())
+    print(f"\n✔  Screening complete. Results saved to: {args.hist_dir}")
 
 
 # ===========================================================================
-# Interactive menu
+# Interactive menu — UI helpers
 # ===========================================================================
 
 
 def _print_banner() -> None:
     """Print the application banner."""
-    print("\n" + "=" * 60)
-    print("    NSE DATA PIPELINE — Interactive Menu")
-    print("=" * 60)
+    print()
+    print(_rule("═"))
+    print()
+    print(f"  {bold(white('NSE DATA PIPELINE'))}  {dim('v2026-05')}")
+    print(f"  {dim('Equity Master  ·  Historical Sync  ·  Technical Screener')}")
+    print()
+    print(_rule("═"))
 
 
 def _print_main_menu() -> None:
-    """Print top-level menu options."""
-    print("\n  [1] Build / Refresh Equity Master Table")
-    print("  [2] Sync Historical Data (all Bhavcopy symbols)")
-    print("  [3] Sync Historical Data (filtered symbols)")
-    print("  [4] Run Technical Screener")
-    print("  [5] Show Parquet Sync Status")
-    print("  [6] Show Sync Registry (pending/failed/ok)")
-    print("  [7] Advanced Technical Analysis Dashboard (Single Stock)")
-    print("  [8] Recompute / Update TA Indicators on All Local Data")
-    print("  [9] Exit")
+    """Print the top-level menu with grouped sections."""
     print()
+    print(f"  {dim('DATA')}")
+    print(
+        f"   {cyan('1')}  {bold('Build / Refresh Equity Master')}  "
+        f"{dim('download sec_list + index data')}"
+    )
+    print(
+        f"   {cyan('2')}  {bold('Sync Historical  ─ All Symbols')}  "
+        f"{dim('all Bhavcopy EQ symbols')}"
+    )
+    print(
+        f"   {cyan('3')}  {bold('Sync Historical  ─ Filtered')}    "
+        f"{dim('by cap, index, or count')}"
+    )
+    print()
+    print(f"  {dim('ANALYSIS')}")
+    print(
+        f"   {cyan('4')}  {bold('Run Technical Screener')}          "
+        f"{dim('final / swing / super lists')}"
+    )
+    print(
+        f"   {cyan('7')}  {bold('TA Dashboard  ─ Single Stock')}    "
+        f"{dim('RSI, MACD, Bollinger, ADX…')}"
+    )
+    print(
+        f"   {cyan('8')}  {bold('Recompute TA Indicators')}         "
+        f"{dim('refresh all local Parquet files')}"
+    )
+    print()
+    print(f"  {dim('STATUS')}")
+    print(
+        f"   {cyan('5')}  {bold('Parquet Sync Status')}             "
+        f"{dim('rows, date ranges per symbol')}"
+    )
+    print(
+        f"   {cyan('6')}  {bold('Sync Registry')}                   "
+        f"{dim('pending / failed / ok breakdown')}"
+    )
+    print()
+    print(f"   {dim('9')}  {dim('Exit')}")
+    print()
+    print(_rule())
+
+
+# ===========================================================================
+# Interactive menu — action handlers
+# ===========================================================================
 
 
 def menu_build_master(data_dir: str) -> None:
@@ -513,19 +658,14 @@ def menu_build_master(data_dir: str) -> None:
     Edge Cases Handled:
         - User cancels at confirmation prompt.
     """
-    print("\n--- Build Equity Master ---")
-    print("This downloads sec_list.csv and all index constituent data.")
-    confirm = input("Proceed? [y/N]: ").strip().lower()
-    if confirm != "y":
-        print("Cancelled.")
+    _header("Build Equity Master", "Downloads sec_list.csv + all index constituents")
+    tip("This replaces any previously cached master Parquet.")
+
+    if not _confirm("Start build?"):
+        warn("Cancelled.")
         return
 
-    try:
-        delay = float(
-            input("API delay between index calls (default 1.0s): ").strip() or "1.0"
-        )
-    except ValueError:
-        delay = 1.0
+    delay = _ask_float("API delay between index calls (seconds)", 1.0)
 
     builder = NSEEquityMasterBuilder(
         output_dir=data_dir,
@@ -533,9 +673,11 @@ def menu_build_master(data_dir: str) -> None:
     )
     try:
         path = builder.build_and_save(delay=delay)
-        print(f"\n✅ Master saved: {path}")
+        ok(f"Master saved  →  {path}")
     except RuntimeError as exc:
-        print(f"\n❌ Failed: {exc}")
+        err(f"Build failed: {exc}")
+
+    _pause()
 
 
 def menu_sync_history(
@@ -576,32 +718,38 @@ def menu_sync_history(
         - No master found exits with message.
         - Invalid inputs fall back to defaults.
     """
-    print("\n--- Sync Historical Data ---")
     master_path = _find_latest_master(data_dir)
     symbols = _load_symbols(
         master_path, cap_filter=cap_filter, index_filter=index_filter
     )
-    print(f"Symbols to sync: {len(symbols)}")
 
-    tf = input(f"Timeframe [{DEFAULT_TIMEFRAME}]: ").strip() or DEFAULT_TIMEFRAME
-    start = input(f"Start date [{DEFAULT_START_DATE}]: ").strip() or DEFAULT_START_DATE
+    print(f"\n  {dim('Symbols loaded:')}  {bold(str(len(symbols)))}", end="")
+    if cap_filter:
+        print(f"  {dim('cap=')} {cap_filter}", end="")
+    if index_filter:
+        print(f"  {dim('index=')} {index_filter}", end="")
+    print()
 
-    try:
-        delay = float(
-            input("Rate delay between requests (default 0.5s): ").strip() or "0.5"
-        )
-    except ValueError:
-        delay = 0.5
+    tf = _ask("Timeframe  (1d / 1w / 1mo)", DEFAULT_TIMEFRAME)
+    start = _ask("Start date (YYYY-MM-DD)", DEFAULT_START_DATE)
+    delay = _ask_float("Rate delay between requests (seconds)", 0.5)
 
     hs = HistoricalSync(
-        data_dir=hist_dir,
-        timeframe=tf,
-        start_date=start,
-        rate_delay=delay,
+        data_dir=hist_dir, timeframe=tf, start_date=start, rate_delay=delay
     )
     results = hs.sync(symbols)
-    ok = sum(v for v in results.values())
-    print(f"\n✅ Sync: {ok}/{len(symbols)} succeeded.")
+
+    ok_count = sum(v for v in results.values())
+    failed = [s for s, v in results.items() if not v]
+
+    ok(f"Sync complete  {ok_count}/{len(symbols)} succeeded")
+    if failed:
+        warn(
+            f"{len(failed)} failed: {', '.join(failed[:15])}"
+            + (" …" if len(failed) > 15 else "")
+        )
+
+    _pause()
 
 
 def menu_sync_filtered(data_dir: str, hist_dir: str) -> None:
@@ -633,19 +781,245 @@ def menu_sync_filtered(data_dir: str, hist_dir: str) -> None:
     Edge Cases Handled:
         - Invalid input uses None (no filter applied).
     """
-    print("\n--- Sync Historical Data (Filtered) ---")
-    print("Market Cap Filter options: Large, Mid, Small, Other, [Enter=All]")
-    cap = input("Cap filter: ").strip() or None
+    _header("Sync Historical Data — Filtered")
 
-    print("Index filter examples: is_nifty_50, is_nifty_500, [Enter=None]")
-    idx = input("Index filter: ").strip() or None
+    print(f"  {dim('Market cap:')}  Large · Mid · Small · Other · {dim('Enter = All')}")
+    cap = input("  Cap filter: ").strip() or None
+    if cap and cap not in ("Large", "Mid", "Small", "Other"):
+        warn(f"Unknown cap '{cap}' — no cap filter applied.")
+        cap = None
+
+    print(
+        f"  {dim('Index examples:')}  is_nifty_50 · is_nifty_500 · "
+        f"{dim('Enter = None')}"
+    )
+    idx = input("  Index filter: ").strip() or None
 
     menu_sync_history(
-        data_dir=data_dir,
-        hist_dir=hist_dir,
-        cap_filter=cap,
-        index_filter=idx,
+        data_dir=data_dir, hist_dir=hist_dir, cap_filter=cap, index_filter=idx
     )
+
+
+def _display_csv(path: str, title: str) -> None:
+    """
+    Pretty-print a screener result CSV.
+
+    Parameters:
+        path  (str): Absolute path to the CSV file.
+        title (str): Human-readable title for the table header.
+
+    Returns:
+        None
+    """
+    if not os.path.exists(path):
+        err(f"{title} not found at {path}")
+        return
+
+    df = pd.read_csv(path)
+
+    # Analytical view: Drop Volume and Qty if Total Traded Value is available
+    if "Total Traded Value" in df.columns:
+        if "Volume" in df.columns:
+            df = df.drop(columns=["Volume"])
+        if "Qty" in df.columns:
+            df = df.drop(columns=["Qty"])
+
+    _subheader(title)
+
+    if df.empty:
+        warn("No stocks met the criteria.")
+        return
+
+    from rich import box
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+    table = Table(show_header=True, header_style="bold cyan", box=box.ROUNDED)
+
+    # Add columns based on dtype
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            table.add_column(col, justify="right")
+        else:
+            table.add_column(col, justify="left")
+
+    # Add rows with appropriate formatting
+    for _, row in df.iterrows():
+        row_vals = []
+        for col in df.columns:
+            val = row[col]
+            if pd.isna(val):
+                row_vals.append("")
+            elif pd.api.types.is_numeric_dtype(df[col]):
+                if any(
+                    x in col for x in ["Volume", "Score", "Rows", "Rating", "Count"]
+                ):
+                    row_vals.append(f"{val:,.0f}")
+                else:
+                    row_vals.append(f"{val:,.2f}")
+            else:
+                row_vals.append(str(val))
+        table.add_row(*row_vals)
+
+    console.print(table)
+    print(f"\n  {dim(f'{len(df)} row(s)')}")
+
+
+def _screener_results_menu(hist_dir: str, date_str: str) -> None:
+    """
+    Sub-menu for browsing screener output files.
+
+    Parameters:
+        hist_dir (str): Directory that contains the result CSVs.
+        date_str (str): Date string used to locate today's output files.
+
+    Returns:
+        None
+    """
+    final_csv = os.path.join(hist_dir, f"final_list_{date_str}.csv")
+    swing_csv = os.path.join(hist_dir, f"swing_list_{date_str}.csv")
+    super_csv = os.path.join(hist_dir, f"super_list_{date_str}.csv")
+
+    strategies = [
+        (
+            "Nifty Shop (Single Leg)",
+            os.path.join(hist_dir, f"strategy_nifty_shop_{date_str}.csv"),
+        ),
+        (
+            "Buy Low Sell High",
+            os.path.join(hist_dir, f"strategy_buy_low_{date_str}.csv"),
+        ),
+        ("Turtle Trading", os.path.join(hist_dir, f"strategy_turtle_{date_str}.csv")),
+        ("RDX Indicator", os.path.join(hist_dir, f"strategy_rdx_{date_str}.csv")),
+        (
+            "100 SMA Breakout",
+            os.path.join(hist_dir, f"strategy_100sma_breakout_{date_str}.csv"),
+        ),
+        (
+            "ETF Shop Method",
+            os.path.join(hist_dir, f"strategy_etf_shop_{date_str}.csv"),
+        ),
+        (
+            "Super BO Stocks",
+            os.path.join(hist_dir, f"strategy_super_bo_{date_str}.csv"),
+        ),
+        (
+            "DMADMA (Reverse)",
+            os.path.join(hist_dir, f"strategy_dmadma_reverse_{date_str}.csv"),
+        ),
+        (
+            "DMADMA (No SL)",
+            os.path.join(hist_dir, f"strategy_dmadma_no_sl_{date_str}.csv"),
+        ),
+    ]
+
+    while True:
+        print()
+        print(_rule("─"))
+        print(f"  {bold('Screener Results')}  {dim(f'({date_str})')}")
+        print(_rule("─"))
+        print(f"   {cyan('1')}  Final List   {dim('Buy / Average Out signals')}")
+        print(f"   {cyan('2')}  Swing List   {dim('Start GTT signals')}")
+        print(f"   {cyan('3')}  Super List   {dim('Combined — the holy grail')}")
+
+        idx = 4
+        for name, path in strategies:
+            if os.path.exists(path):
+                print(f"   {cyan(str(idx))}  {name} {dim('Strategy')}")
+            else:
+                print(f"   {dim(str(idx))}  {dim(name + ' (No Results)')}")
+            idx += 1
+
+        print(f"   {cyan('99')} View All")
+        print(f"   {dim('0')}  {dim('Back to main menu')}")
+        print()
+
+        choice = input(f"  {dim('Select')}: ").strip()
+
+        if choice == "0":
+            break
+        elif choice == "1":
+            _display_csv(final_csv, "Final Target List")
+        elif choice == "2":
+            _display_csv(swing_csv, "Swing Trading List")
+        elif choice == "3":
+            _display_csv(super_csv, "Super Output (The Holy Grail)")
+        elif choice == "99":
+            dfs = []
+            for name, path in strategies:
+                if os.path.exists(path):
+                    df_strat = pd.read_csv(path)
+                    if not df_strat.empty:
+                        df_strat.insert(1, "Strategy", name)
+                        dfs.append(df_strat)
+
+            if dfs:
+                combined_df = pd.concat(dfs, ignore_index=True)
+
+                agg_dict = {}
+                for col in combined_df.columns:
+                    if col == "NSE Code":
+                        continue
+                    elif col in [
+                        "Total Traded Value",
+                        "CMP",
+                        "Change %",
+                        "Return Z-Score",
+                        "Vol Spike (x)",
+                        "RSI",
+                        "Tech Score",
+                        "Diff %",
+                    ]:
+                        agg_dict[col] = "first"
+                    elif col in ["Strategy", "Action"]:
+                        agg_dict[col] = lambda x: " | ".join(
+                            x.dropna().astype(str).unique()
+                        )
+                    elif col in ["Target", "Stop Loss"]:
+                        agg_dict[col] = lambda x: " | ".join(
+                            str(round(float(v), 2))
+                            for v in x.dropna().unique()
+                            if pd.notna(v)
+                        )
+
+                grouped_df = combined_df.groupby("NSE Code").agg(agg_dict).reset_index()
+
+                if "Total Traded Value" in grouped_df.columns:
+                    grouped_df = grouped_df.sort_values(
+                        by="Total Traded Value", ascending=False
+                    )
+
+                # Consolidate column layout for view all
+                combined_path = os.path.join(
+                    hist_dir, f"view_all_grouped_{date_str}.csv"
+                )
+                grouped_df.to_csv(combined_path, index=False)
+                _display_csv(combined_path, "Grouped Advanced Strategies Output")
+
+                export_path = f"Exported_Grouped_Strategies_{date_str}.csv"
+                grouped_df.to_csv(export_path, index=False)
+                print(
+                    f"\n  {bold('Exported:')} CSV successfully saved to "
+                    f"{cyan(export_path)} in the project root."
+                )
+            else:
+                warn("No strategy results found for today.")
+        else:
+            try:
+                c_idx = int(choice)
+                if 4 <= c_idx < 4 + len(strategies):
+                    strat_name, strat_path = strategies[c_idx - 4]
+                    if os.path.exists(strat_path):
+                        _display_csv(strat_path, strat_name)
+                    else:
+                        warn(f"No results generated for {strat_name} today.")
+                else:
+                    warn(f"Invalid choice '{choice}'.")
+            except ValueError:
+                warn(f"Invalid choice '{choice}'.")
+
+        _pause()
 
 
 def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
@@ -654,7 +1028,9 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
 
     Logic:
         Step 1: Find latest Bhavcopy CSV in processed_dir.
-        Step 2: Instantiate StockScreener and run screen_stocks.
+        Step 2: Optionally refresh historical data first.
+        Step 3: Instantiate StockScreener and run screen_stocks.
+        Step 4: Open screener results sub-menu.
 
     Parameters:
         data_dir (str): Root data directory.
@@ -677,90 +1053,30 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
     Edge Cases Handled:
         - No CSV found prints error and returns.
     """
-    print("\n============================================================")
-    print("    RUNNING TECHNICAL SCREENER")
-    print("============================================================")
+    _header("Technical Screener", "Scans synced Parquet data for technical setups")
 
-    prompt = (
-        "Do you want to fetch the latest historical data & "
-        "update TA indicators first? [y/N]: "
-    )
-    update_choice = input(prompt).strip().lower()
-    if update_choice == "y":
+    if _confirm("Fetch latest history + update TA indicators first?"):
         menu_sync_filtered(data_dir, hist_dir)
-        print("\n--- Continuing with Screener ---")
+        _subheader("Continuing with Screener")
 
     csv_pattern = os.path.join(processed_dir, "*.csv")
     csv_files = sorted(glob.glob(csv_pattern), reverse=True)
     if not csv_files:
-        print(f"❌ No Bhavcopy CSV found in '{processed_dir}'.")
+        err(f"No processed Bhavcopy CSV found in '{processed_dir}'.")
+        tip("Run option [2] or [3] to sync data first.")
+        _pause()
         return
 
     top_csv = csv_files[0]
-    print(f"  Using Reference: {os.path.basename(top_csv)}\n")
+    print(f"\n  {dim('Reference Bhavcopy:')} {os.path.basename(top_csv)}")
 
     now = datetime.now()
     screener = StockScreener(processed_dir=hist_dir)
     screener.screen_stocks(top_250_path=top_csv, date_obj=now)
-    print(f"\n✅ Screening complete. Results saved in: {hist_dir}")
 
-    date_str = now.strftime("%Y%m%d")
-    final_csv = os.path.join(hist_dir, f"final_list_{date_str}.csv")
-    swing_csv = os.path.join(hist_dir, f"swing_list_{date_str}.csv")
-    super_csv = os.path.join(hist_dir, f"super_list_{date_str}.csv")
+    ok(f"Screening complete  →  results in {hist_dir}")
 
-    while True:
-        print("\n--- View Screener Results ---")
-        print("  [1] Final List (Buy / Average Out)")
-        print("  [2] Swing List (Start GTT)")
-        print("  [3] Super List (Combined Signals)")
-        print("  [4] View All")
-        print("  [5] Exit Screener Menu")
-
-        choice = input("\nSelect option [1-5]: ").strip()
-
-        if choice == "5":
-            break
-
-        def display_csv(path: str, title: str) -> None:
-            if not os.path.exists(path):
-                print(f"❌ {title} not found at {path}")
-                return
-            df = pd.read_csv(path)
-            print(f"\n=== {title} ===")
-            if df.empty:
-                print("No stocks met the criteria.")
-            else:
-                display_df = df.copy()
-                for col in display_df.columns:
-                    if pd.api.types.is_numeric_dtype(display_df[col]):
-                        # Format volume and whole numbers with commas, no decimals
-                        if any(
-                            x in col
-                            for x in ["Volume", "Score", "Rows", "Rating", "Count"]
-                        ):
-                            display_df[col] = display_df[col].apply(
-                                lambda x: f"{x:,.0f}" if pd.notnull(x) else ""
-                            )
-                        # Format prices and indicators with 2 decimal precision
-                        else:
-                            display_df[col] = display_df[col].apply(
-                                lambda x: f"{x:,.2f}" if pd.notnull(x) else ""
-                            )
-                try:
-                    print(display_df.to_markdown(index=False, tablefmt="github"))
-                except ImportError:
-                    print(display_df.to_string(index=False, justify="center"))
-
-        if choice in ("1", "4"):
-            display_csv(final_csv, "Final Target List")
-        if choice in ("2", "4"):
-            display_csv(swing_csv, "Swing Trading List")
-        if choice in ("3", "4"):
-            display_csv(super_csv, "Super Output (The Holy Grail)")
-
-        if choice not in ("1", "2", "3", "4", "5"):
-            print("❌ Invalid option. Please select 1-5.")
+    _screener_results_menu(hist_dir, now.strftime("%Y%m%d"))
 
 
 def menu_status(hist_dir: str, data_dir: str) -> None:
@@ -792,27 +1108,29 @@ def menu_status(hist_dir: str, data_dir: str) -> None:
     Edge Cases Handled:
         - No master found prints a message and returns.
     """
-    print("\n--- Sync Status ---")
+    _header("Parquet Sync Status")
+
     master_path = _find_latest_master(data_dir)
     if master_path is None:
-        print("No master table found. Run 'Build Master' first.")
+        err("No master table found.")
+        tip("Run option [1] to build the master first.")
+        _pause()
         return
 
     builder = NSEEquityMasterBuilder(output_dir=data_dir)
     symbols = builder.get_symbols(master_path)
-
     hs = HistoricalSync(data_dir=hist_dir)
     status_df = hs.status(symbols)
 
     synced = status_df[status_df["rows"] > 0]
     missing = status_df[status_df["rows"] == 0]
 
-    print(f"\nTotal symbols in master: {len(status_df)}")
-    print(f"Synced (have Parquet)  : {len(synced)}")
-    print(f"Not yet synced         : {len(missing)}")
+    print(f"\n  {'Total in master':<28} {bold(str(len(status_df)))}")
+    print(f"  {green('Synced (have Parquet)'):<28} {bold(str(len(synced)))}")
+    print(f"  {yellow('Not yet synced'):<28} {bold(str(len(missing)))}")
 
     if not synced.empty:
-        print("\nTop 10 synced symbols:")
+        _subheader("Top 10 Synced Symbols")
         print(
             synced.head(10)[["symbol", "rows", "first_date", "last_date"]].to_string(
                 index=False
@@ -820,7 +1138,10 @@ def menu_status(hist_dir: str, data_dir: str) -> None:
         )
 
     if not missing.empty:
-        print(f"\nFirst 10 unsynced: {missing['symbol'].head(10).tolist()}")
+        _subheader(f"First 10 Unsynced  ({len(missing)} total)")
+        print("  " + "  ".join(missing["symbol"].head(10).tolist()))
+
+    _pause()
 
 
 def menu_registry(data_dir: str, hist_dir: str) -> None:
@@ -852,32 +1173,39 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
     Edge Cases Handled:
         - No registry file prints a helpful message.
     """
-    print("\n--- Sync Registry ---")
-    tf = input(f"Timeframe [{DEFAULT_TIMEFRAME}]: ").strip() or DEFAULT_TIMEFRAME
+    _header("Sync Registry", "Pending · OK · Failed breakdown")
+
+    tf = _ask("Timeframe", DEFAULT_TIMEFRAME)
     reg = SyncRegistry(registry_dir=data_dir, timeframe=tf)
     n = reg.load()
+
     if n == 0:
-        print("No registry found. Run a sync first.")
+        warn("No registry found.")
+        tip("Run a sync (option [2] or [3]) to create one.")
+        _pause()
         return
 
     df = reg.summary()
     counts = df.groupby("status").size()
-    print(f"\nTotal symbols in registry : {len(df)}")
+
+    print(f"\n  {'Total in registry':<26} {bold(str(len(df)))}")
     for status, cnt in counts.items():
-        print(f"  {status:10s}: {cnt}")
+        colour = green if status == "ok" else (red if status == "failed" else yellow)
+        print(f"  {colour(f'{status:<26}')} {bold(str(cnt))}")
 
     pending = df[df["needs_update"] & (df["status"] != "failed")]
     failed = df[df["status"] == "failed"]
 
     if not pending.empty:
-        print("\nTop 10 pending (oldest first):")
+        _subheader("Top 10 Pending (oldest first)")
         print(
             pending.head(10)[
                 ["symbol", "status", "last_bar_date", "row_count"]
             ].to_string(index=False)
         )
+
     if not failed.empty:
-        print(f"\nFailed symbols ({len(failed)}):")
+        _subheader(f"Failed Symbols  ({len(failed)} total)")
         print(
             failed.head(10)[["symbol", "fail_count", "last_bar_date"]].to_string(
                 index=False
@@ -885,14 +1213,16 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
         )
 
     pending_queue = reg.pending_symbols()
-    print(f"\nNext sync queue size: {len(pending_queue)} symbols")
+    print(f"\n  {dim('Next sync queue:')} {bold(str(len(pending_queue)))} symbols")
     if pending_queue:
-        print(f"Next 5 to sync: {pending_queue[:5]}")
+        print(f"  {dim('Next 5:')} {', '.join(pending_queue[:5])}")
+
+    _pause()
 
 
 def menu_ta_dashboard(hist_dir: str) -> None:
     """
-    Display a beautiful, premium console dashboard for a single stock's TA.
+    Display a console dashboard for a single stock's TA indicators.
 
     Parameters:
         hist_dir (str): Historical Parquet root directory.
@@ -900,35 +1230,38 @@ def menu_ta_dashboard(hist_dir: str) -> None:
     Returns:
         None
     """
-    print("\n--- Advanced Technical Analysis Dashboard ---")
-    symbol = input("  Enter NSE Symbol (e.g. TCS): ").strip().upper()
+    _header(
+        "TA Dashboard — Single Stock",
+        "RSI · MACD · Bollinger · ADX · ATR · CCI · Score",
+    )
+
+    symbol = input(f"  {dim('NSE Symbol')} (e.g. TCS): ").strip().upper()
     if not symbol:
         return
 
     path = os.path.join(hist_dir, "1d", f"{symbol}.parquet")
     if not os.path.exists(path):
-        print(f"❌ Historical data for '{symbol}' not found at: {path}")
-        print("💡 Tip: Try syncing this symbol first using Option [2] or [3].")
+        err(f"Historical data for '{symbol}' not found at: {path}")
+        tip("Sync this symbol first using option [2] or [3].")
+        _pause()
         return
 
     try:
         df = pd.read_parquet(path)
         if df.empty:
-            print(f"❌ Data file for '{symbol}' is empty.")
+            err(f"Data file for '{symbol}' is empty.")
+            _pause()
             return
 
-        # Ensure tz-naive DatetimeIndex
         if df.index.tz is not None:
             df.index = df.index.tz_convert(None)
         else:
             df.index = pd.to_datetime(df.index)
 
-        # Sort index to ensure last row is indeed latest date
         df = df.sort_index()
 
-        # Ensure TA columns exist
         if "RSI_14" not in df.columns:
-            print("  Pre-calculated technical columns not found. Computing...")
+            print(f"  {dim('Pre-calculated TA columns not found — computing…')}")
             df = add_ta_indicators(df)
 
         row = df.iloc[-1]
@@ -939,159 +1272,187 @@ def menu_ta_dashboard(hist_dir: str) -> None:
         low = float(row.get("Low", 0.0))
         volume = float(row.get("Volume", 0.0))
 
-        # Calculate daily change %
+        change_pct = 0.0
         if len(df) >= 2:
-            prev_cmp = float(df["Close"].iloc[-2])
-            change_pct = ((cmp - prev_cmp) / prev_cmp) * 100.0 if prev_cmp > 0 else 0.0
-        else:
-            change_pct = 0.0
+            prev = float(df["Close"].iloc[-2])
+            if prev > 0:
+                change_pct = ((cmp - prev) / prev) * 100.0
 
-        # Retrieve TA indicators
         ema_20 = row.get("EMA_20")
         sma_50 = row.get("SMA_50")
         sma_200 = row.get("SMA_200")
         rsi = row.get("RSI_14")
         macd = row.get("MACD")
         macd_sig = row.get("MACD_SIGNAL")
-        macd_hist = row.get("MACD_HIST")
+        macd_hist_val = row.get("MACD_HIST")
         bb_up = row.get("BB_UPPER")
         bb_mid = row.get("BB_MIDDLE")
-        bb_low = row.get("BB_LOWER")
+        bb_low_ = row.get("BB_LOWER")
         adx = row.get("ADX_14")
         atr = row.get("ATR_14")
         cci = row.get("CCI_14")
 
-        # Trend helpers
-        ema_20_str = f"{ema_20:,.2f}" if not pd.isna(ema_20) else "N/A"
-        sma_50_str = f"{sma_50:,.2f}" if not pd.isna(sma_50) else "N/A"
-        sma_200_str = f"{sma_200:,.2f}" if not pd.isna(sma_200) else "N/A"
+        def _fmt(v) -> str:
+            return f"{float(v):,.2f}" if v is not None and not pd.isna(v) else "N/A"
 
-        ema_comp = "ABOVE" if ema_20 and cmp > float(ema_20) else "BELOW"
-        sma_50_comp = "ABOVE" if sma_50 and cmp > float(sma_50) else "BELOW"
-        sma_200_comp = "ABOVE" if sma_200 and cmp > float(sma_200) else "BELOW"
+        def _cmp_str(price, ma) -> str:
+            if ma is None or pd.isna(ma):
+                return dim("N/A")
+            return green("ABOVE") if price > float(ma) else red("BELOW")
 
-        # RSI Helper
+        # RSI
         if pd.isna(rsi):
-            rsi_str, rsi_desc = "N/A", "N/A"
+            rsi_str, rsi_desc = "N/A", dim("N/A")
         else:
             rsi_val = float(rsi)
             rsi_str = f"{rsi_val:.2f}"
-            if rsi_val >= 70.0:
-                rsi_desc = "OVERBOUGHT (Caution)"
-            elif rsi_val <= 30.0:
-                rsi_desc = "OVERSOLD (Rebound candidate)"
-            elif 50.0 <= rsi_val < 70.0:
-                rsi_desc = "BULLISH (Strong)"
-            elif 40.0 <= rsi_val < 50.0:
-                rsi_desc = "NEUTRAL-BULLISH"
+            if rsi_val >= 70:
+                rsi_desc = red("OVERBOUGHT  (caution)")
+            elif rsi_val <= 30:
+                rsi_desc = green("OVERSOLD  (rebound candidate)")
+            elif rsi_val >= 50:
+                rsi_desc = green("BULLISH  (strong)")
+            elif rsi_val >= 40:
+                rsi_desc = yellow("NEUTRAL-BULLISH")
             else:
-                rsi_desc = "BEARISH (Weak)"
+                rsi_desc = red("BEARISH  (weak)")
 
-        # MACD Helper
-        if pd.isna(macd) or pd.isna(macd_sig) or pd.isna(macd_hist):
-            macd_str = "N/A"
-            macd_status = "N/A"
+        # MACD
+        if any(pd.isna(v) for v in [macd, macd_sig, macd_hist_val]):
+            macd_line = dim("N/A")
+            macd_status = dim("N/A")
         else:
-            macd_str = (
-                f"Line: {macd:.2f} | Sig: {macd_sig:.2f} | " f"Hist: {macd_hist:.2f}"
+            macd_line = (
+                f"Line {macd:.2f}  ·  Sig {macd_sig:.2f}"
+                f"  ·  Hist {macd_hist_val:.2f}"
             )
-            macd_status = "BULLISH (Crossover)" if macd > macd_sig else "BEARISH"
+            macd_status = (
+                green("BULLISH (crossover)") if macd > macd_sig else red("BEARISH")
+            )
 
-        # BB position helper
-        if pd.isna(bb_up) or pd.isna(bb_low) or pd.isna(bb_mid):
-            bb_str = "N/A"
-            bb_pos = "N/A"
+        # Bollinger Bands
+        if any(pd.isna(v) for v in [bb_up, bb_mid, bb_low_]):
+            bb_line, bb_pos = dim("N/A"), dim("N/A")
         else:
-            bb_str = f"U: {bb_up:,.2f} | M: {bb_mid:,.2f} | L: {bb_low:,.2f}"
-            bb_range = float(bb_up) - float(bb_low)
-            if bb_range > 0:
-                percent_b = ((cmp - float(bb_low)) / bb_range) * 100.0
-                bb_pos = f"{percent_b:.1f}% B-Band Channel"
-            else:
-                bb_pos = "N/A"
+            bb_line = f"U {bb_up:,.2f}  ·  M {bb_mid:,.2f}  ·  L {bb_low_:,.2f}"
+            bb_range = float(bb_up) - float(bb_low_)
+            bb_pos = (
+                f"{((cmp - float(bb_low_)) / bb_range) * 100:.1f}% B-Band channel"
+                if bb_range > 0
+                else dim("N/A")
+            )
 
-        # ADX helper
+        # ADX
         if pd.isna(adx):
-            adx_str, adx_desc = "N/A", "N/A"
+            adx_str, adx_desc = "N/A", dim("N/A")
         else:
             adx_val = float(adx)
             adx_str = f"{adx_val:.2f}"
-            if adx_val > 25.0:
-                adx_desc = "STRONG Trend"
-            else:
-                adx_desc = "WEAK / SIDEWAYS Trend"
+            adx_desc = (
+                green("STRONG trend") if adx_val > 25 else yellow("WEAK / sideways")
+            )
 
-        # ATR helper
+        # ATR
         if pd.isna(atr):
-            atr_str, atr_desc = "N/A", "N/A"
+            atr_str, atr_desc = "N/A", dim("N/A")
         else:
             atr_val = float(atr)
             atr_str = f"{atr_val:,.2f}"
-            atr_pct = (atr_val / cmp) * 100.0 if cmp > 0 else 0.0
-            atr_desc = f"{atr_pct:.2f}% volatility"
+            atr_pct = (atr_val / cmp * 100) if cmp > 0 else 0.0
+            atr_desc = dim(f"{atr_pct:.2f}% volatility")
 
-        # CCI helper
+        # CCI
         if pd.isna(cci):
-            cci_str, cci_desc = "N/A", "N/A"
+            cci_str, cci_desc = "N/A", dim("N/A")
         else:
             cci_val = float(cci)
             cci_str = f"{cci_val:.2f}"
-            if cci_val >= 100.0:
-                cci_desc = "OVERBOUGHT (Uptrend peak)"
-            elif cci_val <= -100.0:
-                cci_desc = "OVERSOLD (Downtrend trough)"
+            if cci_val >= 100:
+                cci_desc = red("OVERBOUGHT  (uptrend peak)")
+            elif cci_val <= -100:
+                cci_desc = green("OVERSOLD  (downtrend trough)")
             else:
-                cci_desc = "NEUTRAL Range"
+                cci_desc = yellow("NEUTRAL range")
 
-        # Score & Rating
+        # Score & rating
         ta_info = calculate_technical_score(row)
         score = ta_info["score"]
         rating = ta_info["rating"]
 
-        # Color rating helper
-        color_code = ""
-        if "STRONG BUY" in rating:
-            color_code = "🌟"
-        elif "BUY" in rating:
-            color_code = "✅"
-        elif "NEUTRAL" in rating:
-            color_code = "⚖️"
-        elif "STRONG SELL" in rating:
-            color_code = "⚠️"
-        else:
-            color_code = "❌"
+        badge = {
+            "STRONG BUY": "🌟",
+            "BUY": "✔",
+            "NEUTRAL": "⚖",
+            "STRONG SELL": "!",
+            "SELL": "✘",
+        }.get(
+            next(
+                (
+                    k
+                    for k in ["STRONG BUY", "BUY", "NEUTRAL", "STRONG SELL", "SELL"]
+                    if k in rating
+                ),
+                "",
+            ),
+            "·",
+        )
+        rating_col = (
+            green(rating)
+            if "BUY" in rating
+            else red(rating)
+            if "SELL" in rating
+            else yellow(rating)
+        )
+        chg_col = (
+            green(f"+{change_pct:.2f}%")
+            if change_pct >= 0
+            else red(f"{change_pct:.2f}%")
+        )
 
-        # Print the dashboard
-        print("\n" + "=" * 80)
-        print(f"      DASHBOARD: {symbol.upper()} ({color_code} {rating})")
-        print("=" * 80)
+        # ── Output ────────────────────────────────────────────────────────
+        print()
+        print(_rule("═"))
         print(
-            f"  Latest Date: {date_str:<12} Volume: {volume:,.0f} "
-            f"({change_pct:+.2f}%)"
+            f"  {bold(white(symbol))}   {badge} {rating_col}"
+            f"   {dim('score')} {bold(str(score))}/100"
+        )
+        print(_rule("─"))
+        print(
+            f"  {dim('Date')}     {date_str}    "
+            f"{dim('Volume')}  {volume:,.0f}    {chg_col}"
         )
         print(
-            f"  CMP:         {cmp:<12,.2f} High:   {high:<12,.2f} " f"Low: {low:,.2f}"
+            f"  {dim('CMP')}      {bold(f'{cmp:,.2f}'):14}  "
+            f"{dim('High')} {high:,.2f}  {dim('Low')} {low:,.2f}"
         )
-        print("-" * 80)
-        print("  [TREND INDICATORS]")
-        print(f"    EMA (20):  {ema_20_str:<12} (Price is {ema_comp} EMA 20)")
-        print(f"    SMA (50):  {sma_50_str:<12} (Price is {sma_50_comp} SMA 50)")
-        print(f"    SMA (200): {sma_200_str:<12} (Price is {sma_200_comp} SMA 200)")
-        print("-" * 80)
-        print("  [MOMENTUM & VOLATILITY]")
-        print(f"    RSI (14):  {rsi_str:<12} -> {rsi_desc}")
-        print(f"    MACD:      {macd_str:<12} -> {macd_status}")
-        print(f"    CCI (14):  {cci_str:<12} -> {cci_desc}")
-        print(f"    B-Bands:   {bb_str}")
-        print(f"    BB Pos:    {bb_pos}")
-        print(f"    ADX (14):  {adx_str:<12} -> {adx_desc}")
-        print(f"    ATR (14):  {atr_str:<12} -> {atr_desc}")
-        print("=" * 80)
-        print(f"  TECHNICAL SCORE: {score}/100            " f"OVERALL RATING: {rating}")
-        print("=" * 80 + "\n")
+        print(_rule("─"))
+        print(f"  {bold('TREND')}")
+        print(
+            f"  {'EMA 20':<12} {_fmt(ema_20):<14} price {_cmp_str(cmp, ema_20)} EMA 20"
+        )
+        print(
+            f"  {'SMA 50':<12} {_fmt(sma_50):<14} price {_cmp_str(cmp, sma_50)} SMA 50"
+        )
+        print(
+            f"  {'SMA 200':<12} {_fmt(sma_200):<14} "
+            f"price {_cmp_str(cmp, sma_200)} SMA 200"
+        )
+        print(_rule("─"))
+        print(f"  {bold('MOMENTUM & VOLATILITY')}")
+        print(f"  {'RSI 14':<12} {rsi_str:<14} {rsi_desc}")
+        print(f"  {'MACD':<12} {macd_line}")
+        print(f"  {'':<12} {'':14} {macd_status}")
+        print(f"  {'CCI 14':<12} {cci_str:<14} {cci_desc}")
+        print(f"  {'B-Bands':<12} {bb_line}")
+        print(f"  {'':<12} {bb_pos}")
+        print(f"  {'ADX 14':<12} {adx_str:<14} {adx_desc}")
+        print(f"  {'ATR 14':<12} {atr_str:<14} {atr_desc}")
+        print(_rule("═"))
 
     except Exception as exc:
-        print(f"❌ Error displaying dashboard for '{symbol}': {exc}")
+        err(f"Error loading '{symbol}': {exc}")
+
+    _pause()
 
 
 def menu_recompute_ta(hist_dir: str) -> None:
@@ -1104,16 +1465,25 @@ def menu_recompute_ta(hist_dir: str) -> None:
     Returns:
         None
     """
-    print("\n--- Recompute Technical Analysis Indicators ---")
-    print("This will loop through all local Parquet files, calculate")
-    print("advanced indicators using TA-Lib, and update the cache.")
-    confirm = input("Proceed? [y/N]: ").strip().lower()
-    if confirm != "y":
-        print("Cancelled.")
+    _header(
+        "Recompute TA Indicators",
+        "Loops all local Parquet files and rewrites TA columns",
+    )
+    tip("This may take several minutes for large datasets.")
+
+    if not _confirm("Proceed?"):
+        warn("Cancelled.")
         return
 
     sync_obj = HistoricalSync(data_dir=hist_dir)
     sync_obj.recompute_all_ta()
+    ok("TA recompute complete.")
+    _pause()
+
+
+# ===========================================================================
+# REPL loop
+# ===========================================================================
 
 
 def interactive_menu(
@@ -1147,42 +1517,41 @@ def interactive_menu(
         Space Complexity: O(1)
 
     Edge Cases Handled:
-        - Invalid choices prompt retry.
+        - Invalid choices print a message and re-prompt.
         - KeyboardInterrupt exits cleanly.
     """
     processed_dir = os.path.join(data_dir, "processed")
 
     _print_banner()
 
+    _DISPATCH = {
+        "1": lambda: menu_build_master(data_dir),
+        "2": lambda: menu_sync_history(data_dir, hist_dir),
+        "3": lambda: menu_sync_filtered(data_dir, hist_dir),
+        "4": lambda: menu_screen(data_dir, hist_dir, processed_dir),
+        "5": lambda: menu_status(hist_dir, data_dir),
+        "6": lambda: menu_registry(data_dir, hist_dir),
+        "7": lambda: menu_ta_dashboard(hist_dir),
+        "8": lambda: menu_recompute_ta(hist_dir),
+    }
+
     while True:
         _print_main_menu()
         try:
-            choice = input("  Select option [1-9]: ").strip()
+            choice = input(f"  {dim('>')} ").strip()
         except KeyboardInterrupt:
-            print("\nBye!")
+            print(f"\n  {dim('Bye!')}\n")
             break
 
-        if choice == "1":
-            menu_build_master(data_dir)
-        elif choice == "2":
-            menu_sync_history(data_dir, hist_dir)
-        elif choice == "3":
-            menu_sync_filtered(data_dir, hist_dir)
-        elif choice == "4":
-            menu_screen(data_dir, hist_dir, processed_dir)
-        elif choice == "5":
-            menu_status(hist_dir, data_dir)
-        elif choice == "6":
-            menu_registry(data_dir, hist_dir)
-        elif choice == "7":
-            menu_ta_dashboard(hist_dir)
-        elif choice == "8":
-            menu_recompute_ta(hist_dir)
-        elif choice == "9":
-            print("Bye!")
+        if choice == "9":
+            print(f"\n  {dim('Bye!')}\n")
             break
+
+        handler = _DISPATCH.get(choice)
+        if handler:
+            handler()
         else:
-            print(f"  Invalid choice: '{choice}'. Please enter 1-9.")
+            warn(f"'{choice}' is not a valid option — enter 1-9.")
 
 
 # ===========================================================================
@@ -1221,7 +1590,7 @@ def _build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="nse-pipeline",
-        description=("NSE Data Pipeline: build master → sync history → screen stocks"),
+        description="NSE Data Pipeline: build master → sync history → screen stocks",
     )
     parser.add_argument(
         "--data-dir",
@@ -1238,7 +1607,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command")
 
-    # ---- build-master ----
+    # ── build-master ──────────────────────────────────────────────────────
     p_master = sub.add_parser(
         "build-master",
         help="Download Bhavcopy + index data and build the equity master table.",
@@ -1251,7 +1620,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_master.set_defaults(func=cmd_build_master)
 
-    # ---- sync-history ----
+    # ── sync-history ──────────────────────────────────────────────────────
     p_sync = sub.add_parser(
         "sync-history",
         help="Sync per-symbol OHLCV Parquet files (full history + incremental).",
@@ -1281,10 +1650,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter by index column e.g. is_nifty_50",
     )
     p_sync.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Maximum number of symbols to sync.",
+        "--limit", type=int, default=None, help="Maximum number of symbols to sync."
     )
     p_sync.add_argument(
         "--no-resume",
@@ -1309,7 +1675,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_sync.set_defaults(func=cmd_sync_history, resume=True)
 
-    # ---- screen ----
+    # ── screen ────────────────────────────────────────────────────────────
     p_screen = sub.add_parser(
         "screen",
         help="Run technical screener on synced historical data.",
@@ -1334,18 +1700,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter by index column e.g. is_nifty_50",
     )
     p_screen.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Maximum symbols to screen.",
+        "--limit", type=int, default=None, help="Maximum symbols to screen."
     )
     p_screen.set_defaults(func=cmd_screen)
 
-    # ---- menu (default) ----
-    sub.add_parser(
-        "menu",
-        help="Launch the interactive menu (default when no subcommand given).",
-    )
+    # ── menu (default) ────────────────────────────────────────────────────
+    sub.add_parser("menu", help="Launch the interactive menu (default).")
 
     return parser
 
@@ -1385,10 +1745,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command is None or args.command == "menu":
-        interactive_menu(
-            data_dir=args.data_dir,
-            hist_dir=args.hist_dir,
-        )
+        interactive_menu(data_dir=args.data_dir, hist_dir=args.hist_dir)
     else:
         args.func(args)
 

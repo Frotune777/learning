@@ -48,15 +48,15 @@ def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
     close = df["Close"].astype("float64")
 
     # Add RSI (14)
-    df["RSI_14"] = talib.RSI(close, timeperiod=14)
+    df["RSI_14"] = pd.Series(talib.RSI(close, timeperiod=14), index=df.index)
 
     # Add MACD
     macd, macdsignal, macdhist = talib.MACD(
         close, fastperiod=12, slowperiod=26, signalperiod=9
     )
-    df["MACD"] = macd
-    df["MACD_SIGNAL"] = macdsignal
-    df["MACD_HIST"] = macdhist
+    df["MACD"] = pd.Series(macd, index=df.index)
+    df["MACD_SIGNAL"] = pd.Series(macdsignal, index=df.index)
+    df["MACD_HIST"] = pd.Series(macdhist, index=df.index)
 
     # Add Bollinger Bands
     upper, middle, lower = talib.BBANDS(
@@ -66,29 +66,41 @@ def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
         nbdevdn=2.0,
         matype=talib.MA_Type.SMA,  # type: ignore[attr-defined]
     )
-    df["BB_UPPER"] = upper
-    df["BB_MIDDLE"] = middle
-    df["BB_LOWER"] = lower
+    df["BB_UPPER"] = pd.Series(upper, index=df.index)
+    df["BB_MIDDLE"] = pd.Series(middle, index=df.index)
+    df["BB_LOWER"] = pd.Series(lower, index=df.index)
 
     # Add EMAs
-    df["EMA_20"] = talib.EMA(close, timeperiod=20)
-    df["EMA_50"] = talib.EMA(close, timeperiod=50)
-    df["EMA_100"] = talib.EMA(close, timeperiod=100)
-    df["EMA_200"] = talib.EMA(close, timeperiod=200)
+    df["EMA_20"] = pd.Series(talib.EMA(close, timeperiod=20), index=df.index)
+    df["EMA_50"] = pd.Series(talib.EMA(close, timeperiod=50), index=df.index)
+    df["EMA_100"] = pd.Series(talib.EMA(close, timeperiod=100), index=df.index)
+    df["EMA_200"] = pd.Series(talib.EMA(close, timeperiod=200), index=df.index)
 
     # Add SMAs
-    df["SMA_50"] = talib.SMA(close, timeperiod=50)
-    df["SMA_100"] = talib.SMA(close, timeperiod=100)
-    df["SMA_200"] = talib.SMA(close, timeperiod=200)
+    df["SMA_50"] = pd.Series(talib.SMA(close, timeperiod=50), index=df.index)
+    df["SMA_100"] = pd.Series(talib.SMA(close, timeperiod=100), index=df.index)
+    df["SMA_200"] = pd.Series(talib.SMA(close, timeperiod=200), index=df.index)
 
     # Add High/Low-dependent indicators if available
     if "High" in df.columns and "Low" in df.columns:
         high = df["High"].astype("float64")
         low = df["Low"].astype("float64")
 
-        df["ATR_14"] = talib.ATR(high, low, close, timeperiod=14)
-        df["ADX_14"] = talib.ADX(high, low, close, timeperiod=14)
-        df["CCI_14"] = talib.CCI(high, low, close, timeperiod=14)
+        df["ATR_14"] = pd.Series(
+            talib.ATR(high, low, close, timeperiod=14), index=df.index
+        )
+        df["ADX_14"] = pd.Series(
+            talib.ADX(high, low, close, timeperiod=14), index=df.index
+        )
+        df["PLUS_DI_14"] = pd.Series(
+            talib.PLUS_DI(high, low, close, timeperiod=14), index=df.index
+        )
+        df["MINUS_DI_14"] = pd.Series(
+            talib.MINUS_DI(high, low, close, timeperiod=14), index=df.index
+        )
+        df["CCI_14"] = pd.Series(
+            talib.CCI(high, low, close, timeperiod=14), index=df.index
+        )
 
     return df
 
