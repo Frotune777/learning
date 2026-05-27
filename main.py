@@ -677,7 +677,19 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
     Edge Cases Handled:
         - No CSV found prints error and returns.
     """
-    print("\n--- Run Technical Screener ---")
+    print("\n============================================================")
+    print("    RUNNING TECHNICAL SCREENER")
+    print("============================================================")
+
+    prompt = (
+        "Do you want to fetch the latest historical data & "
+        "update TA indicators first? [y/N]: "
+    )
+    update_choice = input(prompt).strip().lower()
+    if update_choice == "y":
+        menu_sync_filtered(data_dir, hist_dir)
+        print("\n--- Continuing with Screener ---")
+
     csv_pattern = os.path.join(processed_dir, "*.csv")
     csv_files = sorted(glob.glob(csv_pattern), reverse=True)
     if not csv_files:
@@ -685,15 +697,54 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
         return
 
     top_csv = csv_files[0]
-    print(f"Using: {top_csv}")
-    confirm = input("Proceed with screening? [y/N]: ").strip().lower()
-    if confirm != "y":
-        print("Cancelled.")
-        return
+    print(f"  Using Reference: {os.path.basename(top_csv)}\n")
 
+    now = datetime.now()
     screener = StockScreener(processed_dir=hist_dir)
-    screener.screen_stocks(top_250_path=top_csv, date_obj=datetime.now())
-    print(f"\n✅ Screening complete. Results in: {hist_dir}")
+    screener.screen_stocks(top_250_path=top_csv, date_obj=now)
+    print(f"\n✅ Screening complete. Results saved in: {hist_dir}")
+
+    date_str = now.strftime("%Y%m%d")
+    final_csv = os.path.join(hist_dir, f"final_list_{date_str}.csv")
+    swing_csv = os.path.join(hist_dir, f"swing_list_{date_str}.csv")
+    super_csv = os.path.join(hist_dir, f"super_list_{date_str}.csv")
+
+    while True:
+        print("\n--- View Screener Results ---")
+        print("  [1] Final List (Buy / Average Out)")
+        print("  [2] Swing List (Start GTT)")
+        print("  [3] Super List (Combined Signals)")
+        print("  [4] View All")
+        print("  [5] Exit Screener Menu")
+
+        choice = input("\nSelect option [1-5]: ").strip()
+
+        if choice == "5":
+            break
+
+        def display_csv(path: str, title: str) -> None:
+            if not os.path.exists(path):
+                print(f"❌ {title} not found at {path}")
+                return
+            df = pd.read_csv(path)
+            print(f"\n=== {title} ===")
+            if df.empty:
+                print("No stocks met the criteria.")
+            else:
+                try:
+                    print(df.to_markdown(index=False))
+                except ImportError:
+                    print(df.to_string(index=False))
+
+        if choice in ("1", "4"):
+            display_csv(final_csv, "Final Target List")
+        if choice in ("2", "4"):
+            display_csv(swing_csv, "Swing Trading List")
+        if choice in ("3", "4"):
+            display_csv(super_csv, "Super Output (The Holy Grail)")
+
+        if choice not in ("1", "2", "3", "4", "5"):
+            print("❌ Invalid option. Please select 1-5.")
 
 
 def menu_status(hist_dir: str, data_dir: str) -> None:
@@ -1003,7 +1054,7 @@ def menu_ta_dashboard(hist_dir: str) -> None:
             f"({change_pct:+.2f}%)"
         )
         print(
-            f"  CMP:         {cmp:,.2f:<12} High:   {high:,.2f:<12} " f"Low: {low:,.2f}"
+            f"  CMP:         {cmp:<12,.2f} High:   {high:<12,.2f} " f"Low: {low:,.2f}"
         )
         print("-" * 80)
         print("  [TREND INDICATORS]")

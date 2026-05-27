@@ -75,6 +75,13 @@ class HistoricalSync:
             return df
         except Exception as exc:
             LOGGER.warning("Failed to load Parquet for %s: %s", symbol, exc)
+            try:
+                os.remove(path)
+                LOGGER.info(
+                    "Deleted corrupted Parquet file for %s to trigger re-sync.", symbol
+                )
+            except OSError:
+                pass
             return pd.DataFrame()
 
     def _save(self, symbol: str, df: pd.DataFrame) -> None:
