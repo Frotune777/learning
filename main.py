@@ -731,10 +731,26 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
             if df.empty:
                 print("No stocks met the criteria.")
             else:
+                display_df = df.copy()
+                for col in display_df.columns:
+                    if pd.api.types.is_numeric_dtype(display_df[col]):
+                        # Format volume and whole numbers with commas, no decimals
+                        if any(
+                            x in col
+                            for x in ["Volume", "Score", "Rows", "Rating", "Count"]
+                        ):
+                            display_df[col] = display_df[col].apply(
+                                lambda x: f"{x:,.0f}" if pd.notnull(x) else ""
+                            )
+                        # Format prices and indicators with 2 decimal precision
+                        else:
+                            display_df[col] = display_df[col].apply(
+                                lambda x: f"{x:,.2f}" if pd.notnull(x) else ""
+                            )
                 try:
-                    print(df.to_markdown(index=False))
+                    print(display_df.to_markdown(index=False, tablefmt="github"))
                 except ImportError:
-                    print(df.to_string(index=False))
+                    print(display_df.to_string(index=False, justify="center"))
 
         if choice in ("1", "4"):
             display_csv(final_csv, "Final Target List")
