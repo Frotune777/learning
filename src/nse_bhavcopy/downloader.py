@@ -307,6 +307,28 @@ class BhavcopyDownloader:
             None,
         )
 
+        deliv_qty_col: str | None = next(
+            (
+                c
+                for c in ["DlvrbleQty", "DELIV_QTY", "1S_DELIV_QTY", "DELIVERABLE_QTY"]
+                if c in df.columns
+            ),
+            None,
+        )
+        deliv_pct_col: str | None = next(
+            (
+                c
+                for c in [
+                    "PctOfDlvrbleQtyTltTrdQty",
+                    "DELIV_PCT",
+                    "1S_DELIV_PCT",
+                    "DELIVERABLE_PCT",
+                ]
+                if c in df.columns
+            ),
+            None,
+        )
+
         if not sym_col or not close_col or not turnover_col:
             missing: list[str] = []
             if not sym_col:
@@ -337,16 +359,31 @@ class BhavcopyDownloader:
             df[turnover_col] = df[turnover_col] * 100_000
         df = df.dropna(subset=[turnover_col])
 
-        # Rename standard columns for clean English CSV output
-        df = df.rename(
-            columns={
-                sym_col: "SYMBOL",
-                turnover_col: "TURNOVER",
-                close_col: "CLOSE",
-            }
-        )
+        # Clean and convert delivery columns
+        if deliv_qty_col:
+            df[deliv_qty_col] = pd.to_numeric(df[deliv_qty_col], errors="coerce")
+        else:
+            df["DELIV_QTY"] = float("nan")
 
-        return df[["SYMBOL", "TURNOVER", "CLOSE"]]
+        if deliv_pct_col:
+            df[deliv_pct_col] = pd.to_numeric(df[deliv_pct_col], errors="coerce")
+        else:
+            df["DELIV_PCT"] = float("nan")
+
+        # Rename standard columns for clean English CSV output
+        rename_dict: dict[str, str] = {
+            sym_col: "SYMBOL",
+            turnover_col: "TURNOVER",
+            close_col: "CLOSE",
+        }
+        if deliv_qty_col:
+            rename_dict[deliv_qty_col] = "DELIV_QTY"
+        if deliv_pct_col:
+            rename_dict[deliv_pct_col] = "DELIV_PCT"
+
+        df = df.rename(columns=rename_dict)
+
+        return df[["SYMBOL", "TURNOVER", "CLOSE", "DELIV_QTY", "DELIV_PCT"]]
 
     def process_bhavcopy(
         self, date_obj: datetime, file_bytes: bytes

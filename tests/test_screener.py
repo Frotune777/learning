@@ -1027,3 +1027,91 @@ def test_fetch_history_incremental_cache_crud(tmp_path: Path) -> None:
     # Verify return value is MultiIndexed
     assert isinstance(res_df.columns, pd.MultiIndex)
     assert res_df.loc["2026-05-26", ("TCS.NS", "Close")] == 3500.0
+
+
+def test_screen_stocks_circuit_limits_and_delivery(tmp_path: Path) -> None:
+    """
+    Verify circuit limits and delivery information are properly flagged.
+
+    Parameters:
+        tmp_path (Path): Pytest temporary path fixture. | Valid path.
+
+    Returns:
+        None: Void test return.
+
+    Raises:
+        None
+
+    Complexity:
+        Time: O(1) [Mocked operations]
+        Space: O(1) [Mock allocations]
+
+    Example:
+        >>> # Executed by pytest
+    """
+    processed_dir: str = str(tmp_path / "processed")
+    screener = StockScreener(processed_dir=processed_dir)
+
+    # 1. Create mock top 250 source file with delivery columns
+    source_df = pd.DataFrame(
+        {
+            "SYMBOL": ["RELIANCE", "TCS"],
+            "TURNOVER": [10000.0, 20000.0],
+            "CLOSE": [1200.0, 3000.0],
+            "DELIV_QTY": [5000.0, 15000.0],
+            "DELIV_PCT": [50.0, 75.0],
+        }
+    )
+    source_path = str(tmp_path / "src_circuit.csv")
+    source_df.to_csv(source_path, index=False)
+
+    # 2. Build mock history (200 days)
+    dates = pd.date_range("2026-05-01", periods=200)
+    cols = pd.MultiIndex.from_tuples(
+        [
+            ("RELIANCE.NS", "High"),
+            ("RELIANCE.NS", "Low"),
+            ("RELIANCE.NS", "Close"),
+            ("TCS.NS", "High"),
+            ("TCS.NS", "Low"),
+            ("TCS.NS", "Close"),
+        ]
+    )
+
+    # RELIANCE.NS: prev_close = 1000, CMP = 1200 (UC 20% lock)
+    rel_close = [1000.0] * 199 + [1200.0]
+    rel_high = [1000.0] * 199 + [1200.0]
+    rel_low = [1000.0] * 199 + [1190.0]
+
+    # TCS.NS: prev_close = 3000, CMP = 3000 (normal)
+    tcs_close = [3000.0] * 200
+    tcs_high = [3000.0] * 200
+    tcs_low = [3000.0] * 200
+
+    hist_data = np.column_stack(
+        (rel_high, rel_low, rel_close, tcs_high, tcs_low, tcs_close)
+    )
+    mock_history = pd.DataFrame(hist_data, columns=cols, index=dates)
+
+    with patch.object(screener, "_fetch_history", return_value=mock_history):
+        screener.screen_stocks(source_path, datetime(2026, 5, 26))
+
+    expected_analyzed = os.path.join(processed_dir, "top_250_analyzed_20260526.csv")
+    assert os.path.exists(expected_analyzed)
+
+    df_res = pd.read_csv(expected_analyzed)
+    assert len(df_res) == 2
+
+    # Check RELIANCE has delivery and UC 20% limit set
+    rel_row = df_res[df_res["SYMBOL"] == "RELIANCE"].iloc[0]
+    assert rel_row["DELIV_QTY"] == 5000.0
+    assert rel_row["DELIV_PCT"] == 50.0
+    assert bool(rel_row["CIRCUIT_LOCKED"]) is True
+    assert rel_row["CIRCUIT_TYPE"] == "UC (20%)"
+
+    # Check TCS has delivery and is NOT circuit locked
+    tcs_row = df_res[df_res["SYMBOL"] == "TCS"].iloc[0]
+    assert tcs_row["DELIV_QTY"] == 15000.0
+    assert tcs_row["DELIV_PCT"] == 75.0
+    assert bool(tcs_row["CIRCUIT_LOCKED"]) is False
+    assert pd.isna(tcs_row["CIRCUIT_TYPE"])

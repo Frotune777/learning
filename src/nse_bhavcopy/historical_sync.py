@@ -233,6 +233,80 @@ class HistoricalSync:
             LOGGER.info("%s is already up to date.", symbol)
             return existing
 
+        # Check for corporate action split/bonus adjustments
+        overlap_dates = existing.index.intersection(new_data.index)
+        if not overlap_dates.empty:
+            overlap_date = overlap_dates[-1]
+            old_val = existing.loc[overlap_date, "Close"]
+            new_val = new_data.loc[overlap_date, "Close"]
+            if isinstance(old_val, pd.Series):
+                old_val = old_val.iloc[-1]
+            if isinstance(new_val, pd.Series):
+                new_val = new_val.iloc[-1]
+
+            if old_val > 0 and new_val > 0:
+                ratio = new_val / old_val
+                if ratio < 0.95 or ratio > 1.05:
+                    factor = None
+                    for std_factor in [0.5, 0.2, 0.1, 1 / 1.5, 0.8, 1 / 3, 1 / 4]:
+                        if abs(ratio - std_factor) < 0.05:
+                            factor = std_factor
+                            break
+                    if factor is not None:
+                        LOGGER.info(
+                            "Corporate action detected for %s: ratio %.3f. "
+                            "Adjusting historical prices by factor %.3f.",
+                            symbol,
+                            ratio,
+                            factor,
+                        )
+                        for col in ["Open", "High", "Low", "Close"]:
+                            if col in existing.columns:
+                                existing[col] = existing[col] * factor
+                        if "Volume" in existing.columns:
+                            existing["Volume"] = existing["Volume"] / factor
+                    else:
+                        LOGGER.info(
+                            "Significant price adjustment (ratio %.3f) detected "
+                            "for %s. Triggering full history refresh.",
+                            ratio,
+                            symbol,
+                        )
+                        return self._fetch_full(symbol)
+        else:
+            # Check gap ratio between last existing close and first new close
+            last_existing_close = existing["Close"].iloc[-1]
+            first_new_close = new_data["Close"].iloc[0]
+            if last_existing_close > 0:
+                ratio = first_new_close / last_existing_close
+                if ratio < 0.79:  # daily limit drop of >21%
+                    factor = None
+                    for std_factor in [0.5, 0.2, 0.1, 1 / 1.5, 0.8, 1 / 3, 1 / 4]:
+                        if abs(ratio - std_factor) < 0.05:
+                            factor = std_factor
+                            break
+                    if factor is not None:
+                        LOGGER.info(
+                            "Corporate action detected for %s: ratio %.3f. "
+                            "Adjusting historical prices by factor %.3f.",
+                            symbol,
+                            ratio,
+                            factor,
+                        )
+                        for col in ["Open", "High", "Low", "Close"]:
+                            if col in existing.columns:
+                                existing[col] = existing[col] * factor
+                        if "Volume" in existing.columns:
+                            existing["Volume"] = existing["Volume"] / factor
+                    else:
+                        LOGGER.info(
+                            "Large price drop (ratio %.3f) detected for %s. "
+                            "Triggering full history refresh.",
+                            ratio,
+                            symbol,
+                        )
+                        return self._fetch_full(symbol)
+
         merged = pd.concat([existing, new_data])
         merged = merged[~merged.index.duplicated(keep="last")].sort_index()
         added = len(merged) - len(existing)

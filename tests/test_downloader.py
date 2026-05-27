@@ -89,6 +89,8 @@ def _create_mock_zip(columns_mode: str = "standard") -> bytes:
             "SERIES": ["EQ", "EQ", "EQ", "EQ", "EQ", "EQ"],
             "CLOSE": [2500.0, 3200.0, 1500.0, 200.0, 50.0, 100.0],
             "TURNOVER": [1000.0, 2000.0, 1500.0, 5000.0, 6000.0, 7000.0],
+            "DlvrbleQty": [500.0, 1000.0, 700.0, 2500.0, 3000.0, 3500.0],
+            "PctOfDlvrbleQtyTltTrdQty": [50.0, 50.0, 46.6, 50.0, 50.0, 50.0],
         }
     else:
         # Alternate headers matching older NSE format
@@ -97,6 +99,8 @@ def _create_mock_zip(columns_mode: str = "standard") -> bytes:
             "SctySrs": ["EQ", "EQ", "EQ", "EQ"],
             "ClsPric": [2500.0, 3200.0, 1500.0, 50.0],
             "TtlTrfVal": [1000.0, 2000.0, 1500.0, 6000.0],
+            "DlvrbleQty": [500.0, 1000.0, 700.0, 3000.0],
+            "PctOfDlvrbleQtyTltTrdQty": [50.0, 50.0, 46.6, 50.0],
         }
 
     df = pd.DataFrame(data)
@@ -320,30 +324,6 @@ def test_clean_dataframe_alternate_columns() -> None:
     """
     Verify DataFrame cleanup logic works with older alternate column names.
     Checks headers mapping and standardizations.
-
-    Logic:
-        Step 1: Create mock pandas DataFrame with old alternate column headers.
-        Step 2: Call private _clean_dataframe method.
-        Step 3: Assert clean headers contain standard names.
-
-    Parameters:
-        None
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> # Executed automatically by pytest runner
-
-    Performance:
-        Time Complexity: O(N) [Cleaning records inside dataframe]
-        Space Complexity: O(N) [Allocating clean DataFrame outputs]
-
-    Edge Cases Handled:
-        - Maps alternate columns 'TckrSymb' to 'SYMBOL' and 'TtlTrfVal' to 'TURNOVER'.
     """
     downloader = BhavcopyDownloader()
     data = {
@@ -356,39 +336,23 @@ def test_clean_dataframe_alternate_columns() -> None:
 
     cleaned_df: pd.DataFrame = downloader._clean_dataframe(raw_df)
 
-    assert list(cleaned_df.columns) == ["SYMBOL", "TURNOVER", "CLOSE"]
+    assert list(cleaned_df.columns) == [
+        "SYMBOL",
+        "TURNOVER",
+        "CLOSE",
+        "DELIV_QTY",
+        "DELIV_PCT",
+    ]
     assert cleaned_df.iloc[0]["SYMBOL"] == "RELIANCE"
     assert cleaned_df.iloc[0]["TURNOVER"] == 1000.0
     assert cleaned_df.iloc[0]["CLOSE"] == 2500.0
+    assert pd.isna(cleaned_df.iloc[0]["DELIV_QTY"])
+    assert pd.isna(cleaned_df.iloc[0]["DELIV_PCT"])
 
 
 def test_clean_dataframe_missing_columns() -> None:
     """
     Verify cleaner raises KeyError when mandatory columns are completely missing.
-    Validates defensive code structures.
-
-    Logic:
-        Step 1: Create mock DataFrame with invalid columns.
-        Step 2: Assert KeyError is raised when calling the cleaner.
-
-    Parameters:
-        None
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> # Executed automatically by pytest runner
-
-    Performance:
-        Time Complexity: O(1) [Immediate dictionary checks]
-        Space Complexity: O(1) [No allocations]
-
-    Edge Cases Handled:
-        - Raises explicit KeyError specifying missing details.
     """
     downloader = BhavcopyDownloader()
     data = {"INVALID_COL": ["VAL1", "VAL2"]}
@@ -401,34 +365,6 @@ def test_clean_dataframe_missing_columns() -> None:
 def test_process_bhavcopy_success(tmp_path: Path) -> None:
     """
     Verify complete pipeline from ZIP file to generating sorted records.
-    Validates CSV generation and output sorting lists.
-
-    Logic:
-        Step 1: Generate valid mock ZIP content bytes containing ETFs/stocks.
-        Step 2: Instantiate downloader in temp path with top N limit = 2.
-        Step 3: Call process_bhavcopy with zip bytes.
-        Step 4: Verify results filter ETFs out, select top 2, and sort by turnover.
-        Step 5: Verify processed output CSV exists and contains exact content.
-
-    Parameters:
-        tmp_path (Path): Pytest temporary path fixture. | Must be valid Path.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> # Executed automatically by pytest runner
-
-    Performance:
-        Time Complexity: O(N log N) [Sorting the cleaned dataframe list]
-        Space Complexity: O(N) [Temporary dataframe storage]
-
-    Edge Cases Handled:
-        - Excludes 'NIFTY-ETF' and 'GOLD-BEES' and 'LIQUID-ETF' from list.
-        - Limits output to top N records.
     """
     raw_dir: str = str(tmp_path / "raw")
     processed_dir: str = str(tmp_path / "processed")
@@ -441,12 +377,10 @@ def test_process_bhavcopy_success(tmp_path: Path) -> None:
 
     result: list[list[str | float]] = downloader.process_bhavcopy(test_date, zip_bytes)
 
-    # Clean list should only have EQ stocks, no ETFs/BEES.
-    # Sorted by turnover descending: TCS (2000), INFY (1500), RELIANCE (1000)
-    # head(2) limits to: TCS (2000) and INFY (1500)
+    # Sorted by turnover descending: TCS, INFY
     assert len(result) == 2
-    assert result[0] == ["TCS", 2000.0, 3200.0]
-    assert result[1] == ["INFY", 1500.0, 1500.0]
+    assert result[0] == ["TCS", 2000.0, 3200.0, 1000.0, 50.0]
+    assert result[1] == ["INFY", 1500.0, 1500.0, 700.0, 46.6]
 
     # Check that processed CSV exists on disk
     expected_csv_path: str = os.path.join(processed_dir, "top_2_20260526.csv")
@@ -454,10 +388,20 @@ def test_process_bhavcopy_success(tmp_path: Path) -> None:
 
     # Read saved file to confirm accuracy
     saved_df = pd.read_csv(expected_csv_path)
-    assert list(saved_df.columns) == ["SYMBOL", "TURNOVER", "CLOSE"]
+    assert list(saved_df.columns) == [
+        "SYMBOL",
+        "TURNOVER",
+        "CLOSE",
+        "DELIV_QTY",
+        "DELIV_PCT",
+    ]
     assert len(saved_df) == 2
     assert saved_df.iloc[0]["SYMBOL"] == "TCS"
+    assert saved_df.iloc[0]["DELIV_QTY"] == 1000.0
+    assert saved_df.iloc[0]["DELIV_PCT"] == 50.0
     assert saved_df.iloc[1]["SYMBOL"] == "INFY"
+    assert saved_df.iloc[1]["DELIV_QTY"] == 700.0
+    assert saved_df.iloc[1]["DELIV_PCT"] == 46.6
 
 
 def test_clean_dataframe_turnover_lacs() -> None:

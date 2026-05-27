@@ -584,6 +584,17 @@ class StockScreener:
             turnover: float = float(
                 df_top.loc[df_top["SYMBOL"] == symbol, "TURNOVER"].values[0]
             )
+            row_slice = df_top.loc[df_top["SYMBOL"] == symbol]
+            deliv_qty: float = (
+                float(row_slice["DELIV_QTY"].values[0])
+                if "DELIV_QTY" in df_top.columns
+                else np.nan
+            )
+            deliv_pct: float = (
+                float(row_slice["DELIV_PCT"].values[0])
+                if "DELIV_PCT" in df_top.columns
+                else np.nan
+            )
 
             # Match symbol from level 0 of multi-index columns
             has_ticker: bool = False
@@ -615,6 +626,10 @@ class StockScreener:
                         "RSI_14": np.nan,
                         "TECH_SCORE": np.nan,
                         "TECH_RATING": "TICKER NOT FOUND",
+                        "DELIV_QTY": deliv_qty,
+                        "DELIV_PCT": deliv_pct,
+                        "CIRCUIT_LOCKED": False,
+                        "CIRCUIT_TYPE": "None",
                     }
                 )
                 continue
@@ -652,6 +667,10 @@ class StockScreener:
                         "RSI_14": np.nan,
                         "TECH_SCORE": np.nan,
                         "TECH_RATING": "TICKER NOT FOUND",
+                        "DELIV_QTY": deliv_qty,
+                        "DELIV_PCT": deliv_pct,
+                        "CIRCUIT_LOCKED": False,
+                        "CIRCUIT_TYPE": "None",
                     }
                 )
                 continue
@@ -771,6 +790,46 @@ class StockScreener:
             str_dma_rev = self._calc_dmadma_reverse(cmp, dma_150, dma_200, atr)
             str_dma_nosl = self._calc_dmadma_no_sl(cmp, dma_50, dma_200)
 
+            # Circuit Limit Check
+            circuit_locked = False
+            circuit_type = "None"
+            if cmp > prev_close:
+                high_val = (
+                    float(df_ticker["High"].iloc[-1])
+                    if "High" in df_ticker.columns
+                    else cmp
+                )
+                is_high_close = abs(cmp - high_val) < 1e-4
+                if is_high_close:
+                    ret_pct = ((cmp - prev_close) / prev_close) * 100.0
+                    if ret_pct >= 19.8:
+                        circuit_locked = True
+                        circuit_type = "UC (20%)"
+                    elif 9.8 <= ret_pct < 15.0:
+                        circuit_locked = True
+                        circuit_type = "UC (10%)"
+                    elif 4.8 <= ret_pct < 7.0:
+                        circuit_locked = True
+                        circuit_type = "UC (5%)"
+            elif cmp < prev_close:
+                low_val = (
+                    float(df_ticker["Low"].iloc[-1])
+                    if "Low" in df_ticker.columns
+                    else cmp
+                )
+                is_low_close = abs(cmp - low_val) < 1e-4
+                if is_low_close:
+                    ret_pct = ((prev_close - cmp) / prev_close) * 100.0
+                    if ret_pct >= 19.8:
+                        circuit_locked = True
+                        circuit_type = "LC (20%)"
+                    elif 9.8 <= ret_pct < 15.0:
+                        circuit_locked = True
+                        circuit_type = "LC (10%)"
+                    elif 4.8 <= ret_pct < 7.0:
+                        circuit_locked = True
+                        circuit_type = "LC (5%)"
+
             analyzed_records.append(
                 {
                     "SYMBOL": symbol,
@@ -797,6 +856,10 @@ class StockScreener:
                     "RSI_14": rsi_val,
                     "TECH_SCORE": tech_score,
                     "TECH_RATING": tech_rating,
+                    "DELIV_QTY": deliv_qty,
+                    "DELIV_PCT": deliv_pct,
+                    "CIRCUIT_LOCKED": circuit_locked,
+                    "CIRCUIT_TYPE": circuit_type,
                     "STR_NIFTY_SHOP_ACTION": str_nifty_shop["action"],
                     "STR_NIFTY_SHOP_TARGET": str_nifty_shop["target"],
                     "STR_BUY_LOW_ACTION": str_buy_low["action"],

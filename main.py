@@ -238,6 +238,56 @@ def _find_latest_master(data_dir: str = DEFAULT_DATA_DIR) -> str | None:
     return files[0] if files else None
 
 
+def _get_delivery_history(processed_dir: str, symbol: str) -> pd.DataFrame | None:
+    """
+    Aggregate delivery percentage history from processed Bhavcopy files.
+
+    Parameters:
+        processed_dir (str): Directory containing top_250_*.csv files. |
+            Must exist.
+        symbol (str): Ticker symbol. | Case-insensitive.
+
+    Returns:
+        pd.DataFrame | None: Delivery history DataFrame with Date and DELIV_PCT,
+            or None.
+
+    Raises:
+        None
+
+    Complexity:
+        Time: O(F * N) where F is files count and N is rows per file.
+        Space: O(F)
+
+    Example:
+        >>> df = _get_delivery_history("data/processed", "TCS")
+    """
+    import glob
+    import re
+
+    rows = []
+    pattern = os.path.join(processed_dir, "top_250_*.csv")
+    for path in glob.glob(pattern):
+        if "analyzed" in path:
+            continue
+        filename = os.path.basename(path)
+        match = re.search(r"top_250_(\d{8})\.csv", filename)
+        if match:
+            date_str = match.group(1)
+            try:
+                dt = datetime.strptime(date_str, "%Y%m%d")
+                df = pd.read_csv(path)
+                if "SYMBOL" in df.columns and "DELIV_PCT" in df.columns:
+                    row_slice = df[df["SYMBOL"].str.upper() == symbol.upper()]
+                    if not row_slice.empty:
+                        deliv_pct = float(row_slice["DELIV_PCT"].values[0])
+                        rows.append({"Date": dt, "DELIV_PCT": deliv_pct})
+            except Exception:
+                continue
+    if rows:
+        return pd.DataFrame(rows).sort_values("Date")
+    return None
+
+
 def _find_latest_raw_zip(raw_dir: str = "data/raw") -> str | None:
     """
     Find the most recently dated Bhavcopy ZIP in raw_dir.
@@ -575,6 +625,117 @@ def cmd_screen(args: argparse.Namespace) -> None:
     print(f"\n✔  Screening complete. Results saved to: {args.hist_dir}")
 
 
+def cmd_backtest(args: argparse.Namespace) -> None:
+    """
+    Run machine learning direction classifier and event backtest for a symbol.
+
+    Parameters:
+        args (argparse.Namespace): Parsed command-line arguments.
+
+    Returns:
+        None
+
+    Raises:
+        SystemExit: If input parquet is not found.
+    """
+    symbol = args.symbol.strip().upper()
+    price_path = os.path.join(args.hist_dir, "1d", f"{symbol}.parquet")
+    if not os.path.exists(price_path):
+        LOGGER.error("Historical Parquet file not found at: %s", price_path)
+        sys.exit(1)
+
+    try:
+        df_prices = pd.read_parquet(price_path)
+        if df_prices.empty or len(df_prices) < 20:
+            LOGGER.error("Insufficient history for %s.", symbol)
+            sys.exit(1)
+
+        processed_dir = os.path.join(args.data_dir, "processed")
+        df_delivery = _get_delivery_history(processed_dir, symbol)
+
+        from rich.console import Console
+        from rich.table import Table
+
+        from src.nse_bhavcopy.backtester import NSEEventBacktester
+        from src.nse_bhavcopy.ml_classifier import MLClassifier
+
+        clf = MLClassifier(n_estimators=args.n_estimators, max_depth=args.max_depth)
+        X, y = clf.prepare_features(df_prices, df_delivery)
+        if len(X) < 10:
+            LOGGER.error("Not enough feature rows generated to run backtest.")
+            sys.exit(1)
+
+        split_idx = int(len(X) * 0.8)
+        X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+        y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
+        clf.train(X_train, y_train)
+        preds = clf.predict(X_test)
+
+        from sklearn.metrics import accuracy_score, precision_score, recall_score
+
+        acc = float(accuracy_score(y_test, preds))
+        prec = float(precision_score(y_test, preds, zero_division=0))
+        rec = float(recall_score(y_test, preds, zero_division=0))
+
+        signals_test = pd.Series(preds, index=X_test.index)
+        test_prices = df_prices.loc[X_test.index]
+        ev_bt = NSEEventBacktester(init_cash=100000.0)
+        bt_res = ev_bt.run(test_prices, signals_test)
+
+        console = Console()
+        table = Table(
+            title=f"ML Backtest Results: {symbol}",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Metric", justify="left")
+        table.add_column("Value", justify="right")
+        table.add_row("Classifier Accuracy", f"{acc * 100:.2f}%")
+        table.add_row("Classifier Precision", f"{prec * 100:.2f}%")
+        table.add_row("Classifier Recall", f"{rec * 100:.2f}%")
+        table.add_row("Initial Portfolio Cash", "INR 100,000.00")
+        table.add_row("Final Portfolio Value", f"INR {bt_res['final_value']:,.2f}")
+        table.add_row("Simulated Strategy Return", f"{bt_res['total_return_pct']:.2f}%")
+        table.add_row("Max Drawdown", f"{bt_res['max_drawdown_pct']:.2f}%")
+        table.add_row("Total Executed Trades", str(bt_res["total_trades"]))
+        console.print()
+        console.print(table)
+
+    except Exception as exc:
+        LOGGER.error("Failed to run ML backtest: %s", exc)
+        sys.exit(1)
+
+
+def cmd_fo_ban(args: argparse.Namespace) -> None:
+    """
+    Fetch and display the current NSE F&O ban securities.
+
+    Parameters:
+        args (argparse.Namespace): Parsed command-line arguments.
+
+    Returns:
+        None
+
+    Raises:
+        SystemExit: If F&O ban list query fails.
+    """
+    try:
+        from src.nse_bhavcopy.fo_ban import FOBanManager
+
+        manager = FOBanManager(cache_dir=args.data_dir)
+        ban_list = manager.fetch_fo_ban_list()
+        if ban_list:
+            print(f"\n✔  Found {len(ban_list)} securities in F&O ban:")
+            for sym in sorted(ban_list):
+                print(f"  · {sym}")
+        else:
+            print("\n✔  No securities are currently in the F&O ban period.")
+    except Exception as exc:
+        LOGGER.error("Failed to query F&O ban list: %s", exc)
+        sys.exit(1)
+
+
 # ===========================================================================
 # Interactive menu — UI helpers
 # ===========================================================================
@@ -672,6 +833,14 @@ def _print_main_menu() -> None:
     print(
         f"  {cyan('18')}  {bold('Cointegration Pair Scanner')}      "
         f"{dim('Engle-Granger pairs from local parquet universe')}"
+    )
+    print(
+        f"  {cyan('19')}  {bold('ML Classifier Backtester')}       "
+        f"{dim('Random Forest & Event Backtest on symbol')}"
+    )
+    print(
+        f"  {cyan('20')}  {bold('View F&O Ban List')}               "
+        f"{dim('Fetch current NSE F&O ban securities')}"
     )
     print()
     print(f"   {dim('0')}  {dim('Exit')}")
@@ -2155,6 +2324,150 @@ def menu_nse_live() -> None:
         _pause()
 
 
+def menu_backtest(hist_dir: str, data_dir: str) -> None:
+    """
+    Interactive ML Classifier Backtester menu handler.
+
+    Parameters:
+        hist_dir (str): Path to historical Parquet root directory.
+        data_dir (str): Path to root data directory.
+
+    Returns:
+        None
+
+    Raises:
+        None
+    """
+    _header("ML Classifier Backtester")
+    symbol = _ask("Enter Stock Symbol (e.g. TCS)", "TCS").strip().upper()
+    try:
+        n_est_in = input("  Number of estimators [default 100]: ").strip()
+        n_estimators = int(n_est_in) if n_est_in else 100
+    except ValueError:
+        warn("Invalid number. Using default 100.")
+        n_estimators = 100
+
+    try:
+        max_depth_in = input("  Max depth [default 5]: ").strip()
+        max_depth = int(max_depth_in) if max_depth_in else 5
+    except ValueError:
+        warn("Invalid number. Using default 5.")
+        max_depth = 5
+
+    price_path = os.path.join(hist_dir, "1d", f"{symbol}.parquet")
+    if not os.path.exists(price_path):
+        err(f"Historical Parquet file not found at: {price_path}")
+        _pause()
+        return
+
+    try:
+        print(f"\n  Loading price data for {symbol}...")
+        df_prices = pd.read_parquet(price_path)
+        if df_prices.empty or len(df_prices) < 20:
+            err(f"Insufficient history for {symbol} ({len(df_prices)} bars).")
+            _pause()
+            return
+
+        print(f"  Scanning for delivery percentage data in " f"{data_dir}/processed...")
+        df_delivery = _get_delivery_history(os.path.join(data_dir, "processed"), symbol)
+        if df_delivery is not None and not df_delivery.empty:
+            ok(
+                f"Aggregated {len(df_delivery)} records of "
+                f"delivery percentage data."
+            )
+        else:
+            warn("No delivery percentage data found. Defaulting to 0.0.")
+
+        print(
+            f"  Training Random Forest (n_estimators={n_estimators}, "
+            f"max_depth={max_depth})..."
+        )
+        from rich.console import Console
+        from rich.table import Table
+
+        from src.nse_bhavcopy.backtester import NSEEventBacktester
+        from src.nse_bhavcopy.ml_classifier import MLClassifier
+
+        clf = MLClassifier(n_estimators=n_estimators, max_depth=max_depth)
+        X, y = clf.prepare_features(df_prices, df_delivery)
+        if len(X) < 10:
+            err("Not enough feature rows generated to train/test.")
+            _pause()
+            return
+
+        split_idx = int(len(X) * 0.8)
+        X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+        y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
+        clf.train(X_train, y_train)
+        preds = clf.predict(X_test)
+
+        from sklearn.metrics import accuracy_score, precision_score, recall_score
+
+        acc = float(accuracy_score(y_test, preds))
+        prec = float(precision_score(y_test, preds, zero_division=0))
+        rec = float(recall_score(y_test, preds, zero_division=0))
+
+        signals_test = pd.Series(preds, index=X_test.index)
+        test_prices = df_prices.loc[X_test.index]
+        ev_bt = NSEEventBacktester(init_cash=100000.0)
+        bt_res = ev_bt.run(test_prices, signals_test)
+
+        console = Console()
+        table = Table(
+            title=f"ML Backtest Results: {symbol}",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Metric", justify="left")
+        table.add_column("Value", justify="right")
+        table.add_row("Classifier Accuracy", f"{acc * 100:.2f}%")
+        table.add_row("Classifier Precision", f"{prec * 100:.2f}%")
+        table.add_row("Classifier Recall", f"{rec * 100:.2f}%")
+        table.add_row("Initial Portfolio Cash", "INR 100,000.00")
+        table.add_row("Final Portfolio Value", f"INR {bt_res['final_value']:,.2f}")
+        table.add_row("Simulated Strategy Return", f"{bt_res['total_return_pct']:.2f}%")
+        table.add_row("Max Drawdown", f"{bt_res['max_drawdown_pct']:.2f}%")
+        table.add_row("Total Executed Trades", str(bt_res["total_trades"]))
+        console.print()
+        console.print(table)
+    except Exception as exc:
+        err(f"Backtest execution failed: {exc}")
+
+    _pause()
+
+
+def menu_fo_ban(data_dir: str) -> None:
+    """
+    Interactive F&O Ban list query.
+
+    Parameters:
+        data_dir (str): Path to root data directory.
+
+    Returns:
+        None
+
+    Raises:
+        None
+    """
+    _header("NSE F&O Ban Securities")
+    try:
+        from src.nse_bhavcopy.fo_ban import FOBanManager
+
+        manager = FOBanManager(cache_dir=data_dir)
+        ban_list = manager.fetch_fo_ban_list()
+        if ban_list:
+            ok(f"Found {len(ban_list)} securities in F&O ban:")
+            for sym in sorted(ban_list):
+                print(f"  {dim('·')} {bold(sym)}")
+        else:
+            ok("No securities are currently in the F&O ban period.")
+    except Exception as exc:
+        err(f"Failed to query F&O ban list: {exc}")
+
+    _pause()
+
+
 # ===========================================================================
 # REPL loop
 # ===========================================================================
@@ -2217,6 +2530,8 @@ def interactive_menu(
         "16": lambda: menu_squeeze(),
         "17": lambda: menu_nse_live(),
         "18": lambda: menu_pair_scanner(hist_dir),
+        "19": lambda: menu_backtest(hist_dir, data_dir),
+        "20": lambda: menu_fo_ban(data_dir),
     }
 
     while True:
@@ -2235,7 +2550,7 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-18.")
+            warn(f"'{choice}' is not a valid option — enter 0-20.")
 
 
 # ===========================================================================
@@ -2387,6 +2702,39 @@ def _build_parser() -> argparse.ArgumentParser:
         "--limit", type=int, default=None, help="Maximum symbols to screen."
     )
     p_screen.set_defaults(func=cmd_screen)
+
+    # ── backtest ──────────────────────────────────────────────────────────
+    p_backtest = sub.add_parser(
+        "backtest",
+        help="Run machine learning direction classifier and event backtest.",
+    )
+    p_backtest.add_argument(
+        "--symbol",
+        required=True,
+        help="Ticker symbol to backtest (e.g. TCS)",
+    )
+    p_backtest.add_argument(
+        "--n-estimators",
+        type=int,
+        default=100,
+        dest="n_estimators",
+        help="Number of Random Forest estimators (default: 100)",
+    )
+    p_backtest.add_argument(
+        "--max-depth",
+        type=int,
+        default=5,
+        dest="max_depth",
+        help="Maximum tree depth of the Random Forest classifier (default: 5)",
+    )
+    p_backtest.set_defaults(func=cmd_backtest)
+
+    # ── fo-ban ────────────────────────────────────────────────────────────
+    p_fo_ban = sub.add_parser(
+        "fo-ban",
+        help="Fetch and print the current active NSE F&O ban securities list.",
+    )
+    p_fo_ban.set_defaults(func=cmd_fo_ban)
 
     # ── menu (default) ────────────────────────────────────────────────────
     sub.add_parser("menu", help="Launch the interactive menu (default).")

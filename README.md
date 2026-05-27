@@ -8,9 +8,12 @@ An institutional-grade, local-first Python application that downloads daily mark
 
 - **Local Execution:** No Google Sheets credentials or remote spreadsheet configurations required.
 - **Auto-date Scanning:** Automatically scans backwards from today (up to 7 days) to target the most recent active trading day (excluding weekends and market holidays).
-- **Intelligent Filtering:** Retains only pure equity series (`EQ` series), stripping away ETFs, Mutual Funds, and commodity keywords (e.g., `BEES`, `ETF`, `GOLD`, `LIQUID`).
+- **Intelligent Filtering:** Retains only pure equity series (`EQ` series), stripping away ETFs, Mutual Funds, and commodity keywords.
 - **Standardized Exports:** Outputs raw zip files to `data/raw/` and processed top 250 stock lists sorted by turnover descending to `data/processed/` in a clean CSV format.
-- **Robust Quality Control:** Fully typed, compliant with strict PEP-8 standards via Ruff formatting, and backed by a comprehensive unit testing framework with 100% test coverage.
+- **DuckDB Time-Series Query Engine:** Runs high-performance SQL queries over local historical Parquet stores.
+- **Random Forest Classifier:** Predicts next-day stock price directions utilizing technical indicators (RSI, MACD), rolling volatility, and delivery percentage accumulation.
+- **NSE Backtesting Engine:** Simulates vectorized or event-driven backtests featuring real NSE transaction costs, T+1 cash settlement cycles, F&O ban verification, and daily circuit limit blocks (UC/LC).
+- **Robust Quality Control:** Fully typed, compliant with strict PEP-8 standards via Ruff formatting, and backed by a comprehensive unit testing framework.
 
 ---
 
@@ -25,15 +28,14 @@ An institutional-grade, local-first Python application that downloads daily mark
 ├── data
 │   ├── processed            # Top 250 filtered stock lists (CSV format)
 │   └── raw                  # Raw downloaded ZIP files from the NSE
-├── lerarning.py             # Pipeline orchestrator and entry point
+├── main.py                  # Interactive CLI REPL and orchestrator entry point
 ├── pyproject.toml           # Strict package versions and linter settings
 ├── src
-│   └── nse_bhavcopy
-│       ├── __init__.py      # Package constructor
-│       └── downloader.py    # Core downloader and processor class
-├── tests
-│   ├── __init__.py      # Test package constructor
-│   └── test_downloader.py  # Moked unit test cases
+│   ├── data
+│   │   └── fetcher          # Stateful NSE charting API downloader
+│   ├── nse_bhavcopy         # Core downloader, screener, ML, and backtesters
+│   └── nse_live             # Pre-market and options data hub
+├── tests                    # Pytest test suite
 └── uv.lock                  # Dependency locking mapping
 ```
 
@@ -43,7 +45,7 @@ An institutional-grade, local-first Python application that downloads daily mark
 
 ### 1. Prerequisites
 
-Ensure you have [uv](https://github.com/astral-sh/uv) installed. If not, install it using:
+Ensure you have [uv](https://github.com/astral-sh/uv) installed:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -59,17 +61,22 @@ Sync packages and construct the local virtual environment:
 uv sync
 ```
 
-This will lock exact package versions (`pandas==2.2.3`, `requests==2.32.3`) automatically.
+### 3. CLI Subcommands
 
-### 3. Execution
-
-To run the main local NSE downloader pipeline:
-
+#### Launch Interactive REPL Menu
 ```bash
-uv run python lerarning.py
+uv run main.py menu
 ```
 
-Check `data/raw/` for the downloaded ZIP archives and `data/processed/` for the extracted top 250 stocks list.
+#### Run ML Backtest on a Symbol
+```bash
+uv run main.py backtest --symbol TCS --n-estimators 100 --max-depth 5
+```
+
+#### Fetch F&O Ban List
+```bash
+uv run main.py fo-ban
+```
 
 ---
 
@@ -86,8 +93,8 @@ uv run ruff check .                      # Verify linting
 ### Static Type Checks
 
 ```bash
-uv run mypy src/ --explicit-package-bases
-uv run mypy lerarning.py --explicit-package-bases
+uv run mypy --explicit-package-bases src/
+uv run mypy --explicit-package-bases main.py
 ```
 
 ### Running Tests
@@ -95,5 +102,5 @@ uv run mypy lerarning.py --explicit-package-bases
 Execute pytest with code coverage tracking:
 
 ```bash
-uv run pytest tests/ -v --cov=src
+uv run pytest tests/ -v
 ```
