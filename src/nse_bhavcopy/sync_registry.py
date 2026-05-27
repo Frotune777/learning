@@ -139,6 +139,12 @@ class SyncRecord:
 
         # Check 1: Recency — is last bar before the most recent trading day?
         if self.last_bar_date < ref:
+            if self.last_synced_at:
+                hours_since = (
+                    datetime.now() - self.last_synced_at
+                ).total_seconds() / 3600.0
+                if hours_since < 4.0:
+                    return False
             return True
 
         # Check 2: Completeness — do we have suspiciously few rows?

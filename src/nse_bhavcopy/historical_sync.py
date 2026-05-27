@@ -236,6 +236,13 @@ class HistoricalSync:
         merged = pd.concat([existing, new_data])
         merged = merged[~merged.index.duplicated(keep="last")].sort_index()
         added = len(merged) - len(existing)
+
+        if added == 0:
+            LOGGER.info(
+                "Incremental %s: +0 new rows (YFinance data not yet updated)", symbol
+            )
+            return existing
+
         LOGGER.info(
             "Incremental %s: +%d new rows (total %d)", symbol, added, len(merged)
         )
@@ -289,9 +296,15 @@ class HistoricalSync:
             # Case 3: Good data, just need recent bars → incremental
             df = self._incremental_update(symbol, existing)
 
-        if df.empty or (df is existing):
-            LOGGER.warning("No new data available for %s — skipping.", symbol)
+        if df.empty:
+            LOGGER.warning("No data found for %s — marked failed.", symbol)
             return False
+
+        if df is existing:
+            LOGGER.info(
+                "No new data for %s yet, marked as synced for cooldown.", symbol
+            )
+            return True
 
         self._save(symbol, df)
         return True
