@@ -458,3 +458,78 @@ def test_process_bhavcopy_success(tmp_path: Path) -> None:
     assert len(saved_df) == 2
     assert saved_df.iloc[0]["SYMBOL"] == "TCS"
     assert saved_df.iloc[1]["SYMBOL"] == "INFY"
+
+
+def test_clean_dataframe_turnover_lacs() -> None:
+    """
+    Verify turnover normalization multiplies TURNOVER_LACS values by 100,000.
+    """
+    downloader = BhavcopyDownloader()
+    data = {
+        "SYMBOL": ["RELIANCE", "TCS"],
+        "SERIES": ["EQ", "EQ"],
+        "CLOSE": [2500.0, 3200.0],
+        "TURNOVER_LACS": [10.0, 20.0],
+    }
+    raw_df = pd.DataFrame(data)
+
+    cleaned_df: pd.DataFrame = downloader._clean_dataframe(raw_df)
+
+    assert cleaned_df.iloc[0]["TURNOVER"] == 1_000_000.0
+    assert cleaned_df.iloc[1]["TURNOVER"] == 2_000_000.0
+
+
+def test_clean_dataframe_etf_boundaries() -> None:
+    """
+    Verify precise ETF regex patterns correctly filter out ETFs
+    without accidentally removing legitimate equity symbols like GOLDIAM.
+    """
+    downloader = BhavcopyDownloader()
+    data = {
+        "SYMBOL": ["GOLDIAM", "LIQUIDFLEX", "GOLD", "LIQUID", "GOLD-BEES", "NIFTY-ETF"],
+        "SERIES": ["EQ", "EQ", "EQ", "EQ", "EQ", "EQ"],
+        "CLOSE": [100.0, 200.0, 300.0, 400.0, 500.0, 600.0],
+        "TURNOVER": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+    }
+    raw_df = pd.DataFrame(data)
+
+    cleaned_df: pd.DataFrame = downloader._clean_dataframe(raw_df)
+
+    # Legitimate equities (GOLDIAM, LIQUIDFLEX) must be preserved.
+    # ETFs (GOLD, LIQUID, GOLD-BEES, NIFTY-ETF) must be filtered.
+    symbols_present = cleaned_df["SYMBOL"].tolist()
+    assert "GOLDIAM" in symbols_present
+    assert "LIQUIDFLEX" in symbols_present
+    assert "GOLD" not in symbols_present
+    assert "LIQUID" not in symbols_present
+    assert "GOLD-BEES" not in symbols_present
+    assert "NIFTY-ETF" not in symbols_present
+
+
+def test_process_bhavcopy_invalid_magic_bytes() -> None:
+    """
+    Verify process_bhavcopy raises BadZipFile if magic bytes PK\\x03\\x04 are missing.
+    """
+    downloader = BhavcopyDownloader()
+    test_date = datetime(2026, 5, 26)
+    bad_bytes = b"NOT_A_ZIP_FILE"
+
+    with pytest.raises(zipfile.BadZipFile, match="Invalid raw ZIP file bytes"):
+        downloader.process_bhavcopy(test_date, bad_bytes)
+
+
+def test_process_bhavcopy_no_csv() -> None:
+    """
+    Verify process_bhavcopy raises ValueError if ZIP archive has no CSV file.
+    """
+    downloader = BhavcopyDownloader()
+    test_date = datetime(2026, 5, 26)
+
+    # Create a valid ZIP archive without a CSV file
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as z:
+        z.writestr("test.txt", "some dummy content")
+    zip_bytes = zip_buffer.getvalue()
+
+    with pytest.raises(ValueError, match="No CSV file found in Zip archive"):
+        downloader.process_bhavcopy(test_date, zip_bytes)

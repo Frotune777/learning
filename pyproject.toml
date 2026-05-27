@@ -7,6 +7,10 @@ requires-python = ">=3.13"
 dependencies = [
     "pandas==2.2.3",
     "requests==2.32.3",
+    "ta-lib>=0.6.8",
+    "yfinance==1.4.0",
+    "pyarrow==19.0.1",
+    "pandas-market-calendars>=5.4.0",
 ]
 
 [dependency-groups]
@@ -23,6 +27,8 @@ raw_dir = "data/raw"
 processed_dir = "data/processed"
 max_days_back = 7
 top_n_stocks = 250
+bottom_out_tolerance = 0.5
+bounce_buffer = 1.0
 
 [tool.ruff]
 line-length = 88

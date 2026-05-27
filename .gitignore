@@ -1,4 +1,11 @@
-# Byte-compiled / optimized / DLL files
+# Ignore ALL data recursively
+data/**
+
+# Only allow .gitkeep files in specific subdirs
+!data/**/.gitkeep
+
+# Aider files
+.aider*# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -17,7 +24,11 @@ venv/
 ENV/
 
 # Local downloaded market data (ignore large binary/csv downloads)
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# Ignore ALL data recursively
+data/**
+
+# Only allow .gitkeep files in specific subdirs
+!data/**/.gitkeep
+
+# Aider files
+.aider*

@@ -322,15 +322,19 @@ class BhavcopyDownloader:
         if series_col:
             df = df[df[series_col].astype(str).str.strip() == "EQ"]
 
-        # Filter out ETFs, Bees and gold keywords
-        filter_keywords: str = "BEES|ETF|GOLD|LIQUID"
+        # Filter out ETFs, Bees and gold keywords using exact boundary patterns
+        filter_pattern: str = r"(?:BEES|ETF)$|^(?:GOLD|LIQUID)$"
         df = df[
-            ~df[sym_col].astype(str).str.contains(filter_keywords, case=False, na=False)
+            ~df[sym_col]
+            .astype(str)
+            .str.contains(filter_pattern, case=False, na=False, regex=True)
         ]
 
         # Convert turnover to numeric safely
         df = df.copy()
         df[turnover_col] = pd.to_numeric(df[turnover_col], errors="coerce")
+        if turnover_col == "TURNOVER_LACS":
+            df[turnover_col] = df[turnover_col] * 100_000
         df = df.dropna(subset=[turnover_col])
 
         # Rename standard columns for clean English CSV output
@@ -353,12 +357,13 @@ class BhavcopyDownloader:
         Saves a local CSV file of the top equity stocks.
 
         Logic:
-            Step 1: Open ZIP byte array in-memory using ZipFile.
-            Step 2: Read CSV contents into pandas DataFrame.
-            Step 3: Call private _clean_dataframe method to extract relevant columns.
-            Step 4: Sort values by turnover in descending order and slice top N records.
-            Step 5: Write the processed DataFrame to CSV in data/processed/.
-            Step 6: Return the raw values as a nested list for caller consumption.
+            Step 1: Verify ZIP file magic bytes.
+            Step 2: Open ZIP byte array in-memory using ZipFile.
+            Step 3: Find and read CSV contents into pandas DataFrame.
+            Step 4: Call private _clean_dataframe method to extract relevant columns.
+            Step 5: Sort values by turnover in descending order and slice top N records.
+            Step 6: Write the processed DataFrame to CSV in data/processed/.
+            Step 7: Return the raw values as a nested list for caller consumption.
 
         Parameters:
             date_obj (datetime): Date of Bhavcopy data. | Valid datetime object.
@@ -395,12 +400,20 @@ class BhavcopyDownloader:
         Notes:
             Processed files are saved in data/processed directory as top_250_<date>.csv.
         """
+        if not file_bytes.startswith(b"PK\x03\x04"):
+            LOGGER.error("Invalid ZIP file bytes: Magic header PK\\x03\\x04 not found.")
+            raise zipfile.BadZipFile("Invalid raw ZIP file bytes.")
+
         date_str: str = date_obj.strftime("%Y%m%d")
         processed_filename: str = f"top_{self.top_n}_{date_str}.csv"
         processed_filepath: str = os.path.join(self.processed_dir, processed_filename)
 
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-            csv_filename: str = z.namelist()[0]
+            csv_files: list[str] = [n for n in z.namelist() if n.endswith(".csv")]
+            if not csv_files:
+                LOGGER.error("No CSV file found inside Zip archive.")
+                raise ValueError("No CSV file found in Zip archive.")
+            csv_filename: str = csv_files[0]
             with z.open(csv_filename) as f:
                 df: pd.DataFrame = pd.read_csv(f)
 
@@ -418,3 +431,51 @@ class BhavcopyDownloader:
         # Convert to nested list
         result_list: list[list[str | float]] = sorted_df.values.tolist()
         return result_list
+
+    def get_eq_symbols(self, file_bytes: bytes) -> list[str]:
+        """
+        Extract the full EQ symbol list from a Bhavcopy ZIP without top_n limit.
+
+        Logic:
+            Step 1: Open ZIP bytes and parse CSV.
+            Step 2: Run _clean_dataframe to filter EQ series.
+            Step 3: Return sorted uppercase list of all SYMBOL values.
+
+        Parameters:
+            file_bytes (bytes): Valid Bhavcopy ZIP binary. | Non-empty bytes.
+
+        Returns:
+            list[str]: Sorted list of all EQ symbols that traded that day.
+
+        Raises:
+            zipfile.BadZipFile: If bytes are not a valid ZIP.
+            KeyError: If mandatory columns are missing.
+
+        Example:
+            >>> dl = BhavcopyDownloader()
+            >>> symbols = dl.get_eq_symbols(zip_bytes)
+            >>> print(len(symbols))  # ~1800
+
+        Performance:
+            Time Complexity: O(N)
+            Space Complexity: O(N)
+
+        Edge Cases Handled:
+            - Returns empty list on any parse failure.
+        """
+        if not file_bytes.startswith(b"PK\x03\x04"):
+            LOGGER.error("Invalid ZIP file bytes for get_eq_symbols.")
+            raise zipfile.BadZipFile("Invalid raw ZIP file bytes.")
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                csv_files = [n for n in z.namelist() if n.endswith(".csv")]
+                if not csv_files:
+                    LOGGER.error("No CSV in ZIP for get_eq_symbols.")
+                    return []
+                with z.open(csv_files[0]) as f:
+                    df: pd.DataFrame = pd.read_csv(f)
+            cleaned = self._clean_dataframe(df)
+            return sorted(cleaned["SYMBOL"].str.strip().str.upper().tolist())
+        except Exception as exc:
+            LOGGER.error("get_eq_symbols failed: %s", exc)
+            return []

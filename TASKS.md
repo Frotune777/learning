@@ -137,3 +137,88 @@ Dependencies:
 Completion Criteria:
 - No ruff warnings
 - Successfully ran final manual verification
+
+---
+
+## Phase 2: Stock Screener Hardening - 100% Complete
+
+### Task 2.1: Data Normalization and ETF Exclusion
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 1.5 hours
+Actual: 1.0 hours
+
+Description:
+Normalize older Lakhs-denominated turnover values (`TURNOVER_LACS`) to Rupees and apply high-precision ETF boundary filters to avoid false exclusions.
+
+### Task 2.2: Local Parquet Caching and Robustness
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 3 hours
+Actual: 2.0 hours
+
+Description:
+Implement high-performance local Parquet cache indexing under `data/processed/.yfcache/`, handle flat single-ticker yfinance columns, and implement lookback DMA guards for new/short-history IPOs.
+
+### Task 2.3: Verification and Test Hardening
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 2 hours
+Actual: 1.5 hours
+
+Description:
+Develop targeted test cases for new layers in `tests/test_screener.py` and `tests/test_downloader.py`, bringing the entire suite back to clean execution and high overall test coverage.
+
+---
+
+## Phase 3: Resilient Pricing Fetcher & Incremental Cache CRUD - 100% Complete
+
+### Task 3.1: Authoritative NSE Charting Fetcher
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 3 hours
+Actual: 2.5 hours
+
+Description:
+Develop a modular `src/data/fetcher` package including a circuit breaker, user-agent session managers, official stock token resolver, and the authoritative `NSEChartFetcher` API client.
+
+---
+
+### Task 3.2: Authoritative Fallback and Incremental daily CRUD
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 3 hours
+Actual: 2.0 hours
+
+Description:
+Refactor `StockScreener._fetch_history` to support target date overlays, perform local cache checks, execute incremental daily Close price CRUD updates directly from Bhavcopy CSV data, and implement transparent `yfinance` fallback logic.
+
+---
+
+### Task 3.3: yfinance 1.4.0 Major Version Upgrade
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 1 hour
+Actual: 0.5 hours
+
+Description:
+Upgrade yfinance to 1.4.0 in pyproject.toml and regenerate lockfiles to permanently resolve rate-limiting and empty dataframe errors.
+
+---
+
+### Task 3.4: Connectivity Mocks & Test Suite Expansion
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 2 hours
+Actual: 1.5 hours
+
+Description:
+Add standalone diagnostic scripts to `scratch/` and develop unit test suites verifying full circuit breaker transitions, cookie warm-ups, local token resolver mappings, and incremental Parquet file updates.
+
