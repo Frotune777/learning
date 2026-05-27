@@ -47,10 +47,20 @@ from datetime import datetime
 
 import pandas as pd
 
+from src.nse_bhavcopy.correlation import run_correlation_cli
 from src.nse_bhavcopy.downloader import BhavcopyDownloader
 from src.nse_bhavcopy.equity_master import NSEEquityMasterBuilder
-from src.nse_bhavcopy.historical_sync import HistoricalSync
+from src.nse_bhavcopy.etf_screener import run_liquid_etf_screener
+from src.nse_bhavcopy.heatmap import run_heatmap_cli
+from src.nse_bhavcopy.historical_sync import (
+    HistoricalSync,
+)
+from src.nse_bhavcopy.ma_slope import analyze_stock_ma_slope
+from src.nse_bhavcopy.minervini_screener import run_minervini_cli
+from src.nse_bhavcopy.mmi_scraper import run_mmi_cli
+from src.nse_bhavcopy.momentum_squeeze import run_squeeze_cli
 from src.nse_bhavcopy.screener import StockScreener
+from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
 from src.nse_bhavcopy.sync_registry import SyncRegistry
 from src.nse_bhavcopy.ta_indicators import (
     add_ta_indicators,
@@ -620,7 +630,41 @@ def _print_main_menu() -> None:
         f"{dim('pending / failed / ok breakdown')}"
     )
     print()
-    print(f"   {dim('9')}  {dim('Exit')}")
+    print(f"  {dim('QUANTITATIVE')}")
+    print(
+        f"   {cyan('9')}  {bold('Liquid ETF Screener')}             "
+        f"{dim('top liquid ETFs per sector')}"
+    )
+    print(
+        f"  {cyan('10')}  {bold('Mark Minervini Template')}         "
+        f"{dim('VCP, RS Rating & Trend Screen')}"
+    )
+    print(
+        f"  {cyan('11')}  {bold('Sector Rotation Chart')}           "
+        f"{dim('JdK RS-Ratio Quadrant Analysis')}"
+    )
+    print(
+        f"  {cyan('12')}  {bold('Correlation Matrix')}              "
+        f"{dim('Cross-asset return correlation')}"
+    )
+    print(
+        f"  {cyan('13')}  {bold('Nifty Indices Heatmap')}           "
+        f"{dim('Constituents performance')}"
+    )
+    print(
+        f"  {cyan('14')}  {bold('Market Mood Index (MMI)')}         "
+        f"{dim('Live sentiment scraper')}"
+    )
+    print(
+        f"  {cyan('15')}  {bold('Moving Average Slope')}            "
+        f"{dim('Trend angle analyzer')}"
+    )
+    print(
+        f"  {cyan('16')}  {bold('Momentum Squeeze Indicator')}      "
+        f"{dim('BB / KC coiled-spring detector')}"
+    )
+    print()
+    print(f"   {dim('0')}  {dim('Exit')}")
     print()
     print(_rule())
 
@@ -800,13 +844,14 @@ def menu_sync_filtered(data_dir: str, hist_dir: str) -> None:
     )
 
 
-def _display_csv(path: str, title: str) -> None:
+def _display_csv(path: str, title: str, desc: str | None = None) -> None:
     """
     Pretty-print a screener result CSV.
 
     Parameters:
         path  (str): Absolute path to the CSV file.
         title (str): Human-readable title for the table header.
+        desc  (str): Optional string describing the logic and style.
 
     Returns:
         None
@@ -825,6 +870,8 @@ def _display_csv(path: str, title: str) -> None:
             df = df.drop(columns=["Qty"])
 
     _subheader(title)
+    if desc:
+        print(f"  {dim(desc)}\n")
 
     if df.empty:
         warn("No stocks met the criteria.")
@@ -885,32 +932,74 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
         (
             "Nifty Shop (Single Leg)",
             os.path.join(hist_dir, f"strategy_nifty_shop_{date_str}.csv"),
+            (
+                "RSI laddering strategy for mean reversion. Level 1 (RSI < 35),"
+                " Level 2 (< 30), Level 3 (< 25). Targets 6.28% profit."
+            ),
         ),
         (
             "Buy Low Sell High",
             os.path.join(hist_dir, f"strategy_buy_low_{date_str}.csv"),
+            (
+                "Demand level accumulation. Triggers when CMP is within 2.0%"
+                " of the 200-Day Low."
+            ),
         ),
-        ("Turtle Trading", os.path.join(hist_dir, f"strategy_turtle_{date_str}.csv")),
-        ("RDX Indicator", os.path.join(hist_dir, f"strategy_rdx_{date_str}.csv")),
+        (
+            "Turtle Trading",
+            os.path.join(hist_dir, f"strategy_turtle_{date_str}.csv"),
+            (
+                "Explosive momentum breakout. Triggers a 'Buy' only when CMP"
+                " forcefully crosses the previous 55-Day High."
+            ),
+        ),
+        (
+            "RDX Indicator",
+            os.path.join(hist_dir, f"strategy_rdx_{date_str}.csv"),
+            (
+                "Strict momentum screener. Requires ADX > 25, bullish DI"
+                " crossover, and RSI > 60."
+            ),
+        ),
         (
             "100 SMA Breakout",
             os.path.join(hist_dir, f"strategy_100sma_breakout_{date_str}.csv"),
+            (
+                "Institutional 6-month base breakout. Triggers crossing 100 SMA"
+                " while trading > 20% above 6-month lows."
+            ),
         ),
         (
             "ETF Shop Method",
             os.path.join(hist_dir, f"strategy_etf_shop_{date_str}.csv"),
+            (
+                "Index fund retracement variant. Triggers a 'Buy' if the ETF"
+                " falls more than 2.0% below its 20 DMA."
+            ),
         ),
         (
             "Super BO Stocks",
             os.path.join(hist_dir, f"strategy_super_bo_{date_str}.csv"),
+            (
+                "Recovery strategy. Stocks rising from downtrends facing 200 SMA"
+                " resistance while above 50, 100, 150 SMAs."
+            ),
         ),
         (
             "DMADMA (Reverse)",
             os.path.join(hist_dir, f"strategy_dmadma_reverse_{date_str}.csv"),
+            (
+                "Bull market continuation. Triggers on a 150 SMA breakout while"
+                " the stock remains above the 200 SMA."
+            ),
         ),
         (
             "DMADMA (No SL)",
             os.path.join(hist_dir, f"strategy_dmadma_no_sl_{date_str}.csv"),
+            (
+                "Pure momentum following — no stop loss. Golden cross analog"
+                " where the 50 SMA rises above the 200 SMA."
+            ),
         ),
     ]
 
@@ -924,7 +1013,7 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
         print(f"   {cyan('3')}  Super List   {dim('Combined — the holy grail')}")
 
         idx = 4
-        for name, path in strategies:
+        for name, path, desc in strategies:
             if os.path.exists(path):
                 print(f"   {cyan(str(idx))}  {name} {dim('Strategy')}")
             else:
@@ -940,14 +1029,26 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
         if choice == "0":
             break
         elif choice == "1":
-            _display_csv(final_csv, "Final Target List")
+            _display_csv(
+                final_csv,
+                "Final Target List",
+                "Intraday & short-term breakout candidates with strong momentum.",
+            )
         elif choice == "2":
-            _display_csv(swing_csv, "Swing Trading List")
+            _display_csv(
+                swing_csv,
+                "Swing Trading List",
+                "Positional setups nearing GTT trigger levels for mid-term holding.",
+            )
         elif choice == "3":
-            _display_csv(super_csv, "Super Output (The Holy Grail)")
+            _display_csv(
+                super_csv,
+                "Super Output (The Holy Grail)",
+                "Highest conviction setups passing multiple extreme filters.",
+            )
         elif choice == "99":
             dfs = []
-            for name, path in strategies:
+            for name, path, desc in strategies:
                 if os.path.exists(path):
                     df_strat = pd.read_csv(path)
                     if not df_strat.empty:
@@ -995,7 +1096,13 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
                     hist_dir, f"view_all_grouped_{date_str}.csv"
                 )
                 grouped_df.to_csv(combined_path, index=False)
-                _display_csv(combined_path, "Grouped Advanced Strategies Output")
+                desc_text = (
+                    "Master view of all advanced strategy triggers today,"
+                    " intelligently grouped by stock."
+                )
+                _display_csv(
+                    combined_path, "Grouped Advanced Strategies Output", desc_text
+                )
 
                 export_path = f"Exported_Grouped_Strategies_{date_str}.csv"
                 grouped_df.to_csv(export_path, index=False)
@@ -1009,9 +1116,9 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
             try:
                 c_idx = int(choice)
                 if 4 <= c_idx < 4 + len(strategies):
-                    strat_name, strat_path = strategies[c_idx - 4]
+                    strat_name, strat_path, strat_desc = strategies[c_idx - 4]
                     if os.path.exists(strat_path):
-                        _display_csv(strat_path, strat_name)
+                        _display_csv(strat_path, strat_name, strat_desc)
                     else:
                         warn(f"No results generated for {strat_name} today.")
                 else:
@@ -1481,6 +1588,242 @@ def menu_recompute_ta(hist_dir: str) -> None:
     _pause()
 
 
+def menu_liquid_etf() -> None:
+    """
+    Run the Liquid ETF Screener and display the results in a table.
+    """
+    _header("Liquid ETF Screener")
+    print("  Fetching ETF list from NSE and calculating sector liquidity...\n")
+
+    df = run_liquid_etf_screener()
+
+    if df.empty:
+        warn("Failed to retrieve or parse ETF data.")
+        _pause()
+        return
+
+    # Format and save
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "top_liquid_etfs.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        "Top Liquid ETFs (By Sector)",
+        "Highest Turnover ETFs per underlying index",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
+def menu_minervini() -> None:
+    """
+    Run the Mark Minervini Trend Template Screener.
+    """
+    _header("Mark Minervini Trend Template Screener")
+    print("  Fetching 400 days of historical data via yfinance (F&O Universe)...")
+    print("  Calculating RS Ratings, VCP, and Breakouts...\n")
+
+    df = run_minervini_cli()
+
+    if df.empty:
+        warn("No stocks met the Trend Template criteria.")
+        _pause()
+        return
+
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "minervini_candidates.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        "Minervini Trend Template Candidates",
+        "Stocks exhibiting Stage 2 Uptrends, VCP, and High Relative Strength",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
+def menu_sector_rotation() -> None:
+    """
+    Run the JdK RS-Ratio Sector Rotation analysis.
+    """
+    _header("Sector Rotation Analysis (JdK RS-Ratio)")
+    print("  Fetching 90 days of historical data for sectors and Nifty 50...")
+    print("  Calculating RS-Ratio and Momentum...\n")
+
+    df = run_sector_rotation_cli()
+
+    if df.empty:
+        warn("No sector data could be processed.")
+        _pause()
+        return
+
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "sector_rotation.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        "Sector Rotation (JdK RS-Ratio)",
+        "Quadrants: Leading (Top-Right), Improving (Top-Left),"
+        " Weakening (Bottom-Right), Lagging (Bottom-Left)",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
+def menu_correlation() -> None:
+    """
+    Run the Correlation Matrix analysis.
+    """
+    _header("Cross-Asset Correlation Matrix")
+    print("  Fetching 1-year of historical returns for benchmarks...")
+
+    df = run_correlation_cli()
+
+    if df.empty:
+        warn("No correlation data could be generated.")
+        _pause()
+        return
+
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "correlation_matrix.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        "Correlation Matrix (1 Year Returns)",
+        "Close to 100% means strong positive correlation, negative means inverse.",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
+def menu_heatmap() -> None:
+    """
+    Run the Nifty Indices Heatmap analysis.
+    """
+    _header("Nifty Indices Heatmap")
+
+    print(f"  {dim('Example Indices:')} NIFTY 50, NIFTY BANK, NIFTY IT, NIFTY PHARMA")
+    index_name = input("  Enter Index Name (default: NIFTY 50): ").strip()
+    if not index_name:
+        index_name = "NIFTY 50"
+
+    print(f"\n  Fetching realtime constituent data for {index_name}...\n")
+
+    df = run_heatmap_cli(index_name)
+
+    if df.empty:
+        warn(f"No data could be generated for {index_name}.")
+        _pause()
+        return
+
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+
+    safe_name = index_name.replace(" ", "_").lower()
+    out_path = os.path.join(out_dir, f"{safe_name}_heatmap.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        f"Heatmap - {index_name}",
+        "Sorted by Market Cap (Largest first). Green = Advancing, Red = Declining.",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
+def menu_mmi() -> None:
+    """
+    Run the Market Mood Index (MMI) Scraper.
+    """
+    _header("Market Mood Index (MMI)")
+    run_mmi_cli()
+    _pause()
+
+
+def menu_ma_slope() -> None:
+    """
+    Run the Moving Average Slope analyzer.
+    """
+    _header("Moving Average Slope Analyzer")
+
+    print(f"  {dim('Example Tickers:')} RELIANCE.NS, TCS.NS, AAPL, ^NSEI")
+    ticker = input("  Enter Ticker (default: ^NSEI): ").strip()
+    if not ticker:
+        ticker = "^NSEI"
+
+    print(f"\n  Analyzing MA slope for {ticker} over the last 30 days...\n")
+
+    result = analyze_stock_ma_slope(ticker)
+
+    if "error" in result:
+        warn(result["error"])
+        _pause()
+        return
+
+    slope = result["slope"]
+    trend = result["trend"]
+
+    print(f"  {bold('Trend Analysis Results')}")
+    print(f"  Stock: {ticker}")
+    print(f"  20-Day MA Slope (30-day window): {slope:.4f}")
+
+    if slope > 0:
+        color = "green"
+    elif slope < 0:
+        color = "red"
+    else:
+        color = "white"
+
+    print(f"  Trend Strength & Direction: [{color}]{trend}[/{color}]\n")
+    _pause()
+
+
+def menu_squeeze() -> None:
+    """
+    Run the Momentum Squeeze Indicator analysis.
+
+    Fetches price data for a user-chosen ticker and displays the last 10 candles
+    of squeeze state and momentum direction.
+    """
+    _header("Momentum Squeeze Indicator")
+
+    print(f"  {dim('Example Tickers:')} ^NSEI, RELIANCE.NS, BANKNIFTY.NS")
+    ticker = input("  Enter Ticker (default: ^NSEI): ").strip() or "^NSEI"
+    period = input("  Lookback period [6mo/1y/2y] (default: 6mo): ").strip() or "6mo"
+
+    print(f"\n  Computing squeeze for {ticker} | period={period}...\n")
+
+    df = run_squeeze_cli(symbol=ticker, period=period)
+
+    if df.empty:
+        warn("No squeeze data returned. Check the symbol and period.")
+        _pause()
+        return
+
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+    safe = ticker.replace("^", "").replace(".", "_").lower()
+    out_path = os.path.join(out_dir, f"squeeze_{safe}.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        f"Momentum Squeeze — {ticker}",
+        "SqueezeOn=True → BB inside KC (coiled). Momentum>0 & lime = bullish impulse.",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
 # ===========================================================================
 # REPL loop
 # ===========================================================================
@@ -1533,6 +1876,14 @@ def interactive_menu(
         "6": lambda: menu_registry(data_dir, hist_dir),
         "7": lambda: menu_ta_dashboard(hist_dir),
         "8": lambda: menu_recompute_ta(hist_dir),
+        "9": lambda: menu_liquid_etf(),
+        "10": lambda: menu_minervini(),
+        "11": lambda: menu_sector_rotation(),
+        "12": lambda: menu_correlation(),
+        "13": lambda: menu_heatmap(),
+        "14": lambda: menu_mmi(),
+        "15": lambda: menu_ma_slope(),
+        "16": lambda: menu_squeeze(),
     }
 
     while True:
@@ -1543,7 +1894,7 @@ def interactive_menu(
             print(f"\n  {dim('Bye!')}\n")
             break
 
-        if choice == "9":
+        if choice == "0" or choice.lower() == "exit":
             print(f"\n  {dim('Bye!')}\n")
             break
 
@@ -1551,7 +1902,7 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 1-9.")
+            warn(f"'{choice}' is not a valid option — enter 0-16.")
 
 
 # ===========================================================================
