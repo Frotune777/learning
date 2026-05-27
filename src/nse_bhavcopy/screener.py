@@ -1032,11 +1032,14 @@ class StockScreener:
         Enrich the analyzed screener DataFrame with consensus, MTF,
         sizing, and quant columns.
 
-        Applies all four post-processing modules in sequence:
+        Applies all six post-processing modules in sequence:
             1. Signal Consensus Engine  → CONSENSUS_SCORE, CONSENSUS_CALLOUT
             2. Multi-Timeframe Confirm  → MTF_CONFIRMED, MTF_CALLOUT
             3. ATR Position Sizer       → SUGGESTED_QTY, STOP_PRICE, etc.
             4. Quant Metrics            → HURST_EXP, VAR_1D_95, callouts
+            5. Risk Metrics             → SHARPE_1Y, CALMAR_RATIO, BETA_NIFTY,
+                                          MAX_DRAWDOWN_PCT, RISK_CALLOUT
+            6. Volatility Regime        → GARCH_VOL_PCT, VOL_REGIME, VOL_CALLOUT
 
         Each step is fault-tolerant: if a module raises an exception it is
         logged and skipped so downstream steps still execute.
@@ -1052,7 +1055,7 @@ class StockScreener:
             risk_pct (float): Per-trade risk fraction. | Default: 0.01 (1%)
 
         Returns:
-            pd.DataFrame: Input DataFrame enriched with up to 14 new columns.
+            pd.DataFrame: Input DataFrame enriched with up to 24 new columns.
 
         Raises:
             None (all module failures are caught and logged as warnings)
@@ -1071,6 +1074,8 @@ class StockScreener:
         from src.nse_bhavcopy.mtf_confirmation import add_mtf_confirmation
         from src.nse_bhavcopy.position_sizer import add_position_sizing
         from src.nse_bhavcopy.quant_metrics import add_quant_metrics
+        from src.nse_bhavcopy.risk_metrics import add_risk_metrics
+        from src.nse_bhavcopy.volatility_regime import add_volatility_regime
 
         # Step 1: Consensus Score
         try:
@@ -1115,6 +1120,32 @@ class StockScreener:
                 )
         except Exception as exc:
             LOGGER.warning("Enrichment: quant metrics failed: %s", exc)
+
+        # Step 5: Risk Metrics (Sharpe, Calmar, Beta, MaxDrawdown)
+        try:
+            if os.path.isdir(daily_dir):
+                df = add_risk_metrics(df, daily_dir=daily_dir)
+                LOGGER.info("Enrichment: risk metrics applied.")
+            else:
+                LOGGER.warning(
+                    "Enrichment: daily_dir '%s' not found, skipping risk.",
+                    daily_dir,
+                )
+        except Exception as exc:
+            LOGGER.warning("Enrichment: risk metrics failed: %s", exc)
+
+        # Step 6: GARCH Volatility Regime
+        try:
+            if os.path.isdir(daily_dir):
+                df = add_volatility_regime(df, daily_dir=daily_dir)
+                LOGGER.info("Enrichment: volatility regime applied.")
+            else:
+                LOGGER.warning(
+                    "Enrichment: daily_dir '%s' not found, skipping vol.",
+                    daily_dir,
+                )
+        except Exception as exc:
+            LOGGER.warning("Enrichment: volatility regime failed: %s", exc)
 
         return df
 

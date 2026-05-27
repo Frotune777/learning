@@ -16,6 +16,9 @@ dependencies = [
     "selenium>=4.44.0",
     "webdriver-manager>=4.1.1",
     "scikit-learn>=1.8.0",
+    "vectorbt>=1.0.0",
+    "arch>=7.0.0",
+    "statsmodels>=0.14.0",
 ]
 
 [dependency-groups]

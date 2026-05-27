@@ -60,6 +60,7 @@ from src.nse_bhavcopy.ma_slope import analyze_stock_ma_slope
 from src.nse_bhavcopy.minervini_screener import run_minervini_cli
 from src.nse_bhavcopy.mmi_scraper import run_mmi_cli
 from src.nse_bhavcopy.momentum_squeeze import run_squeeze_cli
+from src.nse_bhavcopy.pair_scanner import run_pair_scanner_cli
 from src.nse_bhavcopy.screener import StockScreener
 from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
 from src.nse_bhavcopy.sync_registry import SyncRegistry
@@ -667,6 +668,10 @@ def _print_main_menu() -> None:
     print(
         f"  {cyan('17')}  {bold('Live NSE Data Hub')}               "
         f"{dim('Pre-market, price info, option chain…')}"
+    )
+    print(
+        f"  {cyan('18')}  {bold('Cointegration Pair Scanner')}      "
+        f"{dim('Engle-Granger pairs from local parquet universe')}"
     )
     print()
     print(f"   {dim('0')}  {dim('Exit')}")
@@ -1838,6 +1843,107 @@ def menu_squeeze() -> None:
     _pause()
 
 
+def menu_pair_scanner(hist_dir: str) -> None:
+    """
+    Run the Engle-Granger Cointegration Pair Scanner.
+
+    Parameters:
+        hist_dir (str): Path to historical Parquet root directory.
+
+    Returns:
+        None: This function does not return any value.
+
+    Raises:
+        None: All internal exceptions are caught and handled.
+
+    Complexity:
+        Time: O(M^2 x W) where M is symbols scanned and W is lookback length.
+        Space: O(M^2) for pairing combinations.
+
+    Example:
+        >>> menu_pair_scanner("data/historical")
+    """
+    _header("Cointegration Pair Scanner")
+
+    daily_dir = os.path.join(hist_dir, "1d")
+    if not os.path.isdir(daily_dir):
+        warn(f"Daily directory '{daily_dir}' does not exist.")
+        _pause()
+        return
+
+    parquet_files = [f for f in os.listdir(daily_dir) if f.endswith(".parquet")]
+    if not parquet_files:
+        warn(f"No parquet files found in '{daily_dir}'.")
+        _pause()
+        return
+
+    print(f"  Total symbols available: {len(parquet_files)}")
+    print(f"  {dim('Engle-Granger Cointegration Test (N*(N-1)/2 checks)')}")
+    print()
+
+    try:
+        limit_in = input(
+            "  Symbol scan limit (largest files first) [10-250, default 100]: "
+        ).strip()
+        symbol_limit = int(limit_in) if limit_in else 100
+        if symbol_limit < 2:
+            symbol_limit = 2
+    except ValueError:
+        warn("Invalid number. Using default 100.")
+        symbol_limit = 100
+
+    try:
+        pval_in = input("  Max p-value threshold [0.001-0.20, default 0.05]: ").strip()
+        max_pval = float(pval_in) if pval_in else 0.05
+        if max_pval <= 0:
+            max_pval = 0.05
+    except ValueError:
+        warn("Invalid float. Using default 0.05.")
+        max_pval = 0.05
+
+    try:
+        max_pairs_in = input("  Max pairs to return [1-100, default 50]: ").strip()
+        max_pairs = int(max_pairs_in) if max_pairs_in else 50
+        if max_pairs <= 0:
+            max_pairs = 50
+    except ValueError:
+        warn("Invalid number. Using default 50.")
+        max_pairs = 50
+
+    print(f"\n  Scanning top {symbol_limit} symbols with max p-val = {max_pval}...\n")
+
+    try:
+        df = run_pair_scanner_cli(
+            daily_dir=daily_dir,
+            max_pairs=max_pairs,
+            max_pval=max_pval,
+            symbol_limit=symbol_limit,
+        )
+    except Exception as exc:
+        err(f"Pair scanning failed: {exc}")
+        _pause()
+        return
+
+    if df.empty:
+        warn("No cointegrated pairs found matching the criteria.")
+        _pause()
+        return
+
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "cointegrated_pairs.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        "Cointegrated Pairs Summary",
+        "Spread Z-Score > 2.0 indicates potential arbitrage (SELL A / BUY B). "
+        "< -2.0 is (BUY A / SELL B).",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
 def menu_nse_live() -> None:
     """
     Interactive Live NSE Data Hub powered by NseUtils.
@@ -2110,6 +2216,7 @@ def interactive_menu(
         "15": lambda: menu_ma_slope(),
         "16": lambda: menu_squeeze(),
         "17": lambda: menu_nse_live(),
+        "18": lambda: menu_pair_scanner(hist_dir),
     }
 
     while True:
@@ -2128,7 +2235,7 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-17.")
+            warn(f"'{choice}' is not a valid option — enter 0-18.")
 
 
 # ===========================================================================
