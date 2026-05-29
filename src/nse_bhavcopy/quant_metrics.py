@@ -53,6 +53,7 @@ def calculate_hurst_exponent(
         H = 0.712
     """
     clean = prices.dropna()
+    clean = clean[clean > 0]  # log(0) or log(negative) is undefined — skip bad rows
     if len(clean) < lags + 5:
         raise ValueError(
             f"Need ≥ {lags + 5} data points for Hurst with lags={lags}, "
@@ -164,6 +165,7 @@ def calculate_historical_var(
         1-Day VaR (95%): 0.97%
     """
     clean = prices.dropna()
+    clean = clean[clean > 0]  # log(0) or log(negative) is undefined — skip bad rows
     if len(clean) < 2:
         return float("nan")
 

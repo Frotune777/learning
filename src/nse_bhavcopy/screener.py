@@ -630,6 +630,7 @@ class StockScreener:
                         "DELIV_PCT": deliv_pct,
                         "CIRCUIT_LOCKED": False,
                         "CIRCUIT_TYPE": "None",
+                        "ATR_14": np.nan,
                     }
                 )
                 continue
@@ -671,6 +672,7 @@ class StockScreener:
                         "DELIV_PCT": deliv_pct,
                         "CIRCUIT_LOCKED": False,
                         "CIRCUIT_TYPE": "None",
+                        "ATR_14": np.nan,
                     }
                 )
                 continue
@@ -860,6 +862,7 @@ class StockScreener:
                     "DELIV_PCT": deliv_pct,
                     "CIRCUIT_LOCKED": circuit_locked,
                     "CIRCUIT_TYPE": circuit_type,
+                    "ATR_14": atr,
                     "STR_NIFTY_SHOP_ACTION": str_nifty_shop["action"],
                     "STR_NIFTY_SHOP_TARGET": str_nifty_shop["target"],
                     "STR_BUY_LOW_ACTION": str_buy_low["action"],
