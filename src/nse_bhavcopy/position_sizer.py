@@ -228,10 +228,10 @@ def add_position_sizing(
     valid = int(df["SUGGESTED_QTY"].notna().sum())
     LOGGER.info(
         "Position sizing complete: %d/%d stocks sized "
-        "(portfolio=₹%,.0f, risk=%.0f%%, ATRx%.1f).",
+        "(portfolio=₹%s, risk=%.0f%%, ATRx%.1f).",
         valid,
         len(df),
-        portfolio_size,
+        f"{portfolio_size:,.0f}",
         risk_pct * 100,
         atr_multiplier,
     )

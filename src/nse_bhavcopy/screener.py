@@ -616,11 +616,13 @@ class StockScreener:
                         "DMA_200": np.nan,
                         "DIFF_200_DMA": np.nan,
                         "TREND_STATUS": "TICKER NOT FOUND",
+                        "TREND_STATUS_SL": "TICKER NOT FOUND",
                         "CAR_RATING": "TICKER NOT FOUND",
                         "20D_HIGH": np.nan,
                         "20D_LOW": np.nan,
                         "TODAY_LOW": np.nan,
                         "GTT_TRIGGER": np.nan,
+                        "GTT_TARGET_20PCT": np.nan,
                         "BOTTOM_OUT_STATUS": "TICKER NOT FOUND",
                         "SWING_ADVICE": "No data available",
                         "RSI_14": np.nan,
@@ -658,11 +660,13 @@ class StockScreener:
                         "DMA_200": np.nan,
                         "DIFF_200_DMA": np.nan,
                         "TREND_STATUS": "TICKER NOT FOUND",
+                        "TREND_STATUS_SL": "TICKER NOT FOUND",
                         "CAR_RATING": "TICKER NOT FOUND",
                         "20D_HIGH": np.nan,
                         "20D_LOW": np.nan,
                         "TODAY_LOW": np.nan,
                         "GTT_TRIGGER": np.nan,
+                        "GTT_TARGET_20PCT": np.nan,
                         "BOTTOM_OUT_STATUS": "TICKER NOT FOUND",
                         "SWING_ADVICE": "No data available",
                         "RSI_14": np.nan,
@@ -758,7 +762,7 @@ class StockScreener:
             else:
                 diff_200_dma = np.nan
 
-            # Trend Status
+            # Trend Status — Variant A (No Stop-Loss): CMP vs all 3 DMAs
             trend_status = "Unconfirmed"
             if any(pd.isna(v) for v in [dma_50, dma_100, dma_200]):
                 trend_status = "Insufficient History"
@@ -769,6 +773,30 @@ class StockScreener:
                 elif cmp < dma_50 and cmp < dma_100 and cmp < dma_200:
                     if -10.0 <= diff_200_dma <= -0.01:
                         trend_status = "In Bear Run"
+
+            # Trend Status — Variant B (With Stop-Loss): DMA alignment check
+            # Bull Run SL: CMP>50DMA AND 50DMA>100DMA AND 100DMA>200DMA
+            # Bear Run SL: CMP<50DMA AND 50DMA<100DMA AND 100DMA<200DMA
+            trend_status_sl = "Unconfirmed"
+            if any(pd.isna(v) for v in [dma_50, dma_100, dma_200]):
+                trend_status_sl = "Insufficient History"
+            else:
+                if (
+                    cmp > dma_50
+                    and dma_50 > dma_100
+                    and dma_100 > dma_200
+                    and not pd.isna(diff_200_dma)
+                    and 0.01 <= diff_200_dma <= 10.0
+                ):
+                    trend_status_sl = "In Bull Run (SL)"
+                elif (
+                    cmp < dma_50
+                    and dma_50 < dma_100
+                    and dma_100 < dma_200
+                    and not pd.isna(diff_200_dma)
+                    and -10.0 <= diff_200_dma <= -0.01
+                ):
+                    trend_status_sl = "In Bear Run (SL)"
 
             # Base existing calculations
             car_rating = self._calculate_car_rating(df_ticker)
@@ -832,6 +860,12 @@ class StockScreener:
                         circuit_locked = True
                         circuit_type = "LC (5%)"
 
+            # GTT 20% profit target (Swing strategy exit price)
+            gtt_trigger = bottom_out["GTT_TRIGGER"]
+            gtt_target_20pct: float = (
+                float(gtt_trigger) * 1.20 if not pd.isna(gtt_trigger) else np.nan
+            )
+
             analyzed_records.append(
                 {
                     "SYMBOL": symbol,
@@ -848,11 +882,13 @@ class StockScreener:
                     "DMA_200": dma_200,
                     "DIFF_200_DMA": diff_200_dma,
                     "TREND_STATUS": trend_status,
+                    "TREND_STATUS_SL": trend_status_sl,
                     "CAR_RATING": car_rating,
                     "20D_HIGH": bottom_out["20D_HIGH"],
                     "20D_LOW": bottom_out["20D_LOW"],
                     "TODAY_LOW": bottom_out["TODAY_LOW"],
-                    "GTT_TRIGGER": bottom_out["GTT_TRIGGER"],
+                    "GTT_TRIGGER": gtt_trigger,
+                    "GTT_TARGET_20PCT": gtt_target_20pct,
                     "BOTTOM_OUT_STATUS": bottom_out["BOTTOM_OUT_STATUS"],
                     "SWING_ADVICE": bottom_out["SWING_ADVICE"],
                     "RSI_14": rsi_val,
@@ -1070,6 +1106,114 @@ class StockScreener:
             final_c_filepath,
             len(final_c_df),
         )
+
+        # Filter D: DMA Variant B (With SL / Reverse) — sorted CMP ascending
+        # Sharegenius spec: cheapest stocks first for entry point selection
+        if "TREND_STATUS_SL" in df_analyzed.columns:
+            df_bull_sl: pd.DataFrame = df_analyzed[
+                (df_analyzed["TREND_STATUS_SL"] == "In Bull Run (SL)")
+                & (df_analyzed["CAR_RATING"] == "Buy/Average Out")
+            ].copy()
+            if not df_bull_sl.empty and "CMP" in df_bull_sl.columns:
+                df_bull_sl = df_bull_sl.sort_values(by="CMP", ascending=True)
+            final_d_df: pd.DataFrame = df_bull_sl[
+                [
+                    col
+                    for col in [
+                        "SYMBOL",
+                        "TURNOVER",
+                        "TOTAL_TRADED_VALUE",
+                        "PREVIOUS_CLOSE",
+                        "CMP",
+                        "DIFF_200_DMA",
+                        "DMA_50",
+                        "DMA_100",
+                        "DMA_200",
+                        "CAR_RATING",
+                        "RSI_14",
+                        "TECH_SCORE",
+                    ]
+                    if col in df_bull_sl.columns
+                ]
+            ].copy()
+            final_d_df = final_d_df.rename(
+                columns={
+                    "SYMBOL": "NSE Code",
+                    "TURNOVER": "Volume",
+                    "TOTAL_TRADED_VALUE": "Total Traded Value",
+                    "PREVIOUS_CLOSE": "Previous Close",
+                    "CMP": "CMP",
+                    "DIFF_200_DMA": "Diff 200 DMA",
+                    "DMA_50": "50 DMA",
+                    "DMA_100": "100 DMA",
+                    "DMA_200": "200 DMA",
+                    "CAR_RATING": "CAR",
+                    "RSI_14": "RSI",
+                    "TECH_SCORE": "Tech Score",
+                }
+            )
+            final_d_filename: str = f"dma_bull_sl_{date_str}.csv"
+            final_d_filepath: str = os.path.join(self.processed_dir, final_d_filename)
+            final_d_df.to_csv(final_d_filepath, index=False)
+            LOGGER.info(
+                "DMA Variant B (SL) bull list saved at: %s (%d records)",
+                final_d_filepath,
+                len(final_d_df),
+            )
+
+        # Filter E: Swing list with 20% profit target column
+        if "GTT_TARGET_20PCT" in df_analyzed.columns:
+            df_swing_target: pd.DataFrame = df_analyzed[
+                df_analyzed["BOTTOM_OUT_STATUS"].isin(
+                    ["Start GTT", "Start GTT (Basic)"]
+                )
+            ].copy()
+            if not df_swing_target.empty:
+                if "TOTAL_TRADED_VALUE" in df_swing_target.columns:
+                    df_swing_target = df_swing_target.sort_values(
+                        by="TOTAL_TRADED_VALUE", ascending=False
+                    )
+                final_e_cols = [
+                    col
+                    for col in [
+                        "SYMBOL",
+                        "CMP",
+                        "20D_HIGH",
+                        "20D_LOW",
+                        "GTT_TRIGGER",
+                        "GTT_TARGET_20PCT",
+                        "BOTTOM_OUT_STATUS",
+                        "SWING_ADVICE",
+                        "RSI_14",
+                        "TECH_SCORE",
+                    ]
+                    if col in df_swing_target.columns
+                ]
+                final_e_df: pd.DataFrame = df_swing_target[final_e_cols].copy()
+                final_e_df = final_e_df.rename(
+                    columns={
+                        "SYMBOL": "NSE Code",
+                        "CMP": "CMP",
+                        "20D_HIGH": "20 Day High",
+                        "20D_LOW": "20 Day Low",
+                        "GTT_TRIGGER": "GTT Trigger",
+                        "GTT_TARGET_20PCT": "GTT Target (20%)",
+                        "BOTTOM_OUT_STATUS": "Swing Signal",
+                        "SWING_ADVICE": "Action",
+                        "RSI_14": "RSI",
+                        "TECH_SCORE": "Tech Score",
+                    }
+                )
+                final_e_filename: str = f"swing_target_{date_str}.csv"
+                final_e_filepath: str = os.path.join(
+                    self.processed_dir, final_e_filename
+                )
+                final_e_df.to_csv(final_e_filepath, index=False)
+                LOGGER.info(
+                    "Swing target list (Filter E) saved at: %s (%d records)",
+                    final_e_filepath,
+                    len(final_e_df),
+                )
 
         self._generate_strategy_reports(df_analyzed, date_str)
 
