@@ -1399,8 +1399,8 @@ class NseUtils:
             print("Error fetching Corporate Action Data. Check your input")
             return None
 
-    def get_upcoming_results_calendar(self) -> typing.Any:
-        # Extracts the events calendar from NSE - Filters only the upcoming Financial results related events  # noqa: E501
+    def get_event_calendar(self) -> typing.Any:
+        # Extracts the events calendar from NSE
         try:
             ref_url = "https://www.nseindia.com/companies-listing/corporate-filings-event-calendar"
             ref = requests.get(ref_url, headers=self.headers)
@@ -1410,8 +1410,7 @@ class NseUtils:
             )
             data = response.json()
             df = pd.DataFrame(data)
-            events = df[df["purpose"].str.contains("Results", case=False, na=False)]
-            return events
+            return df
         except Exception:
             print("Error fetching Corporate Action Data. Check your input")
             return None

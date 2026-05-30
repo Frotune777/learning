@@ -550,7 +550,23 @@ class BhavcopyDownloader:
         vol_col: str | None = next(
             (
                 c
-                for c in ["TtlTrdQnty", "TTL_TRD_QNTY", "TOTTRDQTY", "VOLUME"]
+                for c in [
+                    "TtlTrdQnty",
+                    "TTL_TRD_QNTY",
+                    "TOTTRDQTY",
+                    "VOLUME",
+                    "TtlTradgVol",
+                ]
+                if c in raw_df.columns
+            ),
+            None,
+        )
+
+        # --- Turnover (TTV) column ---
+        ttv_col: str | None = next(
+            (
+                c
+                for c in ["TtlTrfVal", "TTL_TRF_VAL", "TOTTRDVAL", "TURNOVER"]
                 if c in raw_df.columns
             ),
             None,
@@ -588,6 +604,11 @@ class BhavcopyDownloader:
             out["Volume"] = pd.to_numeric(raw_df[vol_col], errors="coerce").fillna(0)
         else:
             out["Volume"] = 0.0
+
+        if ttv_col:
+            out["Turnover"] = pd.to_numeric(raw_df[ttv_col], errors="coerce").fillna(0)
+        else:
+            out["Turnover"] = 0.0
 
         out = out.dropna(subset=["Close", "Open", "High", "Low"])
         out = out.reset_index(drop=True)

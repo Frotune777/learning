@@ -8,7 +8,7 @@ External:
 - pandas>=2.2.3: Mock dataframes and CSV verification
 - numpy>=2.4.6: Mock values and array operations
 Internal:
-- src.nse_bhavcopy.screener: Core screener module under test
+- src.screener: Core screener module under test
 
 Key Components:
 Classes:
@@ -45,7 +45,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.nse_bhavcopy.screener import StockScreener
+from src.screener import StockScreener
 
 
 def test_screener_init(tmp_path: Path) -> None:
@@ -162,7 +162,7 @@ def test_fetch_history_success(tmp_path: Path) -> None:
         index=[pd.Timestamp("2026-05-25")],
     )
 
-    with patch("src.nse_bhavcopy.screener.YFinanceFetcher") as MockFetcherClass:
+    with patch("src.screener.YFinanceFetcher") as MockFetcherClass:
         mock_fetcher = MockFetcherClass.return_value
         mock_fetcher.fetch_batch.return_value = mock_df
 
@@ -208,7 +208,7 @@ def test_fetch_history_empty_error(tmp_path: Path) -> None:
     processed_dir = str(tmp_path / "processed")
     screener = StockScreener(processed_dir=processed_dir)
 
-    with patch("src.nse_bhavcopy.screener.YFinanceFetcher") as MockFetcherClass:
+    with patch("src.screener.YFinanceFetcher") as MockFetcherClass:
         mock_fetcher = MockFetcherClass.return_value
         mock_fetcher.fetch_batch.return_value = pd.DataFrame()
 
@@ -856,7 +856,7 @@ def test_fetch_history_chunk_failure(tmp_path: Path) -> None:
     processed_dir = str(tmp_path / "processed")
     screener = StockScreener(processed_dir=processed_dir)
 
-    with patch("src.nse_bhavcopy.screener.YFinanceFetcher") as MockFetcherClass:
+    with patch("src.screener.YFinanceFetcher") as MockFetcherClass:
         mock_fetcher = MockFetcherClass.return_value
         mock_fetcher.fetch_batch.return_value = pd.DataFrame()
 
@@ -921,7 +921,7 @@ def test_fetch_history_single_ticker(tmp_path: Path) -> None:
         index=dates,
     )
 
-    with patch("src.nse_bhavcopy.screener.YFinanceFetcher") as MockFetcherClass:
+    with patch("src.screener.YFinanceFetcher") as MockFetcherClass:
         mock_fetcher = MockFetcherClass.return_value
         mock_fetcher.fetch_batch.return_value = mock_df
 
@@ -929,7 +929,7 @@ def test_fetch_history_single_ticker(tmp_path: Path) -> None:
 
     assert isinstance(res_df.columns, pd.MultiIndex)
     assert "TCS.NS" in res_df.columns.get_level_values(0)
-    assert list(res_df["TCS.NS"].columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert {"Open", "High", "Low", "Close", "Volume"}.issubset(res_df["TCS.NS"].columns)
 
 
 def test_fetch_history_parquet_cache_loop(tmp_path: Path) -> None:
@@ -957,7 +957,7 @@ def test_fetch_history_parquet_cache_loop(tmp_path: Path) -> None:
     )
 
     # First download: cache should be populated
-    with patch("src.nse_bhavcopy.screener.YFinanceFetcher") as MockFetcherClass:
+    with patch("src.screener.YFinanceFetcher") as MockFetcherClass:
         mock_fetcher = MockFetcherClass.return_value
         mock_fetcher.fetch_batch.return_value = mock_df
 
@@ -968,7 +968,7 @@ def test_fetch_history_parquet_cache_loop(tmp_path: Path) -> None:
     assert os.path.exists(cache_file)
 
     # Second download: must fetch from the local cache file, fetch_batch call count = 0
-    with patch("src.nse_bhavcopy.screener.YFinanceFetcher") as MockFetcherClass_second:
+    with patch("src.screener.YFinanceFetcher") as MockFetcherClass_second:
         mock_fetcher_second = MockFetcherClass_second.return_value
         mock_fetcher_second.fetch_batch.return_value = pd.DataFrame()
 
@@ -1008,7 +1008,7 @@ def test_fetch_history_incremental_cache_crud(tmp_path: Path) -> None:
     today_prices = {"TCS.NS": 3500.0}
     test_date = datetime(2026, 5, 26)
 
-    with patch("src.nse_bhavcopy.screener.YFinanceFetcher") as MockFetcherClass:
+    with patch("src.screener.YFinanceFetcher") as MockFetcherClass:
         mock_fetcher = MockFetcherClass.return_value
         mock_fetcher.fetch_batch.return_value = pd.DataFrame()
 
@@ -1018,11 +1018,10 @@ def test_fetch_history_incremental_cache_crud(tmp_path: Path) -> None:
         # Assert no network call made
         mock_fetcher.fetch_batch.assert_not_called()
 
-    # Step 4: Verify cache file updated on disk
+    # Step 4: Verify cache file on disk was NOT mutated with dummy volume rows
     updated_df = pd.read_parquet(cache_file)
-    assert len(updated_df) == 6  # 5 initial + 1 appended
-    assert pd.Timestamp("2026-05-26") in updated_df.index
-    assert updated_df.loc["2026-05-26", "Close"] == 3500.0
+    assert len(updated_df) == 5  # Still 5 initial, NOT 6!
+    assert pd.Timestamp("2026-05-26") not in updated_df.index
 
     # Verify return value is MultiIndexed
     assert isinstance(res_df.columns, pd.MultiIndex)

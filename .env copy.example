@@ -1,0 +1,11 @@
+# ==============================================================================
+# Fyers Broker API Credentials
+# ==============================================================================
+# You can generate these keys from your Fyers API dashboard (https://myapi.fyers.in/)
+
+BROKER_API_KEY=CBG9IRDDE4-100
+BROKER_API_SECRET=6NYTGCWR3R
+
+# Optional: If you already have a valid access token for the day, put it here.
+# Otherwise, use `uv run main.py fyers-login` to generate one dynamically.
+FYERS_ACCESS_TOKEN=

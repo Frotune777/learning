@@ -8,7 +8,7 @@ External:
 Internal:
 - src.storage.equity_master: [NSEEquityMasterBuilder]
 - src.storage.historical_sync: [HistoricalSync]
-- src.nse_bhavcopy.screener: [StockScreener]
+- src.screener: [StockScreener]
 
 Key Components:
 Classes:
@@ -43,30 +43,15 @@ import glob
 import logging
 import os
 import sys
-from collections.abc import Callable
 from datetime import datetime
 
 import pandas as pd
 
-from src.nse_bhavcopy.correlation import run_correlation_cli
+from src.screener import StockScreener
 from src.storage.downloader import BhavcopyDownloader
 from src.storage.equity_master import NSEEquityMasterBuilder
-from src.scanners.etf_screener import run_liquid_etf_screener
-from src.nse_bhavcopy.heatmap import run_heatmap_cli
 from src.storage.historical_sync import (
     HistoricalSync,
-)
-from src.nse_bhavcopy.ma_slope import analyze_stock_ma_slope
-from src.scanners.minervini_screener import run_minervini_cli
-from src.scrapers.mmi_scraper import run_mmi_cli
-from src.scanners.momentum_squeeze import run_squeeze_cli
-from src.scanners.pair_scanner import run_pair_scanner_cli
-from src.nse_bhavcopy.screener import StockScreener
-from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
-from src.storage.sync_registry import SyncRegistry
-from src.nse_bhavcopy.ta_indicators import (
-    add_ta_indicators,
-    calculate_technical_score,
 )
 
 # ---------------------------------------------------------------------------
@@ -94,7 +79,15 @@ DEFAULT_TIMEFRAME: str = "1d"
 _USE_COLOR = sys.stdout.isatty()
 
 
-from src.cli.formatters import _c, dim, bold, green, yellow, red, cyan, white, blue, _rule, _header, _subheader, ok, warn, err, tip, _pause, _confirm, _ask, _ask_float
+from src.cli.formatters import (
+    cyan,
+    dim,
+    err,
+    green,
+    tip,
+)
+
+
 def _find_latest_master(data_dir: str = DEFAULT_DATA_DIR) -> str | None:
     """
     Find the most recently dated master Parquet file in data_dir.
@@ -546,8 +539,8 @@ def cmd_backtest(args: argparse.Namespace) -> None:
         from rich.console import Console
         from rich.table import Table
 
-        from src.nse_bhavcopy.backtester import NSEEventBacktester
         from src.ml.ml_classifier import MLClassifier
+        from src.nse_bhavcopy.backtester import NSEEventBacktester
 
         clf = MLClassifier(n_estimators=args.n_estimators, max_depth=args.max_depth)
         X, y = clf.prepare_features(df_prices, df_delivery)
@@ -774,3 +767,114 @@ def cmd_fyers_token(args: argparse.Namespace) -> None:
     print(f"\n{green('✔')}  Fyers access token saved to {fetcher.token_cache}")
     print(f"   {dim('Token is valid for one trading day.')}")
     print(f"   {dim('Run this command each morning before using the pipeline.')}")
+
+
+def cmd_ml_anomaly(args: argparse.Namespace) -> None:
+    """
+    Run the ML anomaly detector on a specific symbol to find data quality issues or smart money footprints.
+
+    Parameters:
+        args (argparse.Namespace): Parsed command-line arguments.
+    """
+    symbol = args.symbol.strip().upper()
+    price_path = os.path.join(args.hist_dir, "1d", f"{symbol}.parquet")
+    if not os.path.exists(price_path):
+        LOGGER.error("Historical Parquet file not found at: %s", price_path)
+        sys.exit(1)
+
+    try:
+        import pandas as pd
+
+        df_prices = pd.read_parquet(price_path)
+
+        from src.ml.anomaly_detector import AnomalyDetector
+
+        detector = AnomalyDetector(contamination=0.02)
+
+        # 1. Show Data Quality Issues Removed
+        clean_df = detector.filter_data_quality(df_prices)
+
+        if len(clean_df) < len(df_prices):
+            bad_dates = df_prices.index.difference(clean_df.index)
+            print(
+                f"\n⚠️  Found {len(bad_dates)} severe data quality errors (zero volume, huge splits)."
+            )
+            from src.cli.formatters import _confirm, cyan, err, ok
+
+            if _confirm(
+                f"Auto-heal these {len(bad_dates)} dates using NSE Bhavcopy?",
+                default=True,
+            ):
+                from src.storage.downloader import BhavcopyDownloader
+
+                dl = BhavcopyDownloader()
+                healed_count = 0
+                for bd in bad_dates:
+                    try:
+                        print(f"  Fetching Bhavcopy for {bd.strftime('%Y-%m-%d')}...")
+                        raw_bytes = dl.download_raw_bhavcopy(bd)
+                        df_bhav = dl.parse_bhavcopy_ohlcv(raw_bytes, bd)
+                        row = df_bhav[df_bhav["Symbol"] == symbol]
+                        if not row.empty:
+                            df_prices.loc[bd, "Volume"] = row["Volume"].values[0]
+                            if "Turnover" in row.columns:
+                                df_prices.loc[bd, "Turnover"] = row["Turnover"].values[
+                                    0
+                                ]
+                            healed_count += 1
+                        else:
+                            print(
+                                f"  {cyan(symbol)} not found in Bhavcopy for {bd.strftime('%Y-%m-%d')}"
+                            )
+                    except Exception as e:
+                        print(
+                            f"  {err('Failed to heal')} {bd.strftime('%Y-%m-%d')}: {e}"
+                        )
+
+                if healed_count > 0:
+                    # Save healed df back to parquet
+                    df_prices.to_parquet(price_path)
+                    print(
+                        f"\n{ok('Healed')} {healed_count} rows and updated {price_path}!"
+                    )
+                    # Re-run filter_data_quality on the healed data
+                    clean_df = detector.filter_data_quality(df_prices)
+
+        # 2. Run ML Anomaly Detection on Clean Data
+        if len(clean_df) < 25:
+            print(f"Not enough data to run Isolation Forest on {symbol}.")
+            return
+
+        anomalies = detector.detect_anomalies(clean_df)
+
+        from rich.console import Console
+        from rich.table import Table
+
+        console = Console()
+        table = Table(
+            title=f"🚨 ML Anomalies Detected for {symbol}", style="bold magenta"
+        )
+        table.add_column("Date", style="cyan")
+        table.add_column("Close", justify="right", style="green")
+        table.add_column("Daily Ret", justify="right")
+        table.add_column("Vol Z-Score", justify="right")
+        table.add_column("HL Spread", justify="right")
+        table.add_column("Anomaly Score", justify="right", style="red")
+
+        for idx, row in anomalies.tail(15).iterrows():
+            dret = f"{row['Daily_Return']*100:.2f}%"
+            volz = f"{row['Vol_ZScore']:.2f}"
+            hl = f"{row['HL_Spread_Pct']*100:.2f}%"
+            score = f"{row['Anomaly_Score']:.3f}"
+            dt_str = idx.strftime("%Y-%m-%d")
+            table.add_row(dt_str, f"{row['Close']:.2f}", dret, volz, hl, score)
+
+        print("")
+        console.print(table)
+        print(
+            "\nNote: Negative anomaly scores indicate statistically significant outlier days."
+        )
+
+    except Exception as exc:
+        LOGGER.error("ML Anomaly detection failed: %s", exc)
+        sys.exit(1)

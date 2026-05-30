@@ -51,7 +51,6 @@ class BhavcopyIncrementalSync:
         timeframe: str = "1d",
         raw_dir: str = "data/raw",
         rate_delay: float = 1.0,
-        recompute_ta: bool = True,
     ) -> None:
         """
         Initialise BhavcopyIncrementalSync with directory paths and options.
@@ -61,7 +60,6 @@ class BhavcopyIncrementalSync:
             timeframe (str): Only '1d' is meaningful for Bhavcopy. | Default '1d'.
             raw_dir (str): Cache directory for raw Bhavcopy ZIPs. | Writable path.
             rate_delay (float): Sleep between ZIP downloads in seconds. | >= 0.
-            recompute_ta (bool): Run TA-Lib indicators after each symbol append.
 
         Returns:
             None
@@ -80,7 +78,6 @@ class BhavcopyIncrementalSync:
         self.timeframe: str = timeframe
         self.raw_dir: str = raw_dir
         self.rate_delay: float = rate_delay
-        self.recompute_ta: bool = recompute_ta
         self._tf_dir: str = os.path.join(data_dir, timeframe)
 
         os.makedirs(self._tf_dir, exist_ok=True)
@@ -157,10 +154,6 @@ class BhavcopyIncrementalSync:
         df = df[~df.index.duplicated(keep="last")].sort_index()
         path = self._parquet_path(symbol)
         try:
-            if self.recompute_ta:
-                from src.nse_bhavcopy.ta_indicators import add_ta_indicators
-
-                df = add_ta_indicators(df)
             df.to_parquet(path)
             LOGGER.debug("Saved %d rows → %s", len(df), path)
         except Exception as exc:
@@ -435,7 +428,6 @@ class BhavcopyIncrementalSync:
         self,
         symbols: list[str],
         days_back: int = 10,
-        recompute_ta: bool = True,
     ) -> dict[str, bool]:
         """
         Orchestrate the full Bhavcopy incremental sync for all given symbols.
@@ -470,7 +462,6 @@ class BhavcopyIncrementalSync:
             >>> results = syncer.run(["TCS", "INFY", "RELIANCE"], days_back=5)
             >>> print(sum(results.values()), "symbols updated")
         """
-        self.recompute_ta = recompute_ta
 
         registry = SyncRegistry(registry_dir=self.data_dir, timeframe=self.timeframe)
         registry.load()

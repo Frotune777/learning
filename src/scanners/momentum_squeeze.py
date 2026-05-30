@@ -135,6 +135,7 @@ def momentum_squeeze(
 from src.core.signal import Signal
 from src.scanners.registry import register_scanner
 
+
 @register_scanner
 def run_squeeze_cli(
     symbol: str = "^NSEI",
@@ -185,11 +186,11 @@ def run_squeeze_cli(
         sqz_on = row["SqueezeOn"]
         sqz_off = row["SqueezeOff"]
         action = _map_action(mom)
-        
+
         # Conviction: if squeeze is on, it's building up (0.5), if it's off it fired (1.0).
         # We also look at strong vs weak momentum for conviction.
         conviction = 1.0 if mom in ["lime", "red"] else 0.5
-        
+
         sqz_str = "SQUEEZE" if sqz_on else ("release" if sqz_off else "---")
         direction_str = {
             "lime": "⬆ Strong Bullish",
@@ -197,9 +198,9 @@ def run_squeeze_cli(
             "red": "⬇ Strong Bearish",
             "maroon": "↓ Bearish",
         }.get(str(mom), "?")
-        
+
         timestamp = dt if isinstance(dt, datetime) else datetime.now()
-        
+
         sig = Signal(
             symbol=symbol,
             strategy_name="momentum_squeeze",
@@ -210,8 +211,8 @@ def run_squeeze_cli(
                 "close": row["Close"],
                 "momentum": row["Momentum"],
                 "squeeze_on": sqz_on,
-                "raw_signal": f"{sqz_str} | {direction_str}"
-            }
+                "raw_signal": f"{sqz_str} | {direction_str}",
+            },
         )
         signals.append(sig)
 

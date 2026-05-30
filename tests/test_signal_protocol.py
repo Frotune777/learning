@@ -1,6 +1,8 @@
-from src.core.signal import Signal
-from src.core.consensus_engine import aggregate_signals
 from datetime import datetime
+
+from src.core.consensus_engine import aggregate_signals
+from src.core.signal import Signal
+
 
 def test_signal_validation():
     # Should raise on bad action
@@ -9,6 +11,7 @@ def test_signal_validation():
         assert False, "Should have raised ValueError"
     except ValueError:
         pass
+
 
 def test_consensus_aggregation():
     signals = [

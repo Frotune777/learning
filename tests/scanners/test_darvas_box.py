@@ -8,12 +8,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src.core.signal import Signal
 from src.scanners.darvas_box import (
     _count_trailing_true,
     detect_darvas_box,
     scan_darvas_breakouts,
 )
-from src.core.signal import Signal
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -148,10 +148,10 @@ def test_detect_darvas_box_edge_row_counts(n: int) -> None:
     result = detect_darvas_box(df)
     assert "signal" in result
 
+
 def test_scan_darvas_breakouts_signal_protocol(tmp_path):
     """scan_darvas_breakouts should return a list of Signal objects."""
-    import os
-    
+
     # Create mock parquet data
     df_hist = _make_breakout_ohlcv(
         consolidation=35,
@@ -160,23 +160,19 @@ def test_scan_darvas_breakouts_signal_protocol(tmp_path):
         vol_normal=300_000.0,
         vol_spike=3_000_000.0,
     )
-    
+
     daily_dir = tmp_path / "1d"
     daily_dir.mkdir()
     df_hist.to_parquet(daily_dir / "MOCKSTOCK.parquet")
-    
-    analyzed_df = pd.DataFrame({
-        "SYMBOL": ["MOCKSTOCK"],
-        "CMP": [125.0],
-        "TECH_SCORE": [9.0]
-    })
-    
-    signals = scan_darvas_breakouts(
-        analyzed_df=analyzed_df,
-        daily_dir=str(daily_dir),
-        output_dir=str(tmp_path)
+
+    analyzed_df = pd.DataFrame(
+        {"SYMBOL": ["MOCKSTOCK"], "CMP": [125.0], "TECH_SCORE": [9.0]}
     )
-    
+
+    signals = scan_darvas_breakouts(
+        analyzed_df=analyzed_df, daily_dir=str(daily_dir), output_dir=str(tmp_path)
+    )
+
     assert isinstance(signals, list)
     assert len(signals) == 1
     sig = signals[0]

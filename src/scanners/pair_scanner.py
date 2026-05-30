@@ -133,9 +133,11 @@ def test_cointegration(
 
 
 import uuid
+from datetime import datetime
+
 from src.core.signal import Signal
 from src.scanners.registry import register_scanner
-from datetime import datetime
+
 
 @register_scanner
 def scan_cointegrated_pairs(
@@ -194,7 +196,7 @@ def scan_cointegrated_pairs(
     )
 
     signals: list[Signal] = []
-    
+
     for i in range(n):
         for j in range(i + 1, n):
             sym_a = loaded_syms[i]
@@ -205,22 +207,24 @@ def scan_cointegrated_pairs(
                 lookback=lookback,
             )
             if not np.isnan(p_val) and p_val <= max_pval:
-                actionable = abs(zscore) >= zscore_entry if not np.isnan(zscore) else False
+                actionable = (
+                    abs(zscore) >= zscore_entry if not np.isnan(zscore) else False
+                )
                 if actionable and signal != "Neutral":
                     pair_id = str(uuid.uuid4())
-                    
+
                     # Calculate conviction (capped at 1.0)
                     conviction = min(1.0, abs(zscore) / (zscore_entry * 2.0))
-                    
+
                     if signal == "BUY A / SELL B":
                         action_a, action_b = 1, -1
                     elif signal == "SELL A / BUY B":
                         action_a, action_b = -1, 1
                     else:
                         continue
-                        
+
                     now = datetime.now()
-                    
+
                     # Signal for Stock A
                     sig_a = Signal(
                         symbol=sym_a,
@@ -233,12 +237,12 @@ def scan_cointegrated_pairs(
                             "pair_symbol": sym_b,
                             "pair_action": action_b,
                             "z_score": zscore,
-                            "spread_mean": 0.0, # Dummy since not exported by test_cointegration
+                            "spread_mean": 0.0,  # Dummy since not exported by test_cointegration
                             "half_life": 0.0,
-                            "trade_type": signal
-                        }
+                            "trade_type": signal,
+                        },
                     )
-                    
+
                     # Signal for Stock B
                     sig_b = Signal(
                         symbol=sym_b,
@@ -253,12 +257,12 @@ def scan_cointegrated_pairs(
                             "z_score": zscore,
                             "spread_mean": 0.0,
                             "half_life": 0.0,
-                            "trade_type": signal
-                        }
+                            "trade_type": signal,
+                        },
                     )
-                    
+
                     signals.extend([sig_a, sig_b])
-                    
+
                     if len(signals) >= max_pairs * 2:
                         break
         if len(signals) >= max_pairs * 2:

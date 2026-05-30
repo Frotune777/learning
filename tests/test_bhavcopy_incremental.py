@@ -358,9 +358,7 @@ class TestUpdateSymbol:
         saved = pd.read_parquet(syncer._parquet_path(symbol))
         assert saved.index.duplicated().sum() == 0
 
-    def test_corp_action_triggers_false(
-        self, syncer: BhavcopyIncrementalSync
-    ) -> None:
+    def test_corp_action_triggers_false(self, syncer: BhavcopyIncrementalSync) -> None:
         """A >100% price gap between last existing close and new close returns False."""
         symbol = "SMALLCAP"
         n_existing = 5

@@ -7,7 +7,6 @@ Last Modified: 2026-05-29
 import logging
 import os
 import time
-from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -57,6 +56,7 @@ def _rsi_to_step_hint(rsi: float) -> str:
 
 from src.core.signal import Signal
 from src.scanners.registry import register_scanner
+
 
 @register_scanner
 def scan_rsi_signals(
@@ -145,8 +145,9 @@ def scan_rsi_signals(
         n50 = set()
     df_signals["IN_NIFTY50"] = df_signals["SYMBOL"].isin(n50)
 
-    from src.core.signal import Signal
     from datetime import datetime
+
+    from src.core.signal import Signal
 
     t0_calc = time.time()
     signals = []
@@ -155,18 +156,18 @@ def scan_rsi_signals(
         symbol = row.get("SYMBOL", "")
         if not symbol:
             continue
-            
+
         rsi_val = float(row.get("RSI_14", 0.0))
         cmp_val = float(row.get("CMP", 0.0))
-        
+
         # Calculate conviction (lower RSI = higher conviction)
         # e.g., RSI 35 = 0.0 conviction, RSI 10 = 1.0 conviction
         conv = max(0.0, min(1.0, (RSI_ENTRY_THRESHOLD - rsi_val) / 25.0))
-        
+
         sig = Signal(
             symbol=symbol,
             strategy_name="rsi_scanner",
-            action=1, # Always buy since RSI < 35
+            action=1,  # Always buy since RSI < 35
             conviction=round(conv, 2),
             timestamp=datetime.now(),
             meta={
@@ -174,14 +175,19 @@ def scan_rsi_signals(
                 "cmp": cmp_val,
                 "step_hint": row.get("STEP_HINT", ""),
                 "in_nifty50": row.get("IN_NIFTY50", False),
-                "amo_price": row.get("AMO_PRICE", np.nan)
-            }
+                "amo_price": row.get("AMO_PRICE", np.nan),
+            },
         )
         signals.append(sig)
 
     calc_time = time.time() - t0_calc
-    LOGGER.info("RSI scanner: %d signals generated in %.3fs (Load: %.3fs, Calc: %.3fs)", 
-                len(signals), calc_time, data_load_time, calc_time)
+    LOGGER.info(
+        "RSI scanner: %d signals generated in %.3fs (Load: %.3fs, Calc: %.3fs)",
+        len(signals),
+        calc_time,
+        data_load_time,
+        calc_time,
+    )
     return signals
 
 

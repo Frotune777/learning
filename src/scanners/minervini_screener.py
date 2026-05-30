@@ -316,9 +316,11 @@ def filter_candidates(df: pd.DataFrame) -> pd.DataFrame:
     return candidates.sort_values("RS_Rating", ascending=False).reset_index()
 
 
-from src.core.signal import Signal
 from datetime import datetime
+
+from src.core.signal import Signal
 from src.scanners.registry import register_scanner
+
 
 @register_scanner
 def run_minervini_cli() -> list[Signal]:
@@ -833,20 +835,20 @@ def run_minervini_cli() -> list[Signal]:
 
     results = run_minervini_screener(symbols)
     candidates = filter_candidates(results)
-    
+
     signals = []
     if candidates.empty:
         return signals
-        
+
     candidates = candidates.rename(columns={"index": "Symbol"})
     now = datetime.now()
-    
+
     for _, row in candidates.iterrows():
         symbol = row["Symbol"]
         # Conviction based on RS_Rating (70 to 100 maps to 0.0 to 1.0)
         rs_rating = float(row.get("RS_Rating", 70.0))
         conv = min(1.0, max(0.0, (rs_rating - 70.0) / 30.0))
-        
+
         sig = Signal(
             symbol=symbol,
             strategy_name="minervini_screener",
@@ -858,8 +860,8 @@ def run_minervini_cli() -> list[Signal]:
                 "template_score": row.get("Template_Score"),
                 "stage2": row.get("Stage2"),
                 "high_proximity": round(float(row.get("High_Proximity", 0)), 2),
-                "rvol": round(float(row.get("RVOL", 0)), 2)
-            }
+                "rvol": round(float(row.get("RVOL", 0)), 2),
+            },
         )
         signals.append(sig)
 

@@ -4,16 +4,15 @@ Purpose: Screens equity ETFs for the most liquid instrument per sector by turnov
 Last Modified: 2026-05-27
 """
 
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
 
-from src.nse_live.nse_utils import NseUtils
-
-
 from src.core.signal import Signal
-from datetime import datetime
+from src.nse_live.nse_utils import NseUtils
 from src.scanners.registry import register_scanner
+
 
 @register_scanner
 def run_liquid_etf_screener() -> list[Signal]:
@@ -154,15 +153,15 @@ def run_liquid_etf_screener() -> list[Signal]:
     signals = []
     now = datetime.now()
     max_weight = df["Weight"].max() if not df.empty else 1.0
-    
+
     for _, row in df.iterrows():
         symbol = row["ETF"]
         weight = row["Weight"]
         category = row["Category"]
-        
+
         # Conviction based on relative turnover (weight)
         conv = min(1.0, float(weight / max_weight)) if max_weight > 0 else 1.0
-        
+
         sig = Signal(
             symbol=symbol,
             strategy_name="etf_screener",
@@ -174,8 +173,8 @@ def run_liquid_etf_screener() -> list[Signal]:
                 "weight": weight,
                 "volume": row["Volume"],
                 "cmp": row["Close"],
-                "underlying": row["Underlying"]
-            }
+                "underlying": row["Underlying"],
+            },
         )
         signals.append(sig)
 

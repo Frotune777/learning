@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-30
+
+### Added
+- Integrated `CorporateDataScraper` to automatically fetch and cache NSE Corporate Actions, Announcements, Event Calendars, and Insider Trading (SEBI Reg 7) data.
+- Added fundamental overlay columns (`Corp Action`, `Catalyst Boost`, `Event Risk (Days)`, `Insider Score`) to the Technical Screener outputs for the Final, Swing, and Super lists.
+- Decoupled `main.py` "God Script" into modularized components inside `src/cli/` (actions, menus, formatters) for clean REPL execution.
+- Implemented `validate_symbol` and input parsing utilities in `src/core/utils.py`.
+
+### Changed
+- Refactored `get_event_calendar()` in `NseUtils` to capture all corporate events (AGMs, Board Meetings) instead of strictly financial results.
+- Fixed directory structure mappings causing `master_not_found` errors.
+
 ## [1.1.0] - 2026-05-27
 
 ### Added

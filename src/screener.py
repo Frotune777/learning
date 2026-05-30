@@ -196,15 +196,23 @@ class StockScreener:
                     if not cached_df.empty:
                         # Perform incremental Daily CRUD if we have today's price
                         if today_prices and date_obj and ticker in today_prices:
-                            # Normalize index to tz-naive
+                            # Normalize index to tz-naive dates to prevent 18:30:00 vs 00:00:00 duplicates
                             if cached_df.index.tz is not None:
-                                cached_df.index = cached_df.index.tz_convert(None)
+                                # Convert to IST if it was UTC, then strip timezone and normalize to midnight
+                                cached_df.index = (
+                                    cached_df.index.tz_convert("Asia/Kolkata")
+                                    .tz_localize(None)
+                                    .normalize()
+                                )
                             else:
-                                cached_df.index = pd.to_datetime(cached_df.index)
+                                cached_df.index = pd.to_datetime(
+                                    cached_df.index
+                                ).normalize()
 
                             target_date = (
                                 pd.Timestamp(date_obj).normalize().tz_localize(None)
                             )
+
                             if target_date not in cached_df.index:
                                 price = today_prices[ticker]
                                 new_row = pd.DataFrame(
@@ -223,19 +231,20 @@ class StockScreener:
                                     ~cached_df.index.duplicated(keep="last")
                                 ]
 
-                                # Enrich with TA indicators before saving
-                                from src.nse_bhavcopy.ta_indicators import (
-                                    add_ta_indicators,
-                                )
+                                # DO NOT save to parquet here!
+                                # Screener should only inject this in-memory for TA calculation.
+                                # Actual data persistence should be handled by BhavcopyIncrementalSync.
 
-                                cached_df = add_ta_indicators(cached_df)
-                                cached_df.to_parquet(cache_path)
+                        # Dynamically calculate TA in-memory before downstream usage
+                        from src.nse_bhavcopy.ta_indicators import add_ta_indicators
+
+                        cached_df = add_ta_indicators(cached_df)
 
                         # Reconstruct MultiIndex structure expected downstream
-                        req_cols = ["Open", "High", "Low", "Close", "Volume"]
-                        existing_cols = [c for c in req_cols if c in cached_df.columns]
+                        # Use all columns (including new dynamic TA columns)
+                        existing_cols = list(cached_df.columns)
 
-                        df_slice = cached_df[existing_cols].copy()
+                        df_slice = cached_df.copy()
                         df_slice.columns = pd.MultiIndex.from_product(
                             [[ticker], existing_cols]
                         )
@@ -275,13 +284,16 @@ class StockScreener:
                             symbol = ticker.replace(".NS", "").upper()
                             cache_path = os.path.join(cache_dir, f"{symbol}.parquet")
 
-                            # Enrich with TA indicators before saving
-                            from src.nse_bhavcopy.ta_indicators import (
-                                add_ta_indicators,
-                            )
-
-                            df_single = add_ta_indicators(df_single)
+                            # Save raw OHLCV data to cache without TA
                             df_single.to_parquet(cache_path)
+
+                            # Dynamically calculate TA in-memory before downstream usage
+                            from src.nse_bhavcopy.ta_indicators import add_ta_indicators
+
+                            df_t_with_ta = add_ta_indicators(df_single.copy())
+
+                            # Replace df_single with TA-enriched version for the batch df
+                            df_batch[ticker] = df_t_with_ta
                         except Exception as ex:
                             LOGGER.warning(
                                 "Failed to save cache for %s: %s", ticker, ex
@@ -293,8 +305,15 @@ class StockScreener:
                 sliced_dfs = []
                 for t in present_tickers:
                     df_t = df_batch[t].copy()
-                    existing_cols = [c for c in req_cols if c in df_t.columns]
-                    df_t = df_t[existing_cols]
+                    df_t = df_batch[t].copy()
+
+                    # Ensure TA is applied if not already done (for tickers not just downloaded)
+                    if "DMA_200" not in df_t.columns:
+                        from src.nse_bhavcopy.ta_indicators import add_ta_indicators
+
+                        df_t = add_ta_indicators(df_t)
+
+                    existing_cols = list(df_t.columns)
                     df_t.columns = pd.MultiIndex.from_product([[t], existing_cols])
                     sliced_dfs.append(df_t)
 
@@ -578,6 +597,12 @@ class StockScreener:
 
         analyzed_records: list[dict[str, Any]] = []
 
+        # Initialize Corporate Data Scraper for fundamental overlay
+        from src.scrapers.corporate_data import CorporateDataScraper
+
+        corp_scraper = CorporateDataScraper()
+        corp_scraper.fetch_and_cache_all(force_refresh=False)
+
         # Step 3: Loop through all symbols
         for symbol in symbols:
             ns_ticker: str = self._get_ns_ticker(symbol)
@@ -633,6 +658,12 @@ class StockScreener:
                         "CIRCUIT_LOCKED": False,
                         "CIRCUIT_TYPE": "None",
                         "ATR_14": np.nan,
+                        "Corp Action": corp_scraper.get_upcoming_actions(symbol),
+                        "Catalyst Boost": corp_scraper.get_recent_announcements(symbol),
+                        "Event Risk (Days)": corp_scraper.get_days_to_next_event(
+                            symbol
+                        ),
+                        "Insider Score": corp_scraper.get_insider_score(symbol),
                     }
                 )
                 continue
@@ -923,6 +954,10 @@ class StockScreener:
                     "STR_DMA_REV_SL": str_dma_rev["sl"],
                     "STR_DMA_NOSL_ACTION": str_dma_nosl["action"],
                     "STR_DMA_NOSL_TARGET": str_dma_nosl["target"],
+                    "Corp Action": corp_scraper.get_upcoming_actions(symbol),
+                    "Catalyst Boost": corp_scraper.get_recent_announcements(symbol),
+                    "Event Risk (Days)": corp_scraper.get_days_to_next_event(symbol),
+                    "Insider Score": corp_scraper.get_insider_score(symbol),
                 }
             )
 
@@ -960,6 +995,10 @@ class StockScreener:
                 "RSI_14",
                 "TECH_SCORE",
                 "TECH_RATING",
+                "Corp Action",
+                "Catalyst Boost",
+                "Event Risk (Days)",
+                "Insider Score",
             ]
         ].copy()
 
@@ -976,6 +1015,10 @@ class StockScreener:
                 "RSI_14": "RSI",
                 "TECH_SCORE": "Tech Score",
                 "TECH_RATING": "Tech Rating",
+                "Corp Action": "Corp Action",
+                "Catalyst Boost": "Catalyst Boost",
+                "Event Risk (Days)": "Event Risk (Days)",
+                "Insider Score": "Insider Score",
             }
         )
 
@@ -1009,6 +1052,10 @@ class StockScreener:
                 "SWING_ADVICE",
                 "RSI_14",
                 "TECH_SCORE",
+                "Corp Action",
+                "Catalyst Boost",
+                "Event Risk (Days)",
+                "Insider Score",
             ]
         ].copy()
 
@@ -1027,6 +1074,10 @@ class StockScreener:
                 "SWING_ADVICE": "Action",
                 "RSI_14": "RSI",
                 "TECH_SCORE": "Tech Score",
+                "Corp Action": "Corp Action",
+                "Catalyst Boost": "Catalyst Boost",
+                "Event Risk (Days)": "Event Risk (Days)",
+                "Insider Score": "Insider Score",
             }
         )
         if "Total Traded Value" in final_b_df.columns:
@@ -1069,6 +1120,10 @@ class StockScreener:
                 "TODAY_LOW",
                 "GTT_TRIGGER",
                 "SWING_ADVICE",
+                "Corp Action",
+                "Catalyst Boost",
+                "Event Risk (Days)",
+                "Insider Score",
             ]
         ].copy()
 
@@ -1088,6 +1143,10 @@ class StockScreener:
                 "TODAY_LOW": "Today Low",
                 "GTT_TRIGGER": "GTT Trigger",
                 "SWING_ADVICE": "Action",
+                "Corp Action": "Corp Action",
+                "Catalyst Boost": "Catalyst Boost",
+                "Event Risk (Days)": "Event Risk (Days)",
+                "Insider Score": "Insider Score",
             }
         )
         if "Total Traded Value" in final_c_df.columns:
@@ -1572,17 +1631,18 @@ class StockScreener:
         return {"action": action, "target": cmp * 1.0628, "sl": np.nan}
 
 
-from src.core.signal import Signal
-from src.core.consensus_engine import aggregate_signals
-from src.scanners.registry import get_all_scanners
-from src.engine.parallel_scanner import run_parallel_scan
 import functools
+
 import pandas as pd
+
+from src.core.consensus_engine import aggregate_signals
+from src.engine.parallel_scanner import run_parallel_scan
+
 
 def run_all_scanners(
     analyzed_csv_path: str = "data/processed/top_250_analyzed_latest.csv",
     daily_dir: str = "data/historical/1d",
-    max_workers: int | None = None
+    max_workers: int | None = None,
 ) -> dict[str, float]:
     """
     Aggregates signals from all active scanners in the registry using the parallel engine.
@@ -1591,14 +1651,64 @@ def run_all_scanners(
         dict[str, float]: Consensus scores for each symbol.
     """
     # Import specific scanners to bind arguments
-    from src.scanners.rsi_scanner import scan_rsi_signals
     from src.scanners.darvas_box import scan_darvas_breakouts
-    from src.scanners.momentum_squeeze import run_squeeze_cli
-    from src.scanners.pair_scanner import scan_cointegrated_pairs
     from src.scanners.etf_screener import run_liquid_etf_screener
     from src.scanners.minervini_screener import run_minervini_cli
+    from src.scanners.momentum_squeeze import run_squeeze_cli
+    from src.scanners.pair_scanner import scan_cointegrated_pairs
+    from src.scanners.rsi_scanner import scan_rsi_signals
 
-    # Create dummy DataFrame for Darvas Box and Pair Scanner if CSV doesn't exist
+    # Create a real DataFrame for Darvas Box and Pair Scanner if CSV doesn't exist
+    if not os.path.exists(analyzed_csv_path):
+        os.makedirs(os.path.dirname(analyzed_csv_path), exist_ok=True)
+        import yfinance as yf
+
+        try:
+            ticker = yf.Ticker("TCS.NS")
+            hist = ticker.history(period="1mo")
+            if len(hist) >= 15:
+                cmp = float(hist["Close"].iloc[-1])
+                prev_close = float(hist["Close"].iloc[-2])
+                turnover = float(hist["Volume"].iloc[-1] * cmp)
+
+                diff = hist["Close"].diff(1)
+                gain = (diff.where(diff > 0, 0)).rolling(window=14).mean()
+                loss = (-diff.where(diff < 0, 0)).rolling(window=14).mean()
+                rs = gain / (loss + 1e-9)
+                rsi = 100 - (100 / (1 + rs))
+                rsi_14 = float(rsi.iloc[-1])
+                if pd.isna(rsi_14):
+                    rsi_14 = 50.0
+            else:
+                raise ValueError("Insufficient data")
+
+            df_init = pd.DataFrame(
+                [
+                    {
+                        "SYMBOL": "TCS",
+                        "CMP": cmp,
+                        "PREVIOUS_CLOSE": prev_close,
+                        "RSI_14": rsi_14,
+                        "TURNOVER": turnover,
+                    }
+                ]
+            )
+        except Exception:
+            # Fallback to hardcoded only if network fails
+            df_init = pd.DataFrame(
+                [
+                    {
+                        "SYMBOL": "TCS",
+                        "CMP": 3500.0,
+                        "PREVIOUS_CLOSE": 3400.0,
+                        "RSI_14": 30.0,
+                        "TURNOVER": 1000000.0,
+                    }
+                ]
+            )
+
+        df_init.to_csv(analyzed_csv_path, index=False)
+
     try:
         df = pd.read_csv(analyzed_csv_path)
     except Exception:
@@ -1611,15 +1721,16 @@ def run_all_scanners(
         functools.partial(scan_rsi_signals, analyzed_csv_path=analyzed_csv_path),
         functools.partial(scan_darvas_breakouts, analyzed_df=df, daily_dir=daily_dir),
         functools.partial(run_squeeze_cli, symbol="^NSEI", daily_dir=daily_dir),
-        functools.partial(scan_cointegrated_pairs, symbols=symbols, daily_dir=daily_dir),
+        functools.partial(
+            scan_cointegrated_pairs, symbols=symbols, daily_dir=daily_dir
+        ),
         functools.partial(run_liquid_etf_screener),
         functools.partial(run_minervini_cli),
     ]
 
     # Execute parallel scan
     signals, metrics = run_parallel_scan(scanner_partials, max_workers=max_workers)
-    
+
     # Calculate consensus
     consensus = aggregate_signals(signals)
     return consensus
-

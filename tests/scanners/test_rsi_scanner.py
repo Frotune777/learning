@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
+from src.core.signal import Signal
 from src.scanners.rsi_scanner import (
     MIN_PRICE_DROP_PCT,
     RSI_ENTRY_THRESHOLD,
@@ -18,7 +19,6 @@ from src.scanners.rsi_scanner import (
     get_todays_buy,
     scan_rsi_signals,
 )
-from src.core.signal import Signal
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,14 @@ def test_scan_rsi_signals_excludes_above_threshold(tmp_path: str) -> None:
 
 def test_get_todays_buy_returns_first_row() -> None:
     """get_todays_buy returns the first Signal of a non-empty list."""
-    sig = Signal(symbol="IRFC", strategy_name="rsi_scanner", action=1, conviction=1.0, timestamp=pd.Timestamp.now(), meta={})
+    sig = Signal(
+        symbol="IRFC",
+        strategy_name="rsi_scanner",
+        action=1,
+        conviction=1.0,
+        timestamp=pd.Timestamp.now(),
+        meta={},
+    )
     row = get_todays_buy([sig])
     assert row is not None
     assert row.symbol == "IRFC"

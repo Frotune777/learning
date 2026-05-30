@@ -185,6 +185,7 @@ def _count_trailing_true(series: pd.Series) -> int:
 from src.core.signal import Signal
 from src.scanners.registry import register_scanner
 
+
 @register_scanner
 def scan_darvas_breakouts(
     analyzed_df: pd.DataFrame,
@@ -243,6 +244,7 @@ def scan_darvas_breakouts(
         return 0
 
     from datetime import datetime
+
     signals: list[Signal] = []
 
     for symbol in analyzed_df["SYMBOL"].dropna().unique():
@@ -264,10 +266,10 @@ def scan_darvas_breakouts(
             tech = (
                 float(row_data["TECH_SCORE"].iloc[0]) if not row_data.empty else np.nan
             )
-            
+
             # Conviction: 1.0 if volume confirmed, 0.5 if not
             conviction = 1.0 if result["vol_confirmed"] else 0.5
-            
+
             sig = Signal(
                 symbol=symbol,
                 strategy_name="darvas_box",
@@ -281,8 +283,8 @@ def scan_darvas_breakouts(
                     "vol_confirmed": result["vol_confirmed"],
                     "cmp": cmp_val,
                     "tech_score": tech,
-                    "raw_signal": sig_str
-                }
+                    "raw_signal": sig_str,
+                },
             )
             signals.append(sig)
 
@@ -291,7 +293,9 @@ def scan_darvas_breakouts(
         return []
 
     # Sort signals by volume confirmation and box days
-    signals.sort(key=lambda x: (x.meta["vol_confirmed"], x.meta["box_days"]), reverse=True)
+    signals.sort(
+        key=lambda x: (x.meta["vol_confirmed"], x.meta["box_days"]), reverse=True
+    )
 
     LOGGER.info("Darvas scanner: %d signals generated", len(signals))
     return signals

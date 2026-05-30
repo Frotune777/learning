@@ -1,45 +1,18 @@
+import glob
+import json
+from functools import lru_cache, wraps
+from pathlib import Path
+from typing import Any, ClassVar
+
+import structlog
+from tqdm import tqdm
+
 """
-File: main.py
-Purpose: Unified CLI and interactive menu for the NSE data pipeline.
-
-Dependencies:
-External:
-- pandas>=2.2.3: DataFrame utilities and Parquet reading
-Internal:
-- src.storage.equity_master: [NSEEquityMasterBuilder]
-- src.storage.historical_sync: [HistoricalSync]
-- src.nse_bhavcopy.screener: [StockScreener]
-
-Key Components:
-Classes:
-- None
-Functions:
-- cmd_build_master: Subcommand to build/refresh the equity master table.
-- cmd_sync_history: Subcommand to sync historical Parquet files.
-- cmd_screen: Subcommand to run the technical screener.
-- menu_build_master: Interactive menu handler for master build.
-- menu_sync_history: Interactive menu handler for history sync.
-- menu_screen: Interactive menu handler for screening.
-- interactive_menu: REPL-style menu loop.
-- main: CLI argument parse entry point.
-
-Last Modified: 2026-05-27
-Modified By: Fortune
-
-Open Tasks:
-- [ ] [LOW] Add --output flag to redirect CSV results [1h]
-- [ ] [MEDIUM] Add --filter flag (e.g. --filter nifty50) to restrict symbols [2h]
-
-Related Files:
-- src/nse_bhavcopy/equity_master.py: Master table builder.
-- src/nse_bhavcopy/historical_sync.py: Parquet CRUD sync engine.
-- src/nse_bhavcopy/screener.py: Technical screening logic.
+File: src/cli/menus.py
+Purpose: Interactive CLI Menus
 """
-
-from __future__ import annotations
 
 import argparse
-import glob
 import logging
 import os
 import sys
@@ -48,191 +21,525 @@ from datetime import datetime
 
 import pandas as pd
 
-from src.nse_bhavcopy.correlation import run_correlation_cli
-from src.storage.downloader import BhavcopyDownloader
-from src.storage.equity_master import NSEEquityMasterBuilder
-from src.scanners.etf_screener import run_liquid_etf_screener
-from src.nse_bhavcopy.heatmap import run_heatmap_cli
-from src.storage.historical_sync import (
-    HistoricalSync,
+from src.core.config import Config
+from src.core.utils import get_fyers_fetcher, get_nse_utils
+
+logger = logging.getLogger("nse_pipeline")
+
+from src.cli.actions import (
+    cmd_ml_anomaly,
 )
+from src.cli.formatters import (
+    _ask,
+    _ask_float,
+    _confirm,
+    _display_csv,
+    _header,
+    _pause,
+    _print_banner,
+    _rule,
+    _subheader,
+    bold,
+    cyan,
+    dim,
+    err,
+    green,
+    ok,
+    red,
+    tip,
+    warn,
+    white,
+    yellow,
+)
+from src.nse_bhavcopy.correlation import run_correlation_cli
+from src.nse_bhavcopy.heatmap import run_heatmap_cli
 from src.nse_bhavcopy.ma_slope import analyze_stock_ma_slope
+from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
+from src.nse_bhavcopy.ta_indicators import add_ta_indicators, calculate_technical_score
+from src.scanners.etf_screener import run_liquid_etf_screener
 from src.scanners.minervini_screener import run_minervini_cli
-from src.scrapers.mmi_scraper import run_mmi_cli
 from src.scanners.momentum_squeeze import run_squeeze_cli
 from src.scanners.pair_scanner import run_pair_scanner_cli
-from src.nse_bhavcopy.screener import StockScreener
-from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
+from src.scrapers.mmi_scraper import run_mmi_cli
+from src.screener import StockScreener
+from src.storage.downloader import BhavcopyDownloader
+from src.storage.equity_master import NSEEquityMasterBuilder
+from src.storage.historical_sync import HistoricalSync
 from src.storage.sync_registry import SyncRegistry
-from src.nse_bhavcopy.ta_indicators import (
-    add_ta_indicators,
-    calculate_technical_score,
-)
 
 # ---------------------------------------------------------------------------
-# Logging
+# Constants & Configuration
 # ---------------------------------------------------------------------------
+
+
+class Config:
+    """Central configuration management."""
+
+    # Default paths
+    DEFAULT_DATA_DIR: str = "data"
+    DEFAULT_HIST_DIR: str = "data/historical"
+    DEFAULT_MASTER_DIR: str = "data"
+    DEFAULT_START_DATE: str = "2000-01-01"
+    DEFAULT_TIMEFRAME: str = "1d"
+
+    # Sync defaults
+    SYNC_DEFAULTS: ClassVar[dict[str, Any]] = {
+        "max_pairs": 50,
+        "default_symbol_limit": 100,
+        "max_pval_threshold": 0.05,
+        "default_days_back": 10,
+        "rate_delay": 0.5,
+        "default_delay": 1.0,
+    }
+
+    # Display limits
+    DISPLAY_LIMITS: ClassVar[dict[str, int]] = {
+        "symbol_preview": 15,
+        "top_synced": 10,
+        "heatmap_preview": 25,
+        "max_failed_display": 15,
+    }
+
+    # Technical thresholds
+    TECH_THRESHOLDS: ClassVar[dict[str, int]] = {
+        "rsi_overbought": 70,
+        "rsi_oversold": 30,
+        "adx_trending": 25,
+        "cci_overbought": 100,
+        "cci_oversold": -100,
+    }
+
+    @classmethod
+    def get_data_dir(cls) -> str:
+        return os.getenv("NSE_DATA_DIR", cls.DEFAULT_DATA_DIR)
+
+    @classmethod
+    def get_hist_dir(cls) -> str:
+        return os.getenv("NSE_HIST_DIR", cls.DEFAULT_HIST_DIR)
+
+
+# ---------------------------------------------------------------------------
+# User Preferences Persistence
+# ---------------------------------------------------------------------------
+
+
+class UserPrefs:
+    """Persistent user preferences across sessions."""
+
+    def __init__(self):
+        self.path = Path.home() / ".nse_pipeline_prefs.json"
+        self.data = self._load()
+
+    def _load(self) -> dict:
+        if self.path.exists():
+            try:
+                with open(self.path) as f:
+                    return json.load(f)
+            except (OSError, json.JSONDecodeError):
+                return {}
+        return {}
+
+    def _save(self) -> None:
+        try:
+            with open(self.path, "w") as f:
+                json.dump(self.data, f, indent=2)
+        except OSError:
+            pass
+
+    def get_last(self, key: str, default: Any = None) -> Any:
+        return self.data.get(key, default)
+
+    def set_last(self, key: str, value: Any) -> None:
+        self.data[key] = value
+        self._save()
+
+
+# ---------------------------------------------------------------------------
+# Structured Logging Setup
+# ---------------------------------------------------------------------------
+
+
+def setup_logging() -> None:
+    """Configure structured logging."""
+    structlog.configure(
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="%H:%M:%S"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.UnicodeDecoder(),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+setup_logging()
+logger = structlog.get_logger("nse_pipeline")
+
+# Basic logging fallback
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
-LOGGER: logging.Logger = logging.getLogger("nse_pipeline")
 
 # ---------------------------------------------------------------------------
-# Defaults
-# ---------------------------------------------------------------------------
-DEFAULT_DATA_DIR: str = "data"
-DEFAULT_HIST_DIR: str = "data/historical"
-DEFAULT_MASTER_DIR: str = "data"
-DEFAULT_START_DATE: str = "2000-01-01"
-DEFAULT_TIMEFRAME: str = "1d"
-
-# ---------------------------------------------------------------------------
-# ANSI colour helpers  (gracefully degrade on Windows / dumb terminals)
+# ANSI colour helpers
 # ---------------------------------------------------------------------------
 _USE_COLOR = sys.stdout.isatty()
 
 
-from src.cli.formatters import _c, dim, bold, green, yellow, red, cyan, white, blue, _rule, _header, _subheader, ok, warn, err, tip, _pause, _confirm, _ask, _ask_float, _print_banner, _display_csv
-from src.cli.actions import *
+# ---------------------------------------------------------------------------
+# Decorators
+# ---------------------------------------------------------------------------
+
+
+def validate_symbol(func: Callable) -> Callable:
+    """Validate stock symbol input."""
+
+    @wraps(func)
+    def wrapper(symbol: str, *args, **kwargs):
+        if not symbol or not symbol.replace(".", "").replace("^", "").isalnum():
+            raise ValueError(f"Invalid symbol format: {symbol}")
+        return func(symbol.upper(), *args, **kwargs)
+
+    return wrapper
+
+
+def with_progress_bar(description: str = "Processing"):
+    """Add progress bar to iterator functions."""
+
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            result = func(*args, **kwargs)
+            if isinstance(result, list | dict) and len(result) > 0:
+                yield from tqdm(result, desc=description)
+            else:
+                yield from result
+
+        return wrapper
+
+    return decorator
+
+
+def dry_run_capable(func: Callable) -> Callable:
+    """Add dry-run capability to functions."""
+
+    @wraps(func)
+    def wrapper(*args, dry_run: bool = False, **kwargs):
+        if dry_run:
+            logger.info("dry_run_mode", function=func.__name__)
+            print(f"\n  {dim('[DRY RUN] Would execute:')} {func.__name__}")
+            return None
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
+# Cached API Clients
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def get_nse_utils():
+    """Get cached NseUtils instance."""
+    from src.nse_live.nse_utils import NseUtils
+
+    return NseUtils()
+
+
+@lru_cache(maxsize=1)
+def get_fyers_fetcher():
+    """Get cached FyersFetcher instance."""
+    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
+
+    return FyersFetcher()
+
+
+# ---------------------------------------------------------------------------
+# Screener Strategy Configuration (Declarative)
+# ---------------------------------------------------------------------------
+
+SCREENER_STRATEGIES = [
+    {
+        "name": "Nifty Shop (Single Leg)",
+        "file_prefix": "strategy_nifty_shop",
+        "description": "RSI laddering strategy for mean reversion. Level 1 (RSI < 35), Level 2 (< 30), Level 3 (< 25). Targets 6.28% profit.",  # noqa: E501
+        "category": "momentum",
+    },
+    {
+        "name": "Buy Low Sell High",
+        "file_prefix": "strategy_buy_low",
+        "description": "Demand level accumulation. Triggers when CMP is within 2.0% of the 200-Day Low.",  # noqa: E501
+        "category": "mean_reversion",
+    },
+    {
+        "name": "Turtle Trading",
+        "file_prefix": "strategy_turtle",
+        "description": "Explosive momentum breakout. Triggers a 'Buy' only when CMP forcefully crosses the previous 55-Day High.",  # noqa: E501
+        "category": "breakout",
+    },
+    {
+        "name": "RDX Indicator",
+        "file_prefix": "strategy_rdx",
+        "description": "Strict momentum screener. Requires ADX > 25, bullish DI crossover, and RSI > 60.",  # noqa: E501
+        "category": "momentum",
+    },
+    {
+        "name": "100 SMA Breakout",
+        "file_prefix": "strategy_100sma_breakout",
+        "description": "Institutional 6-month base breakout. Triggers crossing 100 SMA while trading > 20% above 6-month lows.",  # noqa: E501
+        "category": "breakout",
+    },
+    {
+        "name": "ETF Shop Method",
+        "file_prefix": "strategy_etf_shop",
+        "description": "Index fund retracement variant. Triggers a 'Buy' if the ETF falls more than 2.0% below its 20 DMA.",  # noqa: E501
+        "category": "etf",
+    },
+    {
+        "name": "Super BO Stocks",
+        "file_prefix": "strategy_super_bo",
+        "description": "Recovery strategy. Stocks rising from downtrends facing 200 SMA resistance while above 50, 100, 150 SMAs.",  # noqa: E501
+        "category": "recovery",
+    },
+    {
+        "name": "DMADMA (Reverse)",
+        "file_prefix": "strategy_dmadma_reverse",
+        "description": "Bull market continuation. Triggers on a 150 SMA breakout while the stock remains above the 200 SMA.",  # noqa: E501
+        "category": "trend",
+    },
+    {
+        "name": "DMADMA (No SL)",
+        "file_prefix": "strategy_dmadma_no_sl",
+        "description": "Pure momentum following — no stop loss. Golden cross analog where the 50 SMA rises above the 200 SMA.",  # noqa: E501
+        "category": "trend",
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Utility Functions
+# ---------------------------------------------------------------------------
+
+
+def _find_latest_master(data_dir: str) -> str | None:
+    """Find the most recent equity master Parquet file."""
+    pattern = os.path.join(data_dir, "nse_equity_master_*.parquet")
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    return max(files)
+
+
+def _load_symbols(
+    master_path: str | None,
+    cap_filter: str | None = None,
+    index_filter: str | None = None,
+    limit: int | None = None,
+) -> list[str]:
+    """Load and filter symbols from master table."""
+    if master_path is None or not os.path.exists(master_path):
+        logger.warning("master_not_found", path=master_path)
+        return []
+
+    builder = NSEEquityMasterBuilder(output_dir=os.path.dirname(master_path))
+    symbols = builder.get_symbols(master_path)
+
+    # Apply filters
+    if cap_filter or index_filter:
+        try:
+            df = pd.read_parquet(master_path)
+            if cap_filter and "market_cap_category" in df.columns:
+                df = df[df["market_cap_category"] == cap_filter]
+            if index_filter and index_filter in df.columns:
+                df = df[df[index_filter]]
+            symbols = df["symbol"].tolist()
+        except Exception as e:
+            logger.error("filter_failed", error=str(e))
+
+    if limit and limit > 0:
+        symbols = symbols[:limit]
+
+    return symbols
+
+
+def _get_delivery_history(processed_dir: str, symbol: str) -> pd.DataFrame | None:
+    """Fetch delivery percentage history for a symbol."""
+    pattern = os.path.join(processed_dir, f"{symbol}_*.csv")
+    files = sorted(glob.glob(pattern))
+    if not files:
+        return None
+
+    dfs = []
+    for file in files:
+        try:
+            df = pd.read_csv(file)
+            if "DELIV_PER" in df.columns:
+                dfs.append(df[["TIMESTAMP", "DELIV_PER"]])
+        except Exception:
+            continue
+
+    if not dfs:
+        return None
+
+    combined = pd.concat(dfs, ignore_index=True)
+    combined["TIMESTAMP"] = pd.to_datetime(combined["TIMESTAMP"])
+    return combined.sort_values("TIMESTAMP").drop_duplicates("TIMESTAMP")
+
+
+def combine_strings(values):
+    """Helper for aggregating string values in grouped data."""
+    return " | ".join(str(v) for v in values if pd.notna(v))
+
+
+# ---------------------------------------------------------------------------
+# Menu Display (Declarative Configuration)
+# ---------------------------------------------------------------------------
+
+MENU_SECTIONS = {
+    "DATA": [
+        (
+            "1",
+            "Build / Refresh Equity Master",
+            "menu_build_master",
+            "downloads sec_list + index data",
+        ),
+        (
+            "2",
+            "Sync Historical  ─ All Symbols",
+            "menu_sync_history",
+            "all Bhavcopy EQ symbols",
+        ),
+        (
+            "3",
+            "Sync Historical  ─ Filtered",
+            "menu_sync_filtered",
+            "by cap, index, or count",
+        ),
+    ],
+    "ANALYSIS": [
+        ("4", "Run Technical Screener", "menu_screen", "final / swing / super lists"),
+        (
+            "7",
+            "TA Dashboard  ─ Single Stock",
+            "menu_ta_dashboard",
+            "RSI, MACD, Bollinger, ADX…",
+        ),
+        (
+            "8",
+            "Recompute TA Indicators",
+            "menu_recompute_ta",
+            "refresh all local Parquet files",
+        ),
+    ],
+    "STATUS": [
+        ("5", "Parquet Sync Status", "menu_status", "rows, date ranges per symbol"),
+        ("6", "Sync Registry", "menu_registry", "pending / failed / ok breakdown"),
+    ],
+    "QUANTITATIVE": [
+        ("9", "Liquid ETF Screener", "menu_liquid_etf", "top liquid ETFs per sector"),
+        (
+            "10",
+            "Mark Minervini Template",
+            "menu_minervini",
+            "VCP, RS Rating & Trend Screen",
+        ),
+        (
+            "11",
+            "Sector Rotation Chart",
+            "menu_sector_rotation",
+            "JdK RS-Ratio Quadrant Analysis",
+        ),
+        (
+            "12",
+            "Correlation Matrix",
+            "menu_correlation",
+            "Cross-asset return correlation",
+        ),
+        ("13", "Nifty Indices Heatmap", "menu_heatmap", "Constituents performance"),
+        ("14", "Market Mood Index (MMI)", "menu_mmi", "Live sentiment scraper"),
+        ("15", "Moving Average Slope", "menu_ma_slope", "Trend angle analyzer"),
+        (
+            "16",
+            "Momentum Squeeze Indicator",
+            "menu_squeeze",
+            "BB / KC coiled-spring detector",
+        ),
+        (
+            "17",
+            "Live NSE Data Hub",
+            "menu_nse_live",
+            "Pre-market, price info, option chain…",
+        ),
+        (
+            "18",
+            "Cointegration Pair Scanner",
+            "menu_pair_scanner",
+            "Engle-Granger pairs from local parquet universe",
+        ),
+        (
+            "19",
+            "ML Classifier Backtester",
+            "menu_backtest",
+            "Random Forest & Event Backtest on symbol",
+        ),
+        (
+            "20",
+            "View F&O Ban List",
+            "menu_fo_ban",
+            "Fetch current NSE F&O ban securities",
+        ),
+        (
+            "21",
+            "Bhavcopy Incremental Sync",
+            "menu_bhavcopy_sync",
+            "Batch OHLCV update — 1 ZIP/day instead of 1 800+ API calls",
+        ),
+        (
+            "22",
+            "Set Fyers API Token",
+            "menu_fyers_token",
+            "Configure Fyers access token for historical data",
+        ),
+        (
+            "23",
+            "ML Data Anomaly Detector",
+            "menu_ml_anomaly",
+            "Identify bad ticks or smart money footprints",
+        ),
+    ],
+}
+
+
 def _print_main_menu() -> None:
-    """Print the top-level menu with grouped sections."""
+    """Print the top-level menu from declarative configuration."""
     print()
-    print(f"  {dim('DATA')}")
-    print(
-        f"   {cyan('1')}  {bold('Build / Refresh Equity Master')}  "
-        f"{dim('download sec_list + index data')}"
-    )
-    print(
-        f"   {cyan('2')}  {bold('Sync Historical  ─ All Symbols')}  "
-        f"{dim('all Bhavcopy EQ symbols')}"
-    )
-    print(
-        f"   {cyan('3')}  {bold('Sync Historical  ─ Filtered')}    "
-        f"{dim('by cap, index, or count')}"
-    )
-    print()
-    print(f"  {dim('ANALYSIS')}")
-    print(
-        f"   {cyan('4')}  {bold('Run Technical Screener')}          "
-        f"{dim('final / swing / super lists')}"
-    )
-    print(
-        f"   {cyan('7')}  {bold('TA Dashboard  ─ Single Stock')}    "
-        f"{dim('RSI, MACD, Bollinger, ADX…')}"
-    )
-    print(
-        f"   {cyan('8')}  {bold('Recompute TA Indicators')}         "
-        f"{dim('refresh all local Parquet files')}"
-    )
-    print()
-    print(f"  {dim('STATUS')}")
-    print(
-        f"   {cyan('5')}  {bold('Parquet Sync Status')}             "
-        f"{dim('rows, date ranges per symbol')}"
-    )
-    print(
-        f"   {cyan('6')}  {bold('Sync Registry')}                   "
-        f"{dim('pending / failed / ok breakdown')}"
-    )
-    print()
-    print(f"  {dim('QUANTITATIVE')}")
-    print(
-        f"   {cyan('9')}  {bold('Liquid ETF Screener')}             "
-        f"{dim('top liquid ETFs per sector')}"
-    )
-    print(
-        f"  {cyan('10')}  {bold('Mark Minervini Template')}         "
-        f"{dim('VCP, RS Rating & Trend Screen')}"
-    )
-    print(
-        f"  {cyan('11')}  {bold('Sector Rotation Chart')}           "
-        f"{dim('JdK RS-Ratio Quadrant Analysis')}"
-    )
-    print(
-        f"  {cyan('12')}  {bold('Correlation Matrix')}              "
-        f"{dim('Cross-asset return correlation')}"
-    )
-    print(
-        f"  {cyan('13')}  {bold('Nifty Indices Heatmap')}           "
-        f"{dim('Constituents performance')}"
-    )
-    print(
-        f"  {cyan('14')}  {bold('Market Mood Index (MMI)')}         "
-        f"{dim('Live sentiment scraper')}"
-    )
-    print(
-        f"  {cyan('15')}  {bold('Moving Average Slope')}            "
-        f"{dim('Trend angle analyzer')}"
-    )
-    print(
-        f"  {cyan('16')}  {bold('Momentum Squeeze Indicator')}      "
-        f"{dim('BB / KC coiled-spring detector')}"
-    )
-    print(
-        f"  {cyan('17')}  {bold('Live NSE Data Hub')}               "
-        f"{dim('Pre-market, price info, option chain…')}"
-    )
-    print(
-        f"  {cyan('18')}  {bold('Cointegration Pair Scanner')}      "
-        f"{dim('Engle-Granger pairs from local parquet universe')}"
-    )
-    print(
-        f"  {cyan('19')}  {bold('ML Classifier Backtester')}       "
-        f"{dim('Random Forest & Event Backtest on symbol')}"
-    )
-    print(
-        f"  {cyan('20')}  {bold('View F&O Ban List')}               "
-        f"{dim('Fetch current NSE F&O ban securities')}"
-    )
-    print(
-        f"  {cyan('21')}  {bold('Bhavcopy Incremental Sync')}       "
-        f"{dim('Batch OHLCV update — 1 ZIP/day instead of 1 800+ API calls')}"
-    )
-    print(
-        f"  {cyan('22')}  {bold('Set Fyers API Token')}             "
-        f"{dim('Configure Fyers access token for historical data')}"
-    )
-    print()
+    for section_name, items in MENU_SECTIONS.items():
+        print(f"  {dim(section_name)}")
+        for num, label, _, hint in items:
+            print(f"   {cyan(num)}  {bold(label)}  {dim(hint)}")
+        print()
     print(f"   {dim('0')}  {dim('Exit')}")
     print()
     print(_rule())
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Interactive menu — action handlers
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 def menu_build_master(data_dir: str) -> None:
-    """
-    Interactive handler for building the equity master table.
-
-    Logic:
-        Step 1: Ask user to confirm before starting.
-        Step 2: Accept custom delay or use default.
-        Step 3: Run NSEEquityMasterBuilder.build_and_save().
-
-    Parameters:
-        data_dir (str): Root data directory. | Writable path.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_build_master("data")
-
-    Performance:
-        Time Complexity: O(N * I)
-        Space Complexity: O(N)
-
-    Edge Cases Handled:
-        - User cancels at confirmation prompt.
-    """
+    """Interactive handler for building the equity master table."""
     _header("Build Equity Master", "Downloads sec_list.csv + all index constituents")
     tip("This replaces any previously cached master Parquet.")
 
@@ -249,54 +556,33 @@ def menu_build_master(data_dir: str) -> None:
     try:
         path = builder.build_and_save(delay=delay)
         ok(f"Master saved  →  {path}")
+        logger.info("master_built", path=path, delay=delay)
     except RuntimeError as exc:
         err(f"Build failed: {exc}")
+        logger.error("master_build_failed", error=str(exc))
 
     _pause()
 
 
+@dry_run_capable
 def menu_sync_history(
     data_dir: str,
     hist_dir: str,
     cap_filter: str | None = None,
     index_filter: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
 ) -> None:
-    """
-    Interactive handler for syncing historical Parquet data.
-
-    Logic:
-        Step 1: Find latest master and load symbol list.
-        Step 2: Apply optional cap/index filter from parameters.
-        Step 3: Ask for timeframe and start_date overrides.
-        Step 4: Run HistoricalSync.sync().
-
-    Parameters:
-        data_dir (str): Root data directory. | Writable path.
-        hist_dir (str): Historical Parquet storage directory.
-        cap_filter (str | None): Market cap category filter.
-        index_filter (str | None): Index column filter.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_sync_history("data", "data/historical", cap_filter="Large")
-
-    Performance:
-        Time Complexity: O(S * C)
-        Space Complexity: O(N)
-
-    Edge Cases Handled:
-        - No master found exits with message.
-        - Invalid inputs fall back to defaults.
-    """
+    """Interactive handler for syncing historical Parquet data."""
     master_path = _find_latest_master(data_dir)
     symbols = _load_symbols(
-        master_path, cap_filter=cap_filter, index_filter=index_filter
+        master_path, cap_filter=cap_filter, index_filter=index_filter, limit=limit
     )
+
+    if not symbols:
+        err("No symbols found. Run 'Build Master' first.")
+        _pause()
+        return
 
     print(f"\n  {dim('Symbols loaded:')}  {bold(str(len(symbols)))}", end="")
     if cap_filter:
@@ -305,58 +591,44 @@ def menu_sync_history(
         print(f"  {dim('index=')} {index_filter}", end="")
     print()
 
-    tf = _ask("Timeframe  (1d / 1w / 1mo)", DEFAULT_TIMEFRAME)
-    start = _ask("Start date (YYYY-MM-DD)", DEFAULT_START_DATE)
+    tf = _ask("Timeframe  (1d / 1w / 1mo)", Config.DEFAULT_TIMEFRAME)
+    start = _ask("Start date (YYYY-MM-DD)", Config.DEFAULT_START_DATE)
     delay = _ask_float("Rate delay between requests (seconds)", 0.5)
+
+    if dry_run:
+        ok(f"Dry run: Would sync {len(symbols)} symbols with {tf} timeframe")
+        _pause()
+        return
 
     hs = HistoricalSync(
         data_dir=hist_dir, timeframe=tf, start_date=start, rate_delay=delay
     )
-    results = hs.sync(symbols)
+
+    # Use tqdm for progress indication
+    results = {}
+    for symbol in tqdm(symbols, desc="Syncing symbols"):
+        results[symbol] = hs.sync_one(symbol)
 
     ok_count = sum(v for v in results.values())
     failed = [s for s, v in results.items() if not v]
 
     ok(f"Sync complete  {ok_count}/{len(symbols)} succeeded")
     if failed:
+        limit = Config.DISPLAY_LIMITS["symbol_preview"]
         warn(
-            f"{len(failed)} failed: {', '.join(failed[:15])}"
-            + (" …" if len(failed) > 15 else "")
+            f"{len(failed)} failed: {', '.join(failed[:limit])}"
+            + (" …" if len(failed) > limit else "")
         )
 
+    logger.info("sync_completed", succeeded=ok_count, failed=len(failed))
     _pause()
 
 
 def menu_sync_filtered(data_dir: str, hist_dir: str) -> None:
-    """
-    Interactive handler for syncing with user-specified filters.
-
-    Logic:
-        Step 1: Present filter options (cap, index, count limit).
-        Step 2: Collect user choices.
-        Step 3: Delegate to menu_sync_history with filters applied.
-
-    Parameters:
-        data_dir (str): Root data directory. | Writable path.
-        hist_dir (str): Historical Parquet storage directory.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_sync_filtered("data", "data/historical")
-
-    Performance:
-        Time Complexity: O(S * C)
-        Space Complexity: O(N)
-
-    Edge Cases Handled:
-        - Invalid input uses None (no filter applied).
-    """
+    """Interactive handler for syncing with user-specified filters."""
     _header("Sync Historical Data — Filtered")
+
+    prefs = UserPrefs()
 
     print(f"  {dim('Market cap:')}  Large · Mid · Small · Other · {dim('Enter = All')}")
     cap = input("  Cap filter: ").strip() or None
@@ -370,98 +642,37 @@ def menu_sync_filtered(data_dir: str, hist_dir: str) -> None:
     )
     idx = input("  Index filter: ").strip() or None
 
+    limit_str = input("  Max symbols (Enter = all): ").strip()
+    limit = int(limit_str) if limit_str else None
+
+    # Remember preferences
+    if cap:
+        prefs.set_last("last_cap_filter", cap)
+    if idx:
+        prefs.set_last("last_index_filter", idx)
+
     menu_sync_history(
-        data_dir=data_dir, hist_dir=hist_dir, cap_filter=cap, index_filter=idx
+        data_dir=data_dir,
+        hist_dir=hist_dir,
+        cap_filter=cap,
+        index_filter=idx,
+        limit=limit,
     )
+
+
+def _display_strategy_results(csv_path: str, name: str, description: str) -> None:
+    """Display a single strategy's results."""
+    if os.path.exists(csv_path):
+        _display_csv(csv_path, name, description)
+    else:
+        warn(f"No results generated for {name} today.")
+
+
 def _screener_results_menu(hist_dir: str, date_str: str) -> None:
-    """
-    Sub-menu for browsing screener output files.
-
-    Parameters:
-        hist_dir (str): Directory that contains the result CSVs.
-        date_str (str): Date string used to locate today's output files.
-
-    Returns:
-        None
-    """
+    """Sub-menu for browsing screener output files."""
     final_csv = os.path.join(hist_dir, f"final_list_{date_str}.csv")
     swing_csv = os.path.join(hist_dir, f"swing_list_{date_str}.csv")
     super_csv = os.path.join(hist_dir, f"super_list_{date_str}.csv")
-
-    strategies = [
-        (
-            "Nifty Shop (Single Leg)",
-            os.path.join(hist_dir, f"strategy_nifty_shop_{date_str}.csv"),
-            (
-                "RSI laddering strategy for mean reversion. Level 1 (RSI < 35),"
-                " Level 2 (< 30), Level 3 (< 25). Targets 6.28% profit."
-            ),
-        ),
-        (
-            "Buy Low Sell High",
-            os.path.join(hist_dir, f"strategy_buy_low_{date_str}.csv"),
-            (
-                "Demand level accumulation. Triggers when CMP is within 2.0%"
-                " of the 200-Day Low."
-            ),
-        ),
-        (
-            "Turtle Trading",
-            os.path.join(hist_dir, f"strategy_turtle_{date_str}.csv"),
-            (
-                "Explosive momentum breakout. Triggers a 'Buy' only when CMP"
-                " forcefully crosses the previous 55-Day High."
-            ),
-        ),
-        (
-            "RDX Indicator",
-            os.path.join(hist_dir, f"strategy_rdx_{date_str}.csv"),
-            (
-                "Strict momentum screener. Requires ADX > 25, bullish DI"
-                " crossover, and RSI > 60."
-            ),
-        ),
-        (
-            "100 SMA Breakout",
-            os.path.join(hist_dir, f"strategy_100sma_breakout_{date_str}.csv"),
-            (
-                "Institutional 6-month base breakout. Triggers crossing 100 SMA"
-                " while trading > 20% above 6-month lows."
-            ),
-        ),
-        (
-            "ETF Shop Method",
-            os.path.join(hist_dir, f"strategy_etf_shop_{date_str}.csv"),
-            (
-                "Index fund retracement variant. Triggers a 'Buy' if the ETF"
-                " falls more than 2.0% below its 20 DMA."
-            ),
-        ),
-        (
-            "Super BO Stocks",
-            os.path.join(hist_dir, f"strategy_super_bo_{date_str}.csv"),
-            (
-                "Recovery strategy. Stocks rising from downtrends facing 200 SMA"
-                " resistance while above 50, 100, 150 SMAs."
-            ),
-        ),
-        (
-            "DMADMA (Reverse)",
-            os.path.join(hist_dir, f"strategy_dmadma_reverse_{date_str}.csv"),
-            (
-                "Bull market continuation. Triggers on a 150 SMA breakout while"
-                " the stock remains above the 200 SMA."
-            ),
-        ),
-        (
-            "DMADMA (No SL)",
-            os.path.join(hist_dir, f"strategy_dmadma_no_sl_{date_str}.csv"),
-            (
-                "Pure momentum following — no stop loss. Golden cross analog"
-                " where the 50 SMA rises above the 200 SMA."
-            ),
-        ),
-    ]
 
     while True:
         print()
@@ -481,13 +692,15 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
             f"{dim('Combined Holy Grail — Bull + CAR + GTT bounce at once')}"
         )
 
-        idx = 4
-        for name, path, desc in strategies:
-            if os.path.exists(path):
-                print(f"   {cyan(str(idx))}  {name} {dim('Strategy')}")
+        # Display strategies from declarative config
+        for idx, strategy in enumerate(SCREENER_STRATEGIES, start=4):
+            csv_path = os.path.join(
+                hist_dir, f"{strategy['file_prefix']}_{date_str}.csv"
+            )
+            if os.path.exists(csv_path):
+                print(f"   {cyan(str(idx))}  {strategy['name']} {dim('Strategy')}")
             else:
-                print(f"   {dim(str(idx))}  {dim(name + ' (No Results)')}")
-            idx += 1
+                print(f"   {dim(str(idx))}  {dim(strategy['name'] + ' (No Results)')}")
 
         print(f"   {cyan('99')} View All")
         print(f"   {dim('0')}  {dim('Back to main menu')}")
@@ -517,11 +730,14 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
             )
         elif choice == "99":
             dfs = []
-            for name, path, desc in strategies:
-                if os.path.exists(path):
-                    df_strat = pd.read_csv(path)
+            for strategy in SCREENER_STRATEGIES:
+                csv_path = os.path.join(
+                    hist_dir, f"{strategy['file_prefix']}_{date_str}.csv"
+                )
+                if os.path.exists(csv_path):
+                    df_strat = pd.read_csv(csv_path)
                     if not df_strat.empty:
-                        df_strat.insert(1, "Strategy", name)
+                        df_strat.insert(1, "Strategy", strategy["name"])
                         dfs.append(df_strat)
 
             if dfs:
@@ -543,14 +759,10 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
                     ]:
                         agg_dict[col] = "first"
                     elif col in ["Strategy", "Action"]:
-                        agg_dict[col] = lambda x: " | ".join(  # type: ignore[assignment]
-                            x.dropna().astype(str).unique()
-                        )
+                        agg_dict[col] = combine_strings
                     elif col in ["Target", "Stop Loss"]:
-                        agg_dict[col] = lambda x: " | ".join(  # type: ignore[assignment]
-                            str(round(float(v), 2))
-                            for v in x.dropna().unique()
-                            if pd.notna(v)
+                        agg_dict[col] = lambda x: combine_strings(
+                            f"{float(v):.2f}" for v in x if pd.notna(v)
                         )
 
                 grouped_df = combined_df.groupby("NSE Code").agg(agg_dict).reset_index()
@@ -560,17 +772,14 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
                         by="Total Traded Value", ascending=False
                     )
 
-                # Consolidate column layout for view all
                 combined_path = os.path.join(
                     hist_dir, f"view_all_grouped_{date_str}.csv"
                 )
                 grouped_df.to_csv(combined_path, index=False)
-                desc_text = (
-                    "Master view of all advanced strategy triggers today,"
-                    " intelligently grouped by stock."
-                )
                 _display_csv(
-                    combined_path, "Grouped Advanced Strategies Output", desc_text
+                    combined_path,
+                    "Grouped Advanced Strategies Output",
+                    "Master view of all advanced strategy triggers today, intelligently grouped by stock.",  # noqa: E501
                 )
 
                 export_path = f"Exported_Grouped_Strategies_{date_str}.csv"
@@ -584,12 +793,14 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
         else:
             try:
                 c_idx = int(choice)
-                if 4 <= c_idx < 4 + len(strategies):
-                    strat_name, strat_path, strat_desc = strategies[c_idx - 4]
-                    if os.path.exists(strat_path):
-                        _display_csv(strat_path, strat_name, strat_desc)
-                    else:
-                        warn(f"No results generated for {strat_name} today.")
+                if 4 <= c_idx < 4 + len(SCREENER_STRATEGIES):
+                    strategy = SCREENER_STRATEGIES[c_idx - 4]
+                    csv_path = os.path.join(
+                        hist_dir, f"{strategy['file_prefix']}_{date_str}.csv"
+                    )
+                    _display_strategy_results(
+                        csv_path, strategy["name"], strategy["description"]
+                    )
                 else:
                     warn(f"Invalid choice '{choice}'.")
             except ValueError:
@@ -599,36 +810,7 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
 
 
 def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
-    """
-    Interactive handler for running the technical screener.
-
-    Logic:
-        Step 1: Find latest Bhavcopy CSV in processed_dir.
-        Step 2: Optionally refresh historical data first.
-        Step 3: Instantiate StockScreener and run screen_stocks.
-        Step 4: Open screener results sub-menu.
-
-    Parameters:
-        data_dir (str): Root data directory.
-        hist_dir (str): Historical Parquet directory (passed to screener).
-        processed_dir (str): Directory containing processed Bhavcopy CSVs.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_screen("data", "data/historical", "data/processed")
-
-    Performance:
-        Time Complexity: O(S * H)
-        Space Complexity: O(S * H)
-
-    Edge Cases Handled:
-        - No CSV found prints error and returns.
-    """
+    """Interactive handler for running the technical screener."""
     _header("Technical Screener", "Scans synced Parquet data for technical setups")
 
     if _confirm("Fetch latest history + update TA indicators first?"):
@@ -651,39 +833,13 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
     screener.screen_stocks(top_250_path=top_csv, date_obj=now)
 
     ok(f"Screening complete  →  results in {hist_dir}")
+    logger.info("screening_completed", date=now.strftime("%Y-%m-%d"))
 
     _screener_results_menu(hist_dir, now.strftime("%Y%m%d"))
 
 
 def menu_status(hist_dir: str, data_dir: str) -> None:
-    """
-    Show sync status for all symbols in the master table.
-
-    Logic:
-        Step 1: Load master symbol list.
-        Step 2: Call HistoricalSync.status() to collect Parquet stats.
-        Step 3: Print a formatted summary table.
-
-    Parameters:
-        hist_dir (str): Historical Parquet root directory.
-        data_dir (str): Master Parquet directory.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_status("data/historical", "data")
-
-    Performance:
-        Time Complexity: O(S * N) [S symbols, N rows each]
-        Space Complexity: O(S)
-
-    Edge Cases Handled:
-        - No master found prints a message and returns.
-    """
+    """Show sync status for all symbols in the master table."""
     _header("Parquet Sync Status")
 
     master_path = _find_latest_master(data_dir)
@@ -706,9 +862,9 @@ def menu_status(hist_dir: str, data_dir: str) -> None:
     print(f"  {yellow('Not yet synced'):<28} {bold(str(len(missing)))}")
 
     if not synced.empty:
-        _subheader("Top 10 Synced Symbols")
+        _subheader(f"Top {Config.DISPLAY_LIMITS['top_synced']} Synced Symbols")
         print(
-            synced.head(10)[
+            synced.head(Config.DISPLAY_LIMITS["top_synced"])[
                 [
                     "symbol",
                     "rows",
@@ -721,44 +877,18 @@ def menu_status(hist_dir: str, data_dir: str) -> None:
         )
 
     if not missing.empty:
-        _subheader(f"First 10 Unsynced  ({len(missing)} total)")
-        print("  " + "  ".join(missing["symbol"].head(10).tolist()))
+        limit = Config.DISPLAY_LIMITS["symbol_preview"]
+        _subheader(f"First {limit} Unsynced  ({len(missing)} total)")
+        print("  " + "  ".join(missing["symbol"].head(limit).tolist()))
 
     _pause()
 
 
 def menu_registry(data_dir: str, hist_dir: str) -> None:
-    """
-    Show the sync registry summary: pending, ok, and failed symbol counts.
-
-    Logic:
-        Step 1: Load SyncRegistry from data_dir.
-        Step 2: Print status group counts.
-        Step 3: Show top pending and failed symbols.
-
-    Parameters:
-        data_dir (str): Root data directory. | Writable path.
-        hist_dir (str): Historical Parquet root (used for timeframe). | Writable path.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_registry("data", "data/historical")
-
-    Performance:
-        Time Complexity: O(N)
-        Space Complexity: O(N)
-
-    Edge Cases Handled:
-        - No registry file prints a helpful message.
-    """
+    """Show the sync registry summary."""
     _header("Sync Registry", "Pending · OK · Failed breakdown")
 
-    tf = _ask("Timeframe", DEFAULT_TIMEFRAME)
+    tf = _ask("Timeframe", Config.DEFAULT_TIMEFRAME)
     reg = SyncRegistry(registry_dir=hist_dir, timeframe=tf)
     n = reg.load()
 
@@ -788,9 +918,10 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
         )
 
     if not failed.empty:
+        limit = Config.DISPLAY_LIMITS["symbol_preview"]
         _subheader(f"Failed Symbols  ({len(failed)} total)")
         print(
-            failed.head(10)[["symbol", "fail_count", "last_bar_date"]].to_string(
+            failed.head(limit)[["symbol", "fail_count", "last_bar_date"]].to_string(
                 index=False
             )
         )
@@ -798,29 +929,23 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
     pending_queue = reg.pending_symbols()
     print(f"\n  {dim('Next sync queue:')} {bold(str(len(pending_queue)))} symbols")
     if pending_queue:
-        print(f"  {dim('Next 5:')} {', '.join(pending_queue[:5])}")
+        limit = Config.DISPLAY_LIMITS["symbol_preview"] // 3
+        print(f"  {dim('Next 5:')} {', '.join(pending_queue[:limit])}")
 
     _pause()
 
 
-def menu_ta_dashboard(hist_dir: str) -> None:
-    """
-    Display a console dashboard for a single stock's TA indicators.
-
-    Parameters:
-        hist_dir (str): Historical Parquet root directory.
-
-    Returns:
-        None
-    """
+def menu_ta_dashboard(hist_dir: str, symbol: str | None = None) -> None:
+    """Display a console dashboard for a single stock's TA indicators."""
     _header(
         "TA Dashboard — Single Stock",
         "RSI · MACD · Bollinger · ADX · ATR · CCI · Score",
     )
 
-    symbol = input(f"  {dim('NSE Symbol')} (e.g. TCS): ").strip().upper()
     if not symbol:
-        return
+        symbol = input(f"  {dim('NSE Symbol')} (e.g. TCS): ").strip().upper()
+        if not symbol:
+            return
 
     path = os.path.join(hist_dir, "1d", f"{symbol}.parquet")
     if not os.path.exists(path):
@@ -861,6 +986,7 @@ def menu_ta_dashboard(hist_dir: str) -> None:
             if prev > 0:
                 change_pct = ((cmp - prev) / prev) * 100.0
 
+        # Extract indicators
         ema_20 = row.get("EMA_20")
         sma_50 = row.get("SMA_50")
         sma_200 = row.get("SMA_200")
@@ -875,23 +1001,25 @@ def menu_ta_dashboard(hist_dir: str) -> None:
         atr = row.get("ATR_14")
         cci = row.get("CCI_14")
 
+        # Helper functions
         def _fmt(v: object) -> str:
-            return f"{float(v):,.2f}" if v is not None and not pd.isna(v) else "N/A"  # type: ignore[arg-type]
+            return f"{float(v):,.2f}" if v is not None and not pd.isna(v) else "N/A"
 
         def _cmp_str(price: float, ma: object) -> str:
             if ma is None or pd.isna(ma):
                 return dim("N/A")
-            return green("ABOVE") if price > float(ma) else red("BELOW")  # type: ignore[arg-type]
+            return green("ABOVE") if price > float(ma) else red("BELOW")
 
-        # RSI
+        # RSI analysis
+        rsi_thresholds = Config.TECH_THRESHOLDS
         if pd.isna(rsi):
             rsi_str, rsi_desc = "N/A", dim("N/A")
         else:
             rsi_val = float(rsi)
             rsi_str = f"{rsi_val:.2f}"
-            if rsi_val >= 70:
+            if rsi_val >= rsi_thresholds["rsi_overbought"]:
                 rsi_desc = red("OVERBOUGHT  (caution)")
-            elif rsi_val <= 30:
+            elif rsi_val <= rsi_thresholds["rsi_oversold"]:
                 rsi_desc = green("OVERSOLD  (rebound candidate)")
             elif rsi_val >= 50:
                 rsi_desc = green("BULLISH  (strong)")
@@ -900,7 +1028,7 @@ def menu_ta_dashboard(hist_dir: str) -> None:
             else:
                 rsi_desc = red("BEARISH  (weak)")
 
-        # MACD
+        # MACD analysis
         if any(pd.isna(v) for v in [macd, macd_sig, macd_hist_val]):
             macd_line = dim("N/A")
             macd_status = dim("N/A")
@@ -926,13 +1054,16 @@ def menu_ta_dashboard(hist_dir: str) -> None:
             )
 
         # ADX
+        adx_threshold = rsi_thresholds["adx_trending"]
         if pd.isna(adx):
             adx_str, adx_desc = "N/A", dim("N/A")
         else:
             adx_val = float(adx)
             adx_str = f"{adx_val:.2f}"
             adx_desc = (
-                green("STRONG trend") if adx_val > 25 else yellow("WEAK / sideways")
+                green("STRONG trend")
+                if adx_val > adx_threshold
+                else yellow("WEAK / sideways")
             )
 
         # ATR
@@ -945,14 +1076,16 @@ def menu_ta_dashboard(hist_dir: str) -> None:
             atr_desc = dim(f"{atr_pct:.2f}% volatility")
 
         # CCI
+        cci_upper = rsi_thresholds["cci_overbought"]
+        cci_lower = rsi_thresholds["cci_oversold"]
         if pd.isna(cci):
             cci_str, cci_desc = "N/A", dim("N/A")
         else:
             cci_val = float(cci)
             cci_str = f"{cci_val:.2f}"
-            if cci_val >= 100:
+            if cci_val >= cci_upper:
                 cci_desc = red("OVERBOUGHT  (uptrend peak)")
-            elif cci_val <= -100:
+            elif cci_val <= cci_lower:
                 cci_desc = green("OVERSOLD  (downtrend trough)")
             else:
                 cci_desc = yellow("NEUTRAL range")
@@ -992,7 +1125,7 @@ def menu_ta_dashboard(hist_dir: str) -> None:
             else red(f"{change_pct:.2f}%")
         )
 
-        # ── Output ────────────────────────────────────────────────────────
+        # Output
         print()
         print(_rule("═"))
         print(
@@ -1032,22 +1165,17 @@ def menu_ta_dashboard(hist_dir: str) -> None:
         print(f"  {'ATR 14':<12} {atr_str:<14} {atr_desc}")
         print(_rule("═"))
 
+        logger.info("ta_dashboard_viewed", symbol=symbol, score=score)
+
     except Exception as exc:
         err(f"Error loading '{symbol}': {exc}")
+        logger.error("ta_dashboard_failed", symbol=symbol, error=str(exc))
 
     _pause()
 
 
 def menu_recompute_ta(hist_dir: str) -> None:
-    """
-    Interactive handler to recompute all TA-Lib indicators for Parquet files.
-
-    Parameters:
-        hist_dir (str): Historical Parquet root directory.
-
-    Returns:
-        None
-    """
+    """Interactive handler to recompute all TA-Lib indicators for Parquet files."""
     _header(
         "Recompute TA Indicators",
         "Loops all local Parquet files and rewrites TA columns",
@@ -1061,13 +1189,12 @@ def menu_recompute_ta(hist_dir: str) -> None:
     sync_obj = HistoricalSync(data_dir=hist_dir)
     sync_obj.recompute_all_ta()
     ok("TA recompute complete.")
+    logger.info("ta_recomputed")
     _pause()
 
 
 def menu_liquid_etf() -> None:
-    """
-    Run the Liquid ETF Screener and display the results in a table.
-    """
+    """Run the Liquid ETF Screener and display the results."""
     _header("Liquid ETF Screener")
     print("  Fetching ETF list from NSE and calculating sector liquidity...\n")
 
@@ -1078,7 +1205,6 @@ def menu_liquid_etf() -> None:
         _pause()
         return
 
-    # Format and save
     out_dir = "data/screener_output"
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "top_liquid_etfs.csv")
@@ -1094,9 +1220,7 @@ def menu_liquid_etf() -> None:
 
 
 def menu_minervini() -> None:
-    """
-    Run the Mark Minervini Trend Template Screener.
-    """
+    """Run the Mark Minervini Trend Template Screener."""
     _header("Mark Minervini Trend Template Screener")
     print("  Fetching 400 days of historical data via yfinance (F&O Universe)...")
     print("  Calculating RS Ratings, VCP, and Breakouts...\n")
@@ -1123,9 +1247,7 @@ def menu_minervini() -> None:
 
 
 def menu_sector_rotation() -> None:
-    """
-    Run the JdK RS-Ratio Sector Rotation analysis.
-    """
+    """Run the JdK RS-Ratio Sector Rotation analysis."""
     _header("Sector Rotation Analysis (JdK RS-Ratio)")
     print("  Fetching 90 days of historical data for sectors and Nifty 50...")
     print("  Calculating RS-Ratio and Momentum...\n")
@@ -1153,9 +1275,7 @@ def menu_sector_rotation() -> None:
 
 
 def menu_correlation() -> None:
-    """
-    Run the Correlation Matrix analysis.
-    """
+    """Run the Correlation Matrix analysis."""
     _header("Cross-Asset Correlation Matrix")
     print("  Fetching 1-year of historical returns for benchmarks...")
 
@@ -1181,9 +1301,7 @@ def menu_correlation() -> None:
 
 
 def menu_heatmap() -> None:
-    """
-    Run the Nifty Indices Heatmap analysis.
-    """
+    """Run the Nifty Indices Heatmap analysis."""
     _header("Nifty Indices Heatmap")
 
     print(f"  {dim('Example Indices:')} NIFTY 50, NIFTY BANK, NIFTY IT, NIFTY PHARMA")
@@ -1217,24 +1335,21 @@ def menu_heatmap() -> None:
 
 
 def menu_mmi() -> None:
-    """
-    Run the Market Mood Index (MMI) Scraper.
-    """
+    """Run the Market Mood Index (MMI) Scraper."""
     _header("Market Mood Index (MMI)")
     run_mmi_cli()
     _pause()
 
 
-def menu_ma_slope() -> None:
-    """
-    Run the Moving Average Slope analyzer.
-    """
+def menu_ma_slope(ticker: str | None = None) -> None:
+    """Run the Moving Average Slope analyzer."""
     _header("Moving Average Slope Analyzer")
 
-    print(f"  {dim('Example Tickers:')} RELIANCE.NS, TCS.NS, AAPL, ^NSEI")
-    ticker = input("  Enter Ticker (default: ^NSEI): ").strip()
     if not ticker:
-        ticker = "^NSEI"
+        print(f"  {dim('Example Tickers:')} RELIANCE.NS, TCS.NS, AAPL, ^NSEI")
+        ticker = input("  Enter Ticker (default: ^NSEI): ").strip()
+        if not ticker:
+            ticker = "^NSEI"
 
     print(f"\n  Analyzing MA slope for {ticker} over the last 30 days...\n")
 
@@ -1263,17 +1378,14 @@ def menu_ma_slope() -> None:
     _pause()
 
 
-def menu_squeeze() -> None:
-    """
-    Run the Momentum Squeeze Indicator analysis.
-
-    Fetches price data for a user-chosen ticker and displays the last 10 candles
-    of squeeze state and momentum direction.
-    """
+def menu_squeeze(ticker: str | None = None) -> None:
+    """Run the Momentum Squeeze Indicator analysis."""
     _header("Momentum Squeeze Indicator")
 
-    print(f"  {dim('Example Tickers:')} ^NSEI, RELIANCE.NS, BANKNIFTY.NS")
-    ticker = input("  Enter Ticker (default: ^NSEI): ").strip() or "^NSEI"
+    if not ticker:
+        print(f"  {dim('Example Tickers:')} ^NSEI, RELIANCE.NS, BANKNIFTY.NS")
+        ticker = input("  Enter Ticker (default: ^NSEI): ").strip() or "^NSEI"
+
     period = input("  Lookback period [6mo/1y/2y] (default: 6mo): ").strip() or "6mo"
 
     print(f"\n  Computing squeeze for {ticker} | period={period}...\n")
@@ -1301,25 +1413,7 @@ def menu_squeeze() -> None:
 
 
 def menu_pair_scanner(hist_dir: str) -> None:
-    """
-    Run the Engle-Granger Cointegration Pair Scanner.
-
-    Parameters:
-        hist_dir (str): Path to historical Parquet root directory.
-
-    Returns:
-        None: This function does not return any value.
-
-    Raises:
-        None: All internal exceptions are caught and handled.
-
-    Complexity:
-        Time: O(M^2 x W) where M is symbols scanned and W is lookback length.
-        Space: O(M^2) for pairing combinations.
-
-    Example:
-        >>> menu_pair_scanner("data/historical")
-    """
+    """Run the Engle-Granger Cointegration Pair Scanner."""
     _header("Cointegration Pair Scanner")
 
     daily_dir = os.path.join(hist_dir, "1d")
@@ -1338,34 +1432,40 @@ def menu_pair_scanner(hist_dir: str) -> None:
     print(f"  {dim('Engle-Granger Cointegration Test (N*(N-1)/2 checks)')}")
     print()
 
+    defaults = Config.SYNC_DEFAULTS
+
     try:
         limit_in = input(
-            "  Symbol scan limit (largest files first) [10-250, default 100]: "
+            f"  Symbol scan limit (largest files first) [10-250, default {defaults['default_symbol_limit']}]: "  # noqa: E501
         ).strip()
-        symbol_limit = int(limit_in) if limit_in else 100
+        symbol_limit = int(limit_in) if limit_in else defaults["default_symbol_limit"]
         if symbol_limit < 2:
             symbol_limit = 2
     except ValueError:
-        warn("Invalid number. Using default 100.")
-        symbol_limit = 100
+        warn(f"Invalid number. Using default {defaults['default_symbol_limit']}.")
+        symbol_limit = defaults["default_symbol_limit"]
 
     try:
-        pval_in = input("  Max p-value threshold [0.001-0.20, default 0.05]: ").strip()
-        max_pval = float(pval_in) if pval_in else 0.05
+        pval_in = input(
+            f"  Max p-value threshold [0.001-0.20, default {defaults['max_pval_threshold']}]: "  # noqa: E501
+        ).strip()
+        max_pval = float(pval_in) if pval_in else defaults["max_pval_threshold"]
         if max_pval <= 0:
-            max_pval = 0.05
+            max_pval = defaults["max_pval_threshold"]
     except ValueError:
-        warn("Invalid float. Using default 0.05.")
-        max_pval = 0.05
+        warn(f"Invalid float. Using default {defaults['max_pval_threshold']}.")
+        max_pval = defaults["max_pval_threshold"]
 
     try:
-        max_pairs_in = input("  Max pairs to return [1-100, default 50]: ").strip()
-        max_pairs = int(max_pairs_in) if max_pairs_in else 50
+        max_pairs_in = input(
+            f"  Max pairs to return [1-100, default {defaults['max_pairs']}]: "
+        ).strip()
+        max_pairs = int(max_pairs_in) if max_pairs_in else defaults["max_pairs"]
         if max_pairs <= 0:
-            max_pairs = 50
+            max_pairs = defaults["max_pairs"]
     except ValueError:
-        warn("Invalid number. Using default 50.")
-        max_pairs = 50
+        warn(f"Invalid number. Using default {defaults['max_pairs']}.")
+        max_pairs = defaults["max_pairs"]
 
     print(f"\n  Scanning top {symbol_limit} symbols with max p-val = {max_pval}...\n")
 
@@ -1378,6 +1478,7 @@ def menu_pair_scanner(hist_dir: str) -> None:
         )
     except Exception as exc:
         err(f"Pair scanning failed: {exc}")
+        logger.error("pair_scanner_failed", error=str(exc))
         _pause()
         return
 
@@ -1402,27 +1503,7 @@ def menu_pair_scanner(hist_dir: str) -> None:
 
 
 def menu_nse_live() -> None:
-    """
-    Interactive Live NSE Data Hub powered by NseUtils.
-
-    Exposes key on-demand live data endpoints (pre-market snapshot, live price,
-    index constituents, FII/DII activity) via an interactive sub-menu. All
-    network calls are isolated so a failure in one option does not affect others.
-
-    Parameters:
-        None
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_nse_live()
-    """
-    from src.nse_live.nse_utils import NseUtils
-
+    """Interactive Live NSE Data Hub with cached API client."""
     _header(
         "Live NSE Data Hub",
         "Pre-market · Price Info · Index · FII/DII · Holidays",
@@ -1456,10 +1537,10 @@ def menu_nse_live() -> None:
         if sub == "0":
             break
 
-        # Initialise NseUtils fresh per query (re-cookies on each session)
+        # Use cached NseUtils instance
         print(f"\n  {dim('Connecting to NSE…')}")
         try:
-            nse = NseUtils()
+            nse = get_nse_utils()
         except Exception as exc:
             err(f"Failed to connect to NSE: {exc}")
             _pause()
@@ -1501,7 +1582,9 @@ def menu_nse_live() -> None:
                     tbl.add_column("Symbol", justify="left")
                     for c in display_cols:
                         tbl.add_column(c, justify="right")
-                    for sym, row in df_pm.head(25).iterrows():
+
+                    limit = Config.DISPLAY_LIMITS["heatmap_preview"]
+                    for sym, row in df_pm.head(limit).iterrows():
                         tbl.add_row(
                             str(sym),
                             *[
@@ -1510,9 +1593,10 @@ def menu_nse_live() -> None:
                             ],
                         )
                     console.print(tbl)
-                    print(f"\n  {dim(f'{len(df_pm)} total rows (showing 25)')}")
+                    print(f"\n  {dim(f'{len(df_pm)} total rows (showing {limit})')}")
             except Exception as exc:
                 err(f"Pre-market query failed: {exc}")
+                logger.error("premarket_failed", error=str(exc))
 
         elif sub == "2":
             _subheader("Live Price Info")
@@ -1545,10 +1629,11 @@ def menu_nse_live() -> None:
                 result = nse.get_index_details(index, list_only=list_only)
                 if list_only and isinstance(result, list):
                     print(f"\n  {bold(str(len(result)))} symbols in {index}:")
+                    limit = Config.DISPLAY_LIMITS["symbol_preview"]
                     print(
                         "  "
-                        + "  ".join(result[:50])
-                        + (" …" if len(result) > 50 else "")
+                        + "  ".join(result[:limit])
+                        + (" …" if len(result) > limit else "")
                     )
                 elif isinstance(result, pd.DataFrame) and not result.empty:
                     show_cols = [
@@ -1613,34 +1698,29 @@ def menu_nse_live() -> None:
 
 
 def menu_backtest(hist_dir: str, data_dir: str) -> None:
-    """
-    Interactive ML Classifier Backtester menu handler.
-
-    Parameters:
-        hist_dir (str): Path to historical Parquet root directory.
-        data_dir (str): Path to root data directory.
-
-    Returns:
-        None
-
-    Raises:
-        None
-    """
+    """Interactive ML Classifier Backtester menu handler."""
     _header("ML Classifier Backtester")
     symbol = _ask("Enter Stock Symbol (e.g. TCS)", "TCS").strip().upper()
-    try:
-        n_est_in = input("  Number of estimators [default 100]: ").strip()
-        n_estimators = int(n_est_in) if n_est_in else 100
-    except ValueError:
-        warn("Invalid number. Using default 100.")
-        n_estimators = 100
+
+    defaults = Config.SYNC_DEFAULTS
 
     try:
-        max_depth_in = input("  Max depth [default 5]: ").strip()
-        max_depth = int(max_depth_in) if max_depth_in else 5
+        n_est_in = input(
+            f"  Number of estimators [default {defaults.get('n_estimators', 100)}]: "
+        ).strip()
+        n_estimators = int(n_est_in) if n_est_in else defaults.get("n_estimators", 100)
     except ValueError:
-        warn("Invalid number. Using default 5.")
-        max_depth = 5
+        warn(f"Invalid number. Using default {defaults.get('n_estimators', 100)}.")
+        n_estimators = defaults.get("n_estimators", 100)
+
+    try:
+        max_depth_in = input(
+            f"  Max depth [default {defaults.get('max_depth', 5)}]: "
+        ).strip()
+        max_depth = int(max_depth_in) if max_depth_in else defaults.get("max_depth", 5)
+    except ValueError:
+        warn(f"Invalid number. Using default {defaults.get('max_depth', 5)}.")
+        max_depth = defaults.get("max_depth", 5)
 
     price_path = os.path.join(hist_dir, "1d", f"{symbol}.parquet")
     if not os.path.exists(price_path):
@@ -1656,13 +1736,10 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
             _pause()
             return
 
-        print(f"  Scanning for delivery percentage data in " f"{data_dir}/processed...")
+        print(f"  Scanning for delivery percentage data in {data_dir}/processed...")
         df_delivery = _get_delivery_history(os.path.join(data_dir, "processed"), symbol)
         if df_delivery is not None and not df_delivery.empty:
-            ok(
-                f"Aggregated {len(df_delivery)} records of "
-                f"delivery percentage data."
-            )
+            ok(f"Aggregated {len(df_delivery)} records of delivery percentage data.")
         else:
             warn("No delivery percentage data found. Defaulting to 0.0.")
 
@@ -1673,8 +1750,8 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         from rich.console import Console
         from rich.table import Table
 
-        from src.nse_bhavcopy.backtester import NSEEventBacktester
         from src.ml.ml_classifier import MLClassifier
+        from src.nse_bhavcopy.backtester import NSEEventBacktester
 
         clf = MLClassifier(n_estimators=n_estimators, max_depth=max_depth)
         X, y = clf.prepare_features(df_prices, df_delivery)
@@ -1719,25 +1796,18 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         table.add_row("Total Executed Trades", str(bt_res["total_trades"]))
         console.print()
         console.print(table)
+
+        logger.info("backtest_completed", symbol=symbol, accuracy=acc)
+
     except Exception as exc:
         err(f"Backtest execution failed: {exc}")
+        logger.error("backtest_failed", symbol=symbol, error=str(exc))
 
     _pause()
 
 
 def menu_fo_ban(data_dir: str) -> None:
-    """
-    Interactive F&O Ban list query.
-
-    Parameters:
-        data_dir (str): Path to root data directory.
-
-    Returns:
-        None
-
-    Raises:
-        None
-    """
+    """Interactive F&O Ban list query."""
     _header("NSE F&O Ban Securities")
     try:
         from src.scrapers.fo_ban import FOBanManager
@@ -1752,38 +1822,13 @@ def menu_fo_ban(data_dir: str) -> None:
             ok("No securities are currently in the F&O ban period.")
     except Exception as exc:
         err(f"Failed to query F&O ban list: {exc}")
+        logger.error("fo_ban_failed", error=str(exc))
 
     _pause()
 
 
 def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
-    """
-    Interactive handler for Bhavcopy incremental OHLCV sync.
-
-    Prompts user for days_back, TA recomputation flag, and delay between
-    ZIP downloads, then calls BhavcopyIncrementalSync.run().
-
-    Parameters:
-        data_dir (str): Root data directory. | Writable path.
-        hist_dir (str): Historical Parquet storage directory.
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> menu_bhavcopy_sync("data", "data/historical")
-
-    Performance:
-        Time Complexity: O(D * N + S * N) [D days, S symbols, N rows/ZIP]
-        Space Complexity: O(D * N)
-
-    Edge Cases Handled:
-        - No raw Bhavcopy ZIP found exits with informative error.
-        - NSE holiday dates silently skipped.
-    """
+    """Interactive handler for Bhavcopy incremental OHLCV sync."""
     from src.storage.bhavcopy_incremental import BhavcopyIncrementalSync
 
     _header(
@@ -1794,16 +1839,19 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
     tip("New symbols with no history still need 'Sync Historical' first.")
 
     raw_dir = os.path.join(data_dir, "raw")
+    defaults = Config.SYNC_DEFAULTS
 
-    days_back_str = _ask("Days back to check for missing data", "10")
+    days_back_str = _ask(
+        "Days back to check for missing data", str(defaults["default_days_back"])
+    )
     try:
         days_back = int(days_back_str)
     except ValueError:
-        warn("Invalid number — using 10.")
-        days_back = 10
+        warn(f"Invalid number — using {defaults['default_days_back']}.")
+        days_back = defaults["default_days_back"]
 
     recompute = _confirm("Recompute TA indicators after sync? (recommended)")
-    delay = _ask_float("Delay between ZIP downloads (seconds)", 1.0)
+    delay = _ask_float("Delay between ZIP downloads (seconds)", defaults["rate_delay"])
 
     zip_path = os.path.join(
         raw_dir,
@@ -1838,33 +1886,39 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
 
     syncer = BhavcopyIncrementalSync(
         data_dir=hist_dir,
-        timeframe=DEFAULT_TIMEFRAME,
+        timeframe=Config.DEFAULT_TIMEFRAME,
         raw_dir=raw_dir,
         rate_delay=delay,
         recompute_ta=recompute,
     )
-    results = syncer.run(symbols, days_back=days_back, recompute_ta=recompute)
+
+    # Use tqdm for progress
+    results = {}
+    for symbol in tqdm(symbols, desc="Syncing Bhavcopy data"):
+        results[symbol] = syncer.sync_one(
+            symbol, days_back=days_back, recompute_ta=recompute
+        )
 
     ok_count = sum(v for v in results.values())
     needs_refresh = [s for s, v in results.items() if not v]
     ok(f"Sync complete  {ok_count}/{len(symbols)} symbols updated.")
     if needs_refresh:
+        limit = Config.DISPLAY_LIMITS["symbol_preview"]
         warn(
             f"{len(needs_refresh)} need full refresh (run Sync Historical): "
-            + ", ".join(needs_refresh[:15])
-            + (" …" if len(needs_refresh) > 15 else "")
+            + ", ".join(needs_refresh[:limit])
+            + (" …" if len(needs_refresh) > limit else "")
         )
 
-    _pause()
-
+    logger.info(
+        "bhavcopy_sync_completed", succeeded=ok_count, failed=len(needs_refresh)
+    )
     _pause()
 
 
 def menu_fyers_token() -> None:
-    """
-    Interactive handler to set the Fyers API access token.
-    """
-    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher, exchange_auth_code
+    """Interactive handler to set the Fyers API access token."""
+    from src.nse_bhavcopy.fyers_fetcher import exchange_auth_code
 
     _header(
         "Fyers API Token Setup",
@@ -1879,7 +1933,7 @@ def menu_fyers_token() -> None:
         _pause()
         return
 
-    fetcher = FyersFetcher()
+    fetcher = get_fyers_fetcher()
     redirect = os.getenv(
         "FYERS_REDIRECT_URI", "https://trade.fyers.in/api-login/redirect-uri/index.html"
     )
@@ -1902,6 +1956,7 @@ def menu_fyers_token() -> None:
     if token:
         fetcher.set_token(token)
         ok(f"Token saved to {fetcher.token_cache}")
+        logger.info("fyers_token_set")
         tip("This token is valid for the rest of the trading day.")
     else:
         err("Failed to exchange code for token. Check credentials.")
@@ -1909,49 +1964,42 @@ def menu_fyers_token() -> None:
     _pause()
 
 
-# ===========================================================================
+def menu_ml_anomaly(hist_dir: str, data_dir: str) -> None:
+    """Interactive ML Anomaly Detection menu handler."""
+
+    _header("ML Data Anomaly Detector")
+    print(dim("  (Identifies extreme splits, bad volume, or smart money action)\n"))
+
+    symbol = _ask("Enter NSE Symbol (e.g. RELIANCE, TCS)", "SUZLON").strip()
+    if not symbol:
+        symbol = "SUZLON"
+
+    args = argparse.Namespace(symbol=symbol, hist_dir=hist_dir, data_dir=data_dir)
+    print(_rule())
+
+    try:
+        cmd_ml_anomaly(args)
+    except Exception as exc:
+        err(f"ML Anomaly detection failed: {exc}")
+    finally:
+        _pause()
+
+
+# ---------------------------------------------------------------------------
 # REPL loop
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 def interactive_menu(
-    data_dir: str = DEFAULT_DATA_DIR,
-    hist_dir: str = DEFAULT_HIST_DIR,
+    data_dir: str = Config.DEFAULT_DATA_DIR,
+    hist_dir: str = Config.DEFAULT_HIST_DIR,
 ) -> None:
-    """
-    REPL-style interactive menu loop for the NSE pipeline.
-
-    Logic:
-        Step 1: Print banner and menu options.
-        Step 2: Accept user choice.
-        Step 3: Dispatch to correct handler.
-        Step 4: Loop until user selects Exit.
-
-    Parameters:
-        data_dir (str): Root data/master directory. | Default "data".
-        hist_dir (str): Historical Parquet root directory. | Default "data/historical".
-
-    Returns:
-        None
-
-    Raises:
-        None
-
-    Example:
-        >>> interactive_menu()
-
-    Performance:
-        Time Complexity: O(U) [U = number of user interactions]
-        Space Complexity: O(1)
-
-    Edge Cases Handled:
-        - Invalid choices print a message and re-prompt.
-        - KeyboardInterrupt exits cleanly.
-    """
+    """REPL-style interactive menu loop for the NSE pipeline."""
     processed_dir = os.path.join(data_dir, "processed")
 
     _print_banner()
 
+    # Action dispatch mapping
     _DISPATCH: dict[str, Callable[[], None]] = {
         "1": lambda: menu_build_master(data_dir),
         "2": lambda: menu_sync_history(data_dir, hist_dir),
@@ -1975,6 +2023,7 @@ def interactive_menu(
         "20": lambda: menu_fo_ban(data_dir),
         "21": lambda: menu_bhavcopy_sync(data_dir, hist_dir),
         "22": lambda: menu_fyers_token(),
+        "23": lambda: menu_ml_anomaly(hist_dir, data_dir),
     }
 
     while True:
@@ -1987,263 +2036,11 @@ def interactive_menu(
 
         if choice == "0" or choice.lower() == "exit":
             print(f"\n  {dim('Bye!')}\n")
+            logger.info("menu_exit")
             break
 
         handler = _DISPATCH.get(choice)
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-21.")
-
-
-# ===========================================================================
-# CLI argument parser
-# ===========================================================================
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    """
-    Build the top-level argparse parser with all subcommands.
-
-    Logic:
-        Step 1: Create root parser with global options.
-        Step 2: Add subparsers: build-master, sync-history, screen, menu.
-        Step 3: Return configured parser.
-
-    Parameters:
-        None
-
-    Returns:
-        argparse.ArgumentParser: Fully configured parser.
-
-    Raises:
-        None
-
-    Example:
-        >>> parser = _build_parser()
-        >>> args = parser.parse_args(["sync-history", "--limit", "50"])
-
-    Performance:
-        Time Complexity: O(1)
-        Space Complexity: O(1)
-
-    Edge Cases Handled:
-        - Default subcommand is 'menu' when no args provided.
-    """
-    parser = argparse.ArgumentParser(
-        prog="nse-pipeline",
-        description="NSE Data Pipeline: build master → sync history → screen stocks",
-    )
-    parser.add_argument(
-        "--data-dir",
-        default=DEFAULT_DATA_DIR,
-        dest="data_dir",
-        help=f"Root data directory (default: {DEFAULT_DATA_DIR})",
-    )
-    parser.add_argument(
-        "--hist-dir",
-        default=DEFAULT_HIST_DIR,
-        dest="hist_dir",
-        help=f"Historical Parquet directory (default: {DEFAULT_HIST_DIR})",
-    )
-
-    sub = parser.add_subparsers(dest="command")
-
-    # ── build-master ──────────────────────────────────────────────────────
-    p_master = sub.add_parser(
-        "build-master",
-        help="Download Bhavcopy + index data and build the equity master table.",
-    )
-    p_master.add_argument(
-        "--delay",
-        type=float,
-        default=1.0,
-        help="Seconds between index API calls (default: 1.0)",
-    )
-    p_master.set_defaults(func=cmd_build_master)
-
-    # ── sync-history ──────────────────────────────────────────────────────
-    p_sync = sub.add_parser(
-        "sync-history",
-        help="Sync per-symbol OHLCV Parquet files (full history + incremental).",
-    )
-    p_sync.add_argument(
-        "--timeframe",
-        default=DEFAULT_TIMEFRAME,
-        help=f"Candle timeframe: 1d, 1w, 1mo (default: {DEFAULT_TIMEFRAME})",
-    )
-    p_sync.add_argument(
-        "--start-date",
-        default=DEFAULT_START_DATE,
-        dest="start_date",
-        help=f"Earliest date for history (default: {DEFAULT_START_DATE})",
-    )
-    p_sync.add_argument(
-        "--cap-filter",
-        default=None,
-        dest="cap_filter",
-        choices=["Large", "Mid", "Small", "Other"],
-        help="Filter symbols by market cap category.",
-    )
-    p_sync.add_argument(
-        "--index-filter",
-        default=None,
-        dest="index_filter",
-        help="Filter by index column e.g. is_nifty_50",
-    )
-    p_sync.add_argument(
-        "--limit", type=int, default=None, help="Maximum number of symbols to sync."
-    )
-    p_sync.add_argument(
-        "--no-resume",
-        action="store_false",
-        dest="resume",
-        help="Re-download already current symbols.",
-    )
-    p_sync.add_argument(
-        "--delay",
-        type=float,
-        default=0.5,
-        help="Seconds between API calls (default: 0.5)",
-    )
-    p_sync.add_argument(
-        "--source",
-        default="bhavcopy",
-        choices=["bhavcopy", "master"],
-        help=(
-            "Symbol source: 'bhavcopy' (default, uses today's traded EQ list) "
-            "or 'master' (full 2400+ symbol master table)."
-        ),
-    )
-    p_sync.set_defaults(func=cmd_sync_history, resume=True)
-
-    # ── screen ────────────────────────────────────────────────────────────
-    p_screen = sub.add_parser(
-        "screen",
-        help="Run technical screener on synced historical data.",
-    )
-    p_screen.add_argument(
-        "--processed-dir",
-        default=os.path.join(DEFAULT_DATA_DIR, "processed"),
-        dest="processed_dir",
-        help="Directory containing processed Bhavcopy CSVs.",
-    )
-    p_screen.add_argument(
-        "--cap-filter",
-        default=None,
-        dest="cap_filter",
-        choices=["Large", "Mid", "Small", "Other"],
-        help="Filter symbols by market cap.",
-    )
-    p_screen.add_argument(
-        "--index-filter",
-        default=None,
-        dest="index_filter",
-        help="Filter by index column e.g. is_nifty_50",
-    )
-    p_screen.add_argument(
-        "--limit", type=int, default=None, help="Maximum symbols to screen."
-    )
-    p_screen.set_defaults(func=cmd_screen)
-
-    # ── backtest ──────────────────────────────────────────────────────────
-    p_backtest = sub.add_parser(
-        "backtest",
-        help="Run machine learning direction classifier and event backtest.",
-    )
-    p_backtest.add_argument(
-        "--symbol",
-        required=True,
-        help="Ticker symbol to backtest (e.g. TCS)",
-    )
-    p_backtest.add_argument(
-        "--n-estimators",
-        type=int,
-        default=100,
-        dest="n_estimators",
-        help="Number of Random Forest estimators (default: 100)",
-    )
-    p_backtest.add_argument(
-        "--max-depth",
-        type=int,
-        default=5,
-        dest="max_depth",
-        help="Maximum tree depth of the Random Forest classifier (default: 5)",
-    )
-    p_backtest.set_defaults(func=cmd_backtest)
-
-    # ── fo-ban ────────────────────────────────────────────────────────────
-    p_fo_ban = sub.add_parser(
-        "fo-ban",
-        help="Fetch and print the current active NSE F&O ban securities list.",
-    )
-    p_fo_ban.set_defaults(func=cmd_fo_ban)
-
-    # ── bhavcopy-sync ─────────────────────────────────────────────────────
-    p_bsync = sub.add_parser(
-        "bhavcopy-sync",
-        help=(
-            "Fast incremental OHLCV update: downloads 1 Bhavcopy ZIP per "
-            "missing trading day instead of per-symbol API calls."
-        ),
-    )
-    p_bsync.add_argument(
-        "--days",
-        type=int,
-        default=10,
-        help="Max trading days back to look for missing data (default: 10).",
-    )
-    p_bsync.add_argument(
-        "--timeframe",
-        default=DEFAULT_TIMEFRAME,
-        help=f"Candle timeframe (default: {DEFAULT_TIMEFRAME}; only 1d uses Bhavcopy).",
-    )
-    p_bsync.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Cap the number of symbols updated (useful for testing).",
-    )
-    p_bsync.add_argument(
-        "--no-ta",
-        action="store_true",
-        dest="no_ta",
-        help="Skip TA indicator recomputation after appending (faster).",
-    )
-    p_bsync.add_argument(
-        "--delay",
-        type=float,
-        default=1.0,
-        help="Seconds between Bhavcopy ZIP downloads (default: 1.0).",
-    )
-    p_bsync.set_defaults(func=cmd_bhavcopy_sync)
-
-    # ── fyers-login ─────────────────────────────────────────────────────
-    p_fl = sub.add_parser(
-        "fyers-login",
-        help="Print the Fyers login URL to get an authorization code.",
-    )
-    p_fl.add_argument(
-        "--redirect-uri",
-        default=None,
-        dest="redirect_uri",
-        help="Redirect URI registered in your Fyers app (default: https://trade.fyers.in/api-login/redirect-uri/index.html).",
-    )
-    p_fl.set_defaults(func=cmd_fyers_login)
-
-    # ── fyers-token ────────────────────────────────────────────────────
-    p_ft = sub.add_parser(
-        "fyers-token",
-        help="Exchange a Fyers auth code for an access token and cache it.",
-    )
-    p_ft.add_argument(
-        "--code",
-        required=True,
-        help="Authorization code from the Fyers login redirect URL.",
-    )
-    p_ft.set_defaults(func=cmd_fyers_token)
-
-    # ── menu (default) ────────────────────────────────────────────────────
-    sub.add_parser("menu", help="Launch the interactive menu (default).")
-
-    return parser
+            warn(f"'{choice}' is not a valid option — enter 0-23.")

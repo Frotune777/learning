@@ -7,9 +7,9 @@ Last Modified: 2026-05-30
 import logging
 import os
 import time
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Callable, Any
 
 from src.core.signal import Signal
 
@@ -19,6 +19,7 @@ LOGGER = logging.getLogger(__name__)
 @dataclass
 class ScanMetrics:
     """Metrics tracking for parallel scan execution."""
+
     total_strategies: int
     successful_strategies: int
     failed_strategies: int
@@ -33,7 +34,9 @@ def log_scan_metrics(metrics: ScanMetrics) -> None:
         "SCAN_COMPLETE",
         extra={
             "total_strategies": metrics.total_strategies,
-            "success_rate": metrics.successful_strategies / metrics.total_strategies if metrics.total_strategies else 0,
+            "success_rate": metrics.successful_strategies / metrics.total_strategies
+            if metrics.total_strategies
+            else 0,
             "total_signals": metrics.total_signals,
             "duration_sec": metrics.scan_duration_seconds,
             "signals_per_strategy": metrics.signals_per_strategy,
@@ -44,10 +47,10 @@ def log_scan_metrics(metrics: ScanMetrics) -> None:
 def _run_strategy(scanner_func: Callable[[], list[Signal]]) -> tuple[str, list[Signal]]:
     """
     Worker function: executes a single strategy (bound via functools.partial).
-    
+
     Parameters:
         scanner_func (Callable): The scanner function with pre-bound arguments.
-        
+
     Returns:
         tuple[str, list[Signal]]: The strategy name and generated signals.
     """
@@ -67,26 +70,26 @@ def run_parallel_scan(
 ) -> tuple[list[Signal], ScanMetrics]:
     """
     Distribute strategy execution across CPU cores.
-    
+
     Args:
         scanner_funcs: List of callables (partials) that take no args and return list[Signal].
         max_workers: Number of processes. If None, defaults to CPU count.
-        
+
     Returns:
         tuple: (Flat list of all signals, ScanMetrics object)
     """
     if max_workers is None:
         max_workers = os.cpu_count() or 4
-        
+
     LOGGER.info(
         "Starting parallel scan with %d strategies using %d workers",
         len(scanner_funcs),
         max_workers,
     )
-    
+
     start_time = time.time()
     all_signals: list[Signal] = []
-    
+
     metrics = ScanMetrics(
         total_strategies=len(scanner_funcs),
         successful_strategies=0,
@@ -98,10 +101,8 @@ def run_parallel_scan(
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Submit all strategies
-        futures = {
-            executor.submit(_run_strategy, fn): fn for fn in scanner_funcs
-        }
-        
+        futures = {executor.submit(_run_strategy, fn): fn for fn in scanner_funcs}
+
         for future in as_completed(futures):
             strat_name, signals = future.result()
             if signals:
@@ -117,7 +118,7 @@ def run_parallel_scan(
 
     metrics.scan_duration_seconds = round(time.time() - start_time, 2)
     log_scan_metrics(metrics)
-    
+
     LOGGER.info(
         "Parallel scan complete: %d signals across %d strategies in %.2fs",
         metrics.total_signals,

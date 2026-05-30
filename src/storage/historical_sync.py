@@ -90,56 +90,10 @@ class HistoricalSync:
         df = df[~df.index.duplicated(keep="last")].sort_index()
         path = self._parquet_path(symbol)
         try:
-            from src.nse_bhavcopy.ta_indicators import add_ta_indicators
-
-            df = add_ta_indicators(df)
             df.to_parquet(path)
             LOGGER.debug("Saved %d rows → %s", len(df), path)
         except Exception as exc:
             LOGGER.error("Failed to save Parquet for %s: %s", symbol, exc)
-
-    def recompute_all_ta(self) -> None:
-        """
-        Iterate over all existing Parquet files and recompute their TA-Lib indicators.
-
-        Parameters:
-            None
-
-        Returns:
-            None
-
-        Raises:
-            None
-
-        Complexity:
-            Time: O(S * N) [S symbols, N historical bars]
-            Space: O(N) [Dataframe size per symbol]
-        """
-        import glob
-
-        from src.nse_bhavcopy.ta_indicators import add_ta_indicators
-
-        pattern = os.path.join(self._tf_dir, "*.parquet")
-        files = glob.glob(pattern)
-        LOGGER.info("Recomputing TA indicators for %d files...", len(files))
-
-        success_count = 0
-        for path in files:
-            symbol = os.path.basename(path).replace(".parquet", "")
-            try:
-                df = pd.read_parquet(path)
-                if not df.empty:
-                    df = add_ta_indicators(df)
-                    df.to_parquet(path)
-                    success_count += 1
-            except Exception as exc:
-                LOGGER.error("Failed to recompute TA for %s: %s", symbol, exc)
-
-        LOGGER.info(
-            "Successfully recomputed TA indicators for %d/%d files.",
-            success_count,
-            len(files),
-        )
 
     def _estimate_expected_rows(self, first_date: date, last_date: date) -> int:
         """Rough estimate of trading days between two dates."""
