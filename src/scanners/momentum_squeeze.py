@@ -132,11 +132,13 @@ def momentum_squeeze(
     return result
 
 
+from src.core.signal import Signal
+
 def run_squeeze_cli(
     symbol: str = "^NSEI",
     interval: str = "1d",
     period: str = "6mo",
-) -> pd.DataFrame:
+) -> list[Signal]:
     """
     CLI wrapper to compute and return the latest Momentum Squeeze summary.
 
@@ -146,39 +148,69 @@ def run_squeeze_cli(
         period (str): Data lookback period (default 6 months).
 
     Returns:
-        pd.DataFrame: The last 10 rows of the momentum squeeze result table.
+        list[Signal]: Signal objects for the last 10 periods.
     """
     try:
         result = momentum_squeeze(symbol, interval, period)
     except ValueError as e:
         print(f"  Error: {e}")
-        return pd.DataFrame()
+        return []
 
     if result.empty:
-        return pd.DataFrame()
+        return []
 
-    # Return a human-readable slice — last 10 candles
     tail = result.tail(10).copy()
 
-    # Derive a plain-text signal from color
-    def _signal(row: pd.Series) -> str:
-        """Map histogram and squeeze colours to a text signal."""
-        sqz = (
-            "SQUEEZE"
-            if row["SqueezeOn"]
-            else ("release" if row["SqueezeOff"] else "---")
-        )
+    def _map_action(mom_color: str) -> int:
+        if mom_color in ["lime", "green"]:
+            return 1
+        elif mom_color in ["red", "maroon"]:
+            return -1
+        return 0
+
+    signals = []
+    # Ensure index is datetime for timestamp
+    if not isinstance(tail.index, pd.DatetimeIndex):
+        try:
+            tail.index = pd.to_datetime(tail.index)
+        except Exception:
+            pass
+
+    from datetime import datetime
+
+    for dt, row in tail.iterrows():
         mom = row["HistColor"]
-        direction = {
+        sqz_on = row["SqueezeOn"]
+        sqz_off = row["SqueezeOff"]
+        action = _map_action(mom)
+        
+        # Conviction: if squeeze is on, it's building up (0.5), if it's off it fired (1.0).
+        # We also look at strong vs weak momentum for conviction.
+        conviction = 1.0 if mom in ["lime", "red"] else 0.5
+        
+        sqz_str = "SQUEEZE" if sqz_on else ("release" if sqz_off else "---")
+        direction_str = {
             "lime": "⬆ Strong Bullish",
             "green": "↑ Bullish",
             "red": "⬇ Strong Bearish",
             "maroon": "↓ Bearish",
         }.get(str(mom), "?")
-        return f"{sqz} | {direction}"
+        
+        timestamp = dt if isinstance(dt, datetime) else datetime.now()
+        
+        sig = Signal(
+            symbol=symbol,
+            strategy_name="momentum_squeeze",
+            action=action,
+            conviction=conviction,
+            timestamp=timestamp,
+            meta={
+                "close": row["Close"],
+                "momentum": row["Momentum"],
+                "squeeze_on": sqz_on,
+                "raw_signal": f"{sqz_str} | {direction_str}"
+            }
+        )
+        signals.append(sig)
 
-    tail["Signal"] = tail.apply(_signal, axis=1)
-
-    display_cols = ["Close", "Momentum", "SqueezeOn", "Signal"]
-    out = tail[display_cols]
-    return out.reset_index()
+    return signals
