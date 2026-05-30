@@ -112,7 +112,7 @@ def scan_rsi_signals(
 
     if "RSI_14" not in df_universe.columns:
         LOGGER.error("RSI_14 column missing from analyzed CSV.")
-        return pd.DataFrame()
+        return []
 
     df_signals = df_universe[
         df_universe["RSI_14"].notna() & (df_universe["RSI_14"] < RSI_ENTRY_THRESHOLD)
@@ -122,7 +122,7 @@ def scan_rsi_signals(
         LOGGER.info(
             "RSI scanner: no stocks with RSI < %.1f found.", RSI_ENTRY_THRESHOLD
         )
-        return pd.DataFrame()
+        return []
 
     df_signals = df_signals.sort_values(by="RSI_14", ascending=True)
 
@@ -167,7 +167,8 @@ def scan_rsi_signals(
                 "rsi_value": round(rsi_val, 2),
                 "cmp": cmp_val,
                 "step_hint": row.get("STEP_HINT", ""),
-                "in_nifty50": row.get("IN_NIFTY50", False)
+                "in_nifty50": row.get("IN_NIFTY50", False),
+                "amo_price": row.get("AMO_PRICE", np.nan)
             }
         )
         signals.append(sig)
@@ -176,28 +177,23 @@ def scan_rsi_signals(
     return signals
 
 
-def get_todays_buy(df_signals: pd.DataFrame) -> pd.Series | None:
+def get_todays_buy(signals: list[Signal]) -> Signal | None:
     """
     Return the single highest-priority RSI buy for today (lowest RSI).
 
     Parameters:
-        df_signals (pd.DataFrame): Output from scan_rsi_signals(). |
+        signals (list[Signal]): Output from scan_rsi_signals(). |
             Must be non-empty and already sorted by RSI ascending.
 
     Returns:
-        pd.Series | None: Top-priority row, or None if DataFrame is empty.
+        Signal | None: Top-priority signal, or None if list is empty.
 
     Complexity:
         Time: O(1)  Space: O(1)
-
-    Example:
-        >>> buy = get_todays_buy(df)
-        >>> buy is not None
-        True
     """
-    if df_signals.empty:
+    if not signals:
         return None
-    return df_signals.iloc[0]
+    return signals[0]
 
 
 def check_averaging_eligible(

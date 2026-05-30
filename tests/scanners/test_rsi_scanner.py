@@ -18,6 +18,7 @@ from src.scanners.rsi_scanner import (
     get_todays_buy,
     scan_rsi_signals,
 )
+from src.core.signal import Signal
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ def test_scan_rsi_signals_returns_empty_on_no_rsi_column(
         result = scan_rsi_signals(
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
         )
-    assert result.empty
+    assert result == []
 
 
 def test_scan_rsi_signals_filters_universe(tmp_path: str) -> None:
@@ -98,8 +99,8 @@ def test_scan_rsi_signals_filters_universe(tmp_path: str) -> None:
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
         )
 
-    assert "OUTSIDE" not in result["NSE Code"].tolist()
-    assert "TCS" in result["NSE Code"].tolist()
+    assert "OUTSIDE" not in [s.symbol for s in result]
+    assert "TCS" in [s.symbol for s in result]
 
 
 def test_scan_rsi_signals_sorts_by_rsi_ascending(tmp_path: str) -> None:
@@ -121,8 +122,8 @@ def test_scan_rsi_signals_sorts_by_rsi_ascending(tmp_path: str) -> None:
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
         )
 
-    assert result.iloc[0]["NSE Code"] == "C"
-    assert result.iloc[-1]["NSE Code"] == "A"
+    assert result[0].symbol == "C"
+    assert result[-1].symbol == "A"
 
 
 def test_scan_rsi_signals_computes_amo_price(tmp_path: str) -> None:
@@ -147,7 +148,7 @@ def test_scan_rsi_signals_computes_amo_price(tmp_path: str) -> None:
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
         )
 
-    assert abs(result.iloc[0]["AMO Price"] - 397.99) < 0.001
+    assert abs(result[0].meta["amo_price"] - 397.99) < 0.001
 
 
 def test_scan_rsi_signals_excludes_above_threshold(tmp_path: str) -> None:
@@ -164,23 +165,23 @@ def test_scan_rsi_signals_excludes_above_threshold(tmp_path: str) -> None:
         result = scan_rsi_signals(
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
         )
-    assert result.empty
+    assert result == []
 
 
 # ─── get_todays_buy ───────────────────────────────────────────────────────────
 
 
 def test_get_todays_buy_returns_first_row() -> None:
-    """get_todays_buy returns the first row of a non-empty DataFrame."""
-    df = pd.DataFrame([{"NSE Code": "IRFC", "RSI": 28.0}])
-    row = get_todays_buy(df)
+    """get_todays_buy returns the first Signal of a non-empty list."""
+    sig = Signal(symbol="IRFC", strategy_name="rsi_scanner", action=1, conviction=1.0, timestamp=pd.Timestamp.now(), meta={})
+    row = get_todays_buy([sig])
     assert row is not None
-    assert row["NSE Code"] == "IRFC"
+    assert row.symbol == "IRFC"
 
 
 def test_get_todays_buy_returns_none_on_empty() -> None:
-    """get_todays_buy returns None for empty DataFrame."""
-    assert get_todays_buy(pd.DataFrame()) is None
+    """get_todays_buy returns None for empty list."""
+    assert get_todays_buy([]) is None
 
 
 # ─── check_averaging_eligible ─────────────────────────────────────────────────
