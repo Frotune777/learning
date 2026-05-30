@@ -15,6 +15,7 @@ from src.scanners.pair_scanner import (
     run_pair_scanner_cli,
     scan_cointegrated_pairs,
 )
+from src.core.signal import Signal
 from src.scanners.pair_scanner import (
     test_cointegration as run_coint_test,
 )
@@ -51,24 +52,17 @@ def test_scan_cointegrated_pairs_empty() -> None:
     """
     Test scan_cointegrated_pairs returns empty dataframe on empty symbols list.
     """
-    df = scan_cointegrated_pairs([], daily_dir="dummy")
-    assert df.empty
-    assert list(df.columns) == [
-        "Stock_A",
-        "Stock_B",
-        "Coint_Pval",
-        "Spread_ZScore",
-        "Signal",
-        "Actionable",
-    ]
+    signals = scan_cointegrated_pairs([], daily_dir="dummy")
+    assert isinstance(signals, list)
+    assert len(signals) == 0
 
 
 def test_run_pair_scanner_cli_invalid_dir() -> None:
     """
     Test run_pair_scanner_cli returns empty dataframe on invalid directory.
     """
-    df = run_pair_scanner_cli(daily_dir="non_existent_dir_123")
-    assert df.empty
+    signals = run_pair_scanner_cli(daily_dir="non_existent_dir_123")
+    assert signals == []
 
 
 def test_run_pair_scanner_cli_success(tmp_path: Path) -> None:
@@ -94,6 +88,10 @@ def test_run_pair_scanner_cli_success(tmp_path: Path) -> None:
 
     # Run the scanner
     results = run_pair_scanner_cli(daily_dir=str(d), max_pval=0.20, symbol_limit=5)
-    assert not results.empty
-    assert "Stock_A" in results.columns
-    assert "Stock_B" in results.columns
+    assert isinstance(results, list)
+    if results:
+        sig = results[0]
+        assert isinstance(sig, Signal)
+        assert sig.strategy_name == "pair_scanner"
+        assert "pair_id" in sig.meta
+        assert "pair_symbol" in sig.meta

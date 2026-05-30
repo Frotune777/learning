@@ -132,6 +132,10 @@ def test_cointegration(
     return round(float(p_value), 6), round(zscore, 4), signal
 
 
+import uuid
+from src.core.signal import Signal
+from datetime import datetime
+
 def scan_cointegrated_pairs(
     symbols: list[str],
     daily_dir: str,
@@ -139,7 +143,7 @@ def scan_cointegrated_pairs(
     zscore_entry: float = _DEFAULT_ZSCORE_ENTRY,
     lookback: int = _MIN_HISTORY,
     max_pairs: int = 50,
-) -> pd.DataFrame:
+) -> list[Signal]:
     """
     Scan all symbol pairs for cointegration and return actionable pair trades.
 
@@ -156,9 +160,8 @@ def scan_cointegrated_pairs(
         max_pairs (int): Maximum number of pairs to return. | Default: 50
 
     Returns:
-        pd.DataFrame: Sorted DataFrame of cointegrated pairs with columns:
-            Stock_A, Stock_B, Coint_Pval, Spread_ZScore, Signal.
-            Empty DataFrame if no cointegrated pairs are found.
+        list[Signal]: List of Signal objects (2 per actionable pair).
+            Empty list if no actionable pairs are found.
 
     Raises:
         None
@@ -188,7 +191,8 @@ def scan_cointegrated_pairs(
         n * (n - 1) // 2,
     )
 
-    records: list[dict[str, object]] = []
+    signals: list[Signal] = []
+    
     for i in range(n):
         for j in range(i + 1, n):
             sym_a = loaded_syms[i]
@@ -199,44 +203,75 @@ def scan_cointegrated_pairs(
                 lookback=lookback,
             )
             if not np.isnan(p_val) and p_val <= max_pval:
-                records.append(
-                    {
-                        "Stock_A": sym_a,
-                        "Stock_B": sym_b,
-                        "Coint_Pval": p_val,
-                        "Spread_ZScore": zscore,
-                        "Signal": signal,
-                        "Actionable": abs(zscore) >= zscore_entry
-                        if not np.isnan(zscore)
-                        else False,
-                    }
-                )
+                actionable = abs(zscore) >= zscore_entry if not np.isnan(zscore) else False
+                if actionable and signal != "Neutral":
+                    pair_id = str(uuid.uuid4())
+                    
+                    # Calculate conviction (capped at 1.0)
+                    conviction = min(1.0, abs(zscore) / (zscore_entry * 2.0))
+                    
+                    if signal == "BUY A / SELL B":
+                        action_a, action_b = 1, -1
+                    elif signal == "SELL A / BUY B":
+                        action_a, action_b = -1, 1
+                    else:
+                        continue
+                        
+                    now = datetime.now()
+                    
+                    # Signal for Stock A
+                    sig_a = Signal(
+                        symbol=sym_a,
+                        strategy_name="pair_scanner",
+                        action=action_a,
+                        conviction=round(conviction, 2),
+                        timestamp=now,
+                        meta={
+                            "pair_id": pair_id,
+                            "pair_symbol": sym_b,
+                            "pair_action": action_b,
+                            "z_score": zscore,
+                            "spread_mean": 0.0, # Dummy since not exported by test_cointegration
+                            "half_life": 0.0,
+                            "trade_type": signal
+                        }
+                    )
+                    
+                    # Signal for Stock B
+                    sig_b = Signal(
+                        symbol=sym_b,
+                        strategy_name="pair_scanner",
+                        action=action_b,
+                        conviction=round(conviction, 2),
+                        timestamp=now,
+                        meta={
+                            "pair_id": pair_id,
+                            "pair_symbol": sym_a,
+                            "pair_action": action_a,
+                            "z_score": zscore,
+                            "spread_mean": 0.0,
+                            "half_life": 0.0,
+                            "trade_type": signal
+                        }
+                    )
+                    
+                    signals.extend([sig_a, sig_b])
+                    
+                    if len(signals) >= max_pairs * 2:
+                        break
+        if len(signals) >= max_pairs * 2:
+            break
 
-    if not records:
+    if not signals:
         LOGGER.info("PairScanner: No cointegrated pairs found.")
-        return pd.DataFrame(
-            columns=[
-                "Stock_A",
-                "Stock_B",
-                "Coint_Pval",
-                "Spread_ZScore",
-                "Signal",
-                "Actionable",
-            ]
-        )
+        return []
 
-    result = (
-        pd.DataFrame(records)
-        .sort_values("Coint_Pval", ascending=True)
-        .head(max_pairs)
-        .reset_index(drop=True)
-    )
     LOGGER.info(
-        "PairScanner: %d cointegrated pairs found (%d actionable).",
-        len(result),
-        int(result["Actionable"].sum()),
+        "PairScanner: %d actionable pairs found (%d signals).",
+        len(signals) // 2,
+        len(signals),
     )
-    return result
+    return signals
 
 
 def run_pair_scanner_cli(
@@ -244,7 +279,7 @@ def run_pair_scanner_cli(
     max_pairs: int = 50,
     max_pval: float = _DEFAULT_MAX_PVAL,
     symbol_limit: int = 100,
-) -> pd.DataFrame:
+) -> list[Signal]:
     """
     CLI entry point: discover symbols from parquet files and run the pair scanner.
 
@@ -259,7 +294,7 @@ def run_pair_scanner_cli(
             first). | Default: 100
 
     Returns:
-        pd.DataFrame: Cointegrated pairs table (may be empty if none found).
+        list[Signal]: Cointegrated pairs signals (may be empty if none found).
 
     Raises:
         None
@@ -274,7 +309,7 @@ def run_pair_scanner_cli(
     """
     if not os.path.isdir(daily_dir):
         LOGGER.warning("PairScanner: daily_dir '%s' not found.", daily_dir)
-        return pd.DataFrame()
+        return []
 
     # Discover symbols from parquet file names
     parquet_files = sorted(
