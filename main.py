@@ -707,6 +707,76 @@ def cmd_backtest(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_bhavcopy_sync(args: argparse.Namespace) -> None:
+    """
+    Execute the 'bhavcopy-sync' CLI subcommand.
+
+    Downloads missing Bhavcopy ZIPs (1 per trading day) and appends OHLCV
+    rows directly into per-symbol Parquets — far faster than per-symbol API.
+
+    Logic:
+        Step 1: Load symbol list from Bhavcopy ZIP or master table.
+        Step 2: Instantiate BhavcopyIncrementalSync.
+        Step 3: Call run() which detects missing days, downloads ZIPs, appends.
+        Step 4: Print summary; symbols needing full refresh are flagged.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI args with hist_dir, data_dir,
+            days, limit, no_ta, delay.
+
+    Returns:
+        None
+
+    Raises:
+        SystemExit: If no symbol source is found.
+
+    Example:
+        >>> cmd_bhavcopy_sync(args)
+
+    Performance:
+        Time Complexity: O(D * N + S * N) [D days, S symbols, N rows/ZIP]
+        Space Complexity: O(D * N)
+
+    Edge Cases Handled:
+        - Symbols needing full refresh reported separately in output.
+        - NSE holidays produce harmless 404s which are silently skipped.
+    """
+    from src.nse_bhavcopy.bhavcopy_incremental import BhavcopyIncrementalSync
+
+    LOGGER.info("=== BHAVCOPY INCREMENTAL SYNC ===")
+
+    raw_dir: str = os.path.join(args.data_dir, "raw")
+    limit = getattr(args, "limit", None)
+    days_back: int = getattr(args, "days", 10)
+    no_ta: bool = getattr(args, "no_ta", False)
+    delay: float = getattr(args, "delay", 1.0)
+
+    symbols = _load_symbols_from_bhavcopy(
+        raw_dir=raw_dir,
+        master_path=None,
+        limit=limit,
+    )
+
+    syncer = BhavcopyIncrementalSync(
+        data_dir=args.hist_dir,
+        timeframe=getattr(args, "timeframe", DEFAULT_TIMEFRAME),
+        raw_dir=raw_dir,
+        rate_delay=delay,
+        recompute_ta=not no_ta,
+    )
+    results = syncer.run(symbols, days_back=days_back, recompute_ta=not no_ta)
+
+    ok_count = sum(v for v in results.values())
+    needs_refresh = [s for s, v in results.items() if not v]
+    print(f"\n\u2714  Bhavcopy sync: {ok_count}/{len(symbols)} symbols updated.")
+    if needs_refresh:
+        print(
+            f"!   {len(needs_refresh)} symbol(s) need full refresh "
+            f"(run sync-history for these): "
+            f"{', '.join(needs_refresh[:20])}"
+        )
+
+
 def cmd_fo_ban(args: argparse.Namespace) -> None:
     """
     Fetch and display the current NSE F&O ban securities.
@@ -841,6 +911,10 @@ def _print_main_menu() -> None:
     print(
         f"  {cyan('20')}  {bold('View F&O Ban List')}               "
         f"{dim('Fetch current NSE F&O ban securities')}"
+    )
+    print(
+        f"  {cyan('21')}  {bold('Bhavcopy Incremental Sync')}       "
+        f"{dim('Batch OHLCV update — 1 ZIP/day instead of 1 800+ API calls')}"
     )
     print()
     print(f"   {dim('0')}  {dim('Exit')}")
@@ -2468,6 +2542,108 @@ def menu_fo_ban(data_dir: str) -> None:
     _pause()
 
 
+def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
+    """
+    Interactive handler for Bhavcopy incremental OHLCV sync.
+
+    Prompts user for days_back, TA recomputation flag, and delay between
+    ZIP downloads, then calls BhavcopyIncrementalSync.run().
+
+    Parameters:
+        data_dir (str): Root data directory. | Writable path.
+        hist_dir (str): Historical Parquet storage directory.
+
+    Returns:
+        None
+
+    Raises:
+        None
+
+    Example:
+        >>> menu_bhavcopy_sync("data", "data/historical")
+
+    Performance:
+        Time Complexity: O(D * N + S * N) [D days, S symbols, N rows/ZIP]
+        Space Complexity: O(D * N)
+
+    Edge Cases Handled:
+        - No raw Bhavcopy ZIP found exits with informative error.
+        - NSE holiday dates silently skipped.
+    """
+    from src.nse_bhavcopy.bhavcopy_incremental import BhavcopyIncrementalSync
+
+    _header(
+        "Bhavcopy Incremental Sync",
+        "Downloads 1 ZIP per missing trading day — far faster than per-symbol API",
+    )
+    tip("Only updates symbols that already have a local Parquet (incremental path).")
+    tip("New symbols with no history still need 'Sync Historical' first.")
+
+    raw_dir = os.path.join(data_dir, "raw")
+
+    days_back_str = _ask("Days back to check for missing data", "10")
+    try:
+        days_back = int(days_back_str)
+    except ValueError:
+        warn("Invalid number — using 10.")
+        days_back = 10
+
+    recompute = _confirm("Recompute TA indicators after sync? (recommended)")
+    delay = _ask_float("Delay between ZIP downloads (seconds)", 1.0)
+
+    zip_path = os.path.join(
+        raw_dir,
+        sorted([f for f in os.listdir(raw_dir) if f.endswith(".zip")])[-1]
+        if os.path.isdir(raw_dir)
+        and any(f.endswith(".zip") for f in os.listdir(raw_dir))
+        else "",
+    )
+    if not zip_path or not os.path.exists(zip_path):
+        err("No Bhavcopy ZIP found in data/raw. Run 'Build Master' first.")
+        _pause()
+        return
+
+    with open(zip_path, "rb") as fh:
+        raw_bytes = fh.read()
+
+    dl = BhavcopyDownloader(
+        raw_dir=raw_dir,
+        processed_dir=os.path.join(data_dir, "processed"),
+    )
+    symbols = dl.get_eq_symbols(raw_bytes)
+    if not symbols:
+        err("Could not extract symbols from Bhavcopy ZIP.")
+        _pause()
+        return
+
+    print(f"\n  {dim('Symbols loaded:')}  {bold(str(len(symbols)))}")
+    if not _confirm(f"Start Bhavcopy sync for {len(symbols)} symbols?"):
+        warn("Cancelled.")
+        _pause()
+        return
+
+    syncer = BhavcopyIncrementalSync(
+        data_dir=hist_dir,
+        timeframe=DEFAULT_TIMEFRAME,
+        raw_dir=raw_dir,
+        rate_delay=delay,
+        recompute_ta=recompute,
+    )
+    results = syncer.run(symbols, days_back=days_back, recompute_ta=recompute)
+
+    ok_count = sum(v for v in results.values())
+    needs_refresh = [s for s, v in results.items() if not v]
+    ok(f"Sync complete  {ok_count}/{len(symbols)} symbols updated.")
+    if needs_refresh:
+        warn(
+            f"{len(needs_refresh)} need full refresh (run Sync Historical): "
+            + ", ".join(needs_refresh[:15])
+            + (" …" if len(needs_refresh) > 15 else "")
+        )
+
+    _pause()
+
+
 # ===========================================================================
 # REPL loop
 # ===========================================================================
@@ -2532,6 +2708,7 @@ def interactive_menu(
         "18": lambda: menu_pair_scanner(hist_dir),
         "19": lambda: menu_backtest(hist_dir, data_dir),
         "20": lambda: menu_fo_ban(data_dir),
+        "21": lambda: menu_bhavcopy_sync(data_dir, hist_dir),
     }
 
     while True:
@@ -2550,7 +2727,7 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-20.")
+            warn(f"'{choice}' is not a valid option — enter 0-21.")
 
 
 # ===========================================================================
@@ -2735,6 +2912,45 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Fetch and print the current active NSE F&O ban securities list.",
     )
     p_fo_ban.set_defaults(func=cmd_fo_ban)
+
+    # ── bhavcopy-sync ─────────────────────────────────────────────────────
+    p_bsync = sub.add_parser(
+        "bhavcopy-sync",
+        help=(
+            "Fast incremental OHLCV update: downloads 1 Bhavcopy ZIP per "
+            "missing trading day instead of per-symbol API calls."
+        ),
+    )
+    p_bsync.add_argument(
+        "--days",
+        type=int,
+        default=10,
+        help="Max trading days back to look for missing data (default: 10).",
+    )
+    p_bsync.add_argument(
+        "--timeframe",
+        default=DEFAULT_TIMEFRAME,
+        help=f"Candle timeframe (default: {DEFAULT_TIMEFRAME}; only 1d uses Bhavcopy).",
+    )
+    p_bsync.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Cap the number of symbols updated (useful for testing).",
+    )
+    p_bsync.add_argument(
+        "--no-ta",
+        action="store_true",
+        dest="no_ta",
+        help="Skip TA indicator recomputation after appending (faster).",
+    )
+    p_bsync.add_argument(
+        "--delay",
+        type=float,
+        default=1.0,
+        help="Seconds between Bhavcopy ZIP downloads (default: 1.0).",
+    )
+    p_bsync.set_defaults(func=cmd_bhavcopy_sync)
 
     # ── menu (default) ────────────────────────────────────────────────────
     sub.add_parser("menu", help="Launch the interactive menu (default).")

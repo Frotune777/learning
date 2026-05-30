@@ -469,6 +469,137 @@ class BhavcopyDownloader:
         result_list: list[list[str | float]] = sorted_df.values.tolist()
         return result_list
 
+    def parse_bhavcopy_ohlcv(
+        self, file_bytes: bytes, trade_date: datetime
+    ) -> pd.DataFrame:
+        """
+        Parse a Bhavcopy ZIP and return a standardised OHLCV DataFrame.
+
+        Extracts all EQ-series rows (no top-N cap) with columns:
+        Symbol, Date, Open, High, Low, Close, Volume.
+
+        Logic:
+            Step 1: Validate ZIP magic bytes.
+            Step 2: Open ZIP in-memory and read inner CSV.
+            Step 3: Map Bhavcopy columns to OHLCV names.
+            Step 4: Filter EQ series only.
+            Step 5: Convert numeric columns and drop NaN close rows.
+            Step 6: Attach trade_date as the Date column.
+
+        Parameters:
+            file_bytes (bytes): Valid Bhavcopy ZIP binary. | Non-empty bytes.
+            trade_date (datetime): The trading date this Bhavcopy belongs to.
+
+        Returns:
+            pd.DataFrame: Columns [Symbol, Date, Open, High, Low, Close, Volume].
+
+        Raises:
+            zipfile.BadZipFile: If bytes are not a valid ZIP.
+            KeyError: If mandatory OHLCV columns are missing.
+
+        Example:
+            >>> dl = BhavcopyDownloader()
+            >>> df = dl.parse_bhavcopy_ohlcv(zip_bytes, datetime(2026, 5, 29))
+            >>> print(df.columns.tolist())
+            ['Symbol', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+
+        Performance:
+            Time Complexity: O(N) [N EQ rows in the Bhavcopy]
+            Space Complexity: O(N)
+
+        Edge Cases Handled:
+            - Missing Volume column → filled with 0.
+            - Non-numeric OHLCV values → coerced, NaN rows dropped.
+        """
+        if not file_bytes.startswith(b"PK\x03\x04"):
+            LOGGER.error("Invalid ZIP magic bytes in parse_bhavcopy_ohlcv.")
+            raise zipfile.BadZipFile("Invalid raw ZIP file bytes.")
+
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+            csv_files = [n for n in z.namelist() if n.endswith(".csv")]
+            if not csv_files:
+                LOGGER.error("No CSV inside ZIP for parse_bhavcopy_ohlcv.")
+                raise KeyError("No CSV file found in Bhavcopy ZIP.")
+            with z.open(csv_files[0]) as f:
+                raw_df: pd.DataFrame = pd.read_csv(f)
+
+        raw_df.columns = [c.strip() for c in raw_df.columns]
+
+        # --- Symbol column ---
+        sym_col: str | None = next(
+            (c for c in ["TckrSymb", "SYMBOL"] if c in raw_df.columns), None
+        )
+        # --- Series column ---
+        series_col: str | None = next(
+            (c for c in ["SctySrs", "SERIES"] if c in raw_df.columns), None
+        )
+        # --- OHLC columns ---
+        open_col: str | None = next(
+            (c for c in ["OpnPric", "OPEN"] if c in raw_df.columns), None
+        )
+        high_col: str | None = next(
+            (c for c in ["HghPric", "HIGH"] if c in raw_df.columns), None
+        )
+        low_col: str | None = next(
+            (c for c in ["LwPric", "LOW"] if c in raw_df.columns), None
+        )
+        close_col: str | None = next(
+            (c for c in ["ClsPric", "CLOSE"] if c in raw_df.columns), None
+        )
+        # --- Volume column ---
+        vol_col: str | None = next(
+            (
+                c
+                for c in ["TtlTrdQnty", "TTL_TRD_QNTY", "TOTTRDQTY", "VOLUME"]
+                if c in raw_df.columns
+            ),
+            None,
+        )
+
+        missing: list[str] = []
+        if not sym_col:
+            missing.append("SYMBOL")
+        if not close_col:
+            missing.append("CLOSE")
+        if not open_col:
+            missing.append("OPEN")
+        if not high_col:
+            missing.append("HIGH")
+        if not low_col:
+            missing.append("LOW")
+        if missing:
+            LOGGER.error("parse_bhavcopy_ohlcv: missing columns %s", missing)
+            raise KeyError(f"Missing mandatory OHLCV columns: {missing}")
+
+        # Filter EQ series
+        if series_col:
+            raw_df = raw_df[raw_df[series_col].astype(str).str.strip() == "EQ"].copy()
+
+        # Build clean output DataFrame
+        out: pd.DataFrame = pd.DataFrame()
+        out["Symbol"] = (
+            raw_df[sym_col].astype(str).str.strip().str.upper()
+        )
+        out["Date"] = pd.Timestamp(trade_date.date())
+        out["Open"] = pd.to_numeric(raw_df[open_col], errors="coerce")
+        out["High"] = pd.to_numeric(raw_df[high_col], errors="coerce")
+        out["Low"] = pd.to_numeric(raw_df[low_col], errors="coerce")
+        out["Close"] = pd.to_numeric(raw_df[close_col], errors="coerce")
+
+        if vol_col:
+            out["Volume"] = pd.to_numeric(raw_df[vol_col], errors="coerce").fillna(0)
+        else:
+            out["Volume"] = 0.0
+
+        out = out.dropna(subset=["Close", "Open", "High", "Low"])
+        out = out.reset_index(drop=True)
+        LOGGER.info(
+            "parse_bhavcopy_ohlcv: %d EQ rows for %s",
+            len(out),
+            trade_date.strftime("%Y-%m-%d"),
+        )
+        return out
+
     def get_eq_symbols(self, file_bytes: bytes) -> list[str]:
         """
         Extract the full EQ symbol list from a Bhavcopy ZIP without top_n limit.
