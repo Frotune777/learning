@@ -1,0 +1,96 @@
+# ---------------------------------------------------------------------
+#                 FabTrader Algorithmic Trading Platform
+# ---------------------------------------------------------------------
+# Copyright (c) 2025 FabTrader (Unit of Rough Sketch Company)
+#
+#  Stock Correlation Analyzer
+#
+# CONTACT:
+# - Website: https://fabtrader.in
+# - Email: hello@fabtrader.in
+# ---------------------------------------------------------------------
+
+import streamlit as st
+import yfinance as yf
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+st.set_page_config(page_title="Stock Correlation Analyzer", layout="centered")
+
+st.title("Stock Correlation Analyzer")
+st.write("Analyze correlation between multiple stocks / instruments")
+
+# -------------------------------
+# User Inputs
+# -------------------------------
+tickers_input = st.text_input(
+    "Enter tickers (comma-separated)",
+    value="^NSEI,INR=X,^NSEBANK,GOLD, INFY"
+)
+
+period = st.selectbox(
+    "Select data period",
+    ["6mo", "1y", "2y", "5y"],
+    index=1
+)
+
+calculate = st.button("Calculate Correlation")
+
+if calculate:
+    tickers = [t.strip().upper() for t in tickers_input.split(",")]
+
+    if len(tickers) < 2:
+        st.warning("Please enter at least two tickers.")
+    else:
+        with st.spinner("Downloading data..."):
+            data = yf.download(
+                tickers,
+                period=period,
+                auto_adjust=True,
+                progress=False
+            )
+
+        if data.empty:
+            st.error("No data found. Please check ticker symbols.")
+        else:
+            # Extract Adjusted Close prices
+            prices = data["Close"]
+
+            # Calculate daily returns
+            returns = prices.pct_change().dropna()
+
+            # Correlation matrix
+            corr_matrix = returns.corr()
+
+            # -------------------------------
+            # Display Table
+            # -------------------------------
+            st.divider()
+            st.subheader("Correlation Matrix (Table)")
+            st.dataframe(
+                corr_matrix.style
+                .format("{:.0%}"),
+                use_container_width=True
+            )
+
+            # -------------------------------
+            # Heatmap Visualization
+            # -------------------------------
+            st.divider()
+            st.subheader("Correlation Heatmap")
+
+            fig, ax = plt.subplots(figsize=(8, 6))
+            sns.heatmap(
+                corr_matrix,
+                annot=True,
+                fmt=".2f",
+                cmap="coolwarm",
+                center=0,
+                linewidths=0.5,
+                ax=ax
+            )
+            ax.set_title("Stock Return Correlation Heatmap")
+
+            st.pyplot(fig)
+            st.divider()
+            st.write('Made with :heart: by FabTrader. Copyright 2025 fabtrader.in - All rights reserved')

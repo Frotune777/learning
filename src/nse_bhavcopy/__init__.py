@@ -6,7 +6,7 @@ Dependencies:
 External:
 - None
 Internal:
-- src.nse_bhavcopy.downloader: Core downloader module
+- src.storage.downloader: Core downloader module
 
 Key Components:
 Classes:
@@ -24,6 +24,6 @@ Related Files:
 - src/nse_bhavcopy/downloader.py: Core downloader module
 """
 
-from src.nse_bhavcopy.downloader import BhavcopyDownloader
+from src.storage.downloader import BhavcopyDownloader
 
 __all__ = ["BhavcopyDownloader"]

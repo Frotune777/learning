@@ -7,7 +7,7 @@ Last Modified: 2026-05-27
 import numpy as np
 import pandas as pd
 
-from src.nse_bhavcopy.ml_classifier import MLClassifier
+from src.ml.ml_classifier import MLClassifier
 
 
 def test_ml_classifier_workflow() -> None:

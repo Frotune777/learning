@@ -1280,7 +1280,7 @@ class StockScreener:
             >>> df_rich = screener.enrich_analysis(df_raw)
             >>> print(df_rich.columns.tolist())
         """
-        from src.nse_bhavcopy.consensus_engine import add_consensus_score
+        from src.core.consensus_engine import add_consensus_score
         from src.nse_bhavcopy.mtf_confirmation import add_mtf_confirmation
         from src.nse_bhavcopy.position_sizer import add_position_sizing
         from src.nse_bhavcopy.quant_metrics import add_quant_metrics

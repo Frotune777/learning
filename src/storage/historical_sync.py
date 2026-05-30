@@ -8,7 +8,7 @@ External:
 Internal:
 - src.data.fetcher.prices.base: [AbstractPriceFetcher]
 - src.data.fetcher.prices.yfinance_fetcher: [YFinanceFetcher]
-- src.nse_bhavcopy.sync_registry: [SyncRegistry, _last_trading_day]
+- src.storage.sync_registry: [SyncRegistry, _last_trading_day]
 
 Key Components:
 Classes:
@@ -25,7 +25,7 @@ import pandas as pd
 
 from src.data.fetcher.prices.base import AbstractPriceFetcher
 from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
-from src.nse_bhavcopy.sync_registry import SyncRegistry, _last_trading_day
+from src.storage.sync_registry import SyncRegistry, _last_trading_day
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
 

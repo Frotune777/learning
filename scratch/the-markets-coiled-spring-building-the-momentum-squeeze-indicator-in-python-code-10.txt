@@ -1,0 +1,182 @@
+# FabTrader Algorithmic Trading Platform
+# ----------------------------------------
+# Copyright (c) 2025 FabTrader
+#
+# LICENSE: PROPRIETARY SOFTWARE
+# - This software is the exclusive property of FabTrader.
+# - Unauthorized copying, modification, distribution, or use is strictly prohibited.
+#
+# CONTACT:
+# - Website: https://fabtrader.in
+# - Email: hello@fabtrader.in
+#
+# Usage: Personal use only. Not for commercial redistribution.
+
+"""
+==========================================================
+           Momentum Squeeze Python Indicator
+==========================================================
+"""
+
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+pd.set_option("display.max_rows", None, "display.max_columns", None)
+
+def momentum_squeeze(symbol, interval, period):
+
+    length = 20  # BB Length
+    lengthKC = 20  # KC Length
+    multKC = 1.5  # KC MultFactor
+    useTrueRange = True  # KC Range type
+
+    # =========================
+    # Download Data
+    # =========================
+    df = yf.download(symbol, interval=interval, period=period,
+                     progress=False, multi_level_index=False)
+
+    df.dropna(inplace=True)
+    high = df['High']
+    low = df['Low']
+    close = df['Close']
+
+    # =========================
+    # --- Bollinger Bands ---
+    # =========================
+    basis = close.rolling(length).mean()
+    dev = multKC * close.rolling(length).std()
+
+    upperBB = basis + dev
+    lowerBB = basis - dev
+
+    # =========================
+    # --- Keltner Channels ---
+    # =========================
+    ma = close.rolling(lengthKC).mean()
+
+    # True Range
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    range_ = tr if useTrueRange else (high - low)
+
+    rangema = range_.rolling(lengthKC).mean()
+
+    upperKC = ma + rangema * multKC
+    lowerKC = ma - rangema * multKC
+
+    # =========================
+    # --- Squeeze Conditions ---
+    # =========================
+    sqzOn = (lowerBB > lowerKC) & (upperBB < upperKC)
+    sqzOff = (lowerBB < lowerKC) & (upperBB > upperKC)
+    noSqz = (~sqzOn) & (~sqzOff)
+
+    # =========================
+    # --- Momentum Value ---
+    # =========================
+
+    # Highest / Lowest
+    highest_high = high.rolling(lengthKC).max()
+    lowest_low = low.rolling(lengthKC).min()
+
+    # Midline calculation
+    mid1 = (highest_high + lowest_low) / 2
+    mid2 = (mid1 + close.rolling(lengthKC).mean()) / 2
+
+    # Source deviation
+    momentum_source = close - mid2
+
+
+    # =========================
+    # Linear Regression
+    # =========================
+    def rolling_linreg(series, length):
+        """Replicates TradingView linreg(series, length, 0)"""
+
+        x = np.arange(length)
+
+        def linreg_calc(y):
+            if np.any(np.isnan(y)):
+                return np.nan
+
+            slope, intercept = np.polyfit(x, y, 1)
+            return intercept + slope * (length - 1)
+
+        return series.rolling(length).apply(linreg_calc, raw=True)
+
+
+    val = rolling_linreg(momentum_source, lengthKC)
+
+    # =========================
+    # Set Indicator Markers
+    # =========================
+    val_prev = val.shift(1).fillna(0)
+
+    bcolor = np.where(
+        val > 0,
+        np.where(val > val_prev, "lime", "green"),
+        np.where(val < val_prev, "red", "maroon")
+    )
+
+    scolor = np.where(
+        noSqz, "blue",
+        np.where(sqzOn, "black", "gray")
+    )
+
+    # =========================
+    # Final Output
+    # =========================
+    result = pd.DataFrame({
+        "Close": close,
+        "Momentum": val,
+        "SqueezeOn": sqzOn,
+        "SqueezeOff": sqzOff,
+        "NoSqueeze": noSqz,
+        "HistColor": bcolor,
+        "ZeroLineColor": scolor
+    })
+    result.dropna(inplace=True)
+    return result
+
+if __name__ == "__main__":
+
+    show_plot = True
+    symbol = "^NSEI"  # Any instrument
+    interval = "1d"  # Any timeframe: 1m,5m,1h,1d etc.
+    period = "6mo"  # Data lookback
+
+    result = momentum_squeeze(symbol, interval, period)
+    print(result)
+
+    if show_plot:
+
+        plt.figure(figsize=(14,6))
+
+        # Histogram
+        colors = result["HistColor"].map({
+            "lime":"lime",
+            "green":"green",
+            "red":"red",
+            "maroon":"maroon"
+        })
+
+        plt.bar(result.index, result["Momentum"], color=colors)
+
+        # Zero line dots
+        zero_colors = result["ZeroLineColor"].map({
+            "blue":"blue",
+            "black":"black",
+            "gray":"gray"
+        })
+
+        plt.scatter(result.index, [0]*len(result), color=zero_colors, s=10)
+
+        plt.title(f"Squeeze Momentum — {symbol}")
+        plt.show()

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from src.nse_bhavcopy.fo_ban import FOBanManager
+from src.scrapers.fo_ban import FOBanManager
 
 
 def test_fo_ban_parsing() -> None:

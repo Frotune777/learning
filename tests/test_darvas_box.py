@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.nse_bhavcopy.darvas_box import (
+from src.scanners.darvas_box import (
     _count_trailing_true,
     detect_darvas_box,
 )

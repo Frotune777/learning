@@ -13,9 +13,9 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.nse_bhavcopy.bhavcopy_incremental import BhavcopyIncrementalSync
-from src.nse_bhavcopy.downloader import BhavcopyDownloader
-from src.nse_bhavcopy.sync_registry import SyncRecord, SyncRegistry
+from src.storage.bhavcopy_incremental import BhavcopyIncrementalSync
+from src.storage.downloader import BhavcopyDownloader
+from src.storage.sync_registry import SyncRecord, SyncRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -201,7 +201,7 @@ class TestDetectMissingDays:
         self, syncer: BhavcopyIncrementalSync, tmp_path: object
     ) -> None:
         """When registry shows last_bar_date == last_trading_day, nothing missing."""
-        from src.nse_bhavcopy.sync_registry import _last_trading_day
+        from src.storage.sync_registry import _last_trading_day
 
         today = _last_trading_day()
         registry = SyncRegistry(
@@ -219,7 +219,7 @@ class TestDetectMissingDays:
 
         # Patch _last_trading_day in bhavcopy_incremental to the same day
         with patch(
-            "src.nse_bhavcopy.bhavcopy_incremental._last_trading_day",
+            "src.storage.bhavcopy_incremental._last_trading_day",
             return_value=today,
         ):
             missing = syncer.detect_missing_days(["TCS"], registry=registry)
@@ -230,7 +230,7 @@ class TestDetectMissingDays:
         self, syncer: BhavcopyIncrementalSync, tmp_path: object
     ) -> None:
         """Symbol last synced 3 days ago → 3 (approx) missing weekday dates."""
-        from src.nse_bhavcopy.sync_registry import _last_trading_day
+        from src.storage.sync_registry import _last_trading_day
 
         today = _last_trading_day()
         stale_date = today - timedelta(days=4)  # 4 calendar days back
@@ -249,7 +249,7 @@ class TestDetectMissingDays:
         registry._store["INFY"] = rec  # type: ignore[attr-defined]
 
         with patch(
-            "src.nse_bhavcopy.bhavcopy_incremental._last_trading_day",
+            "src.storage.bhavcopy_incremental._last_trading_day",
             return_value=today,
         ):
             missing = syncer.detect_missing_days(

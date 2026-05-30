@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.nse_bhavcopy.rsi_scanner import (
+from src.scanners.rsi_scanner import (
     MIN_PRICE_DROP_PCT,
     RSI_ENTRY_THRESHOLD,
     _rsi_to_step_hint,
@@ -70,7 +70,7 @@ def test_scan_rsi_signals_returns_empty_on_no_rsi_column(
     """scan_rsi_signals returns empty DataFrame if RSI_14 column absent."""
     path = _make_analyzed_csv(str(tmp_path), [{"SYMBOL": "TCS", "CMP": 3500.0}])
     universe = ["TCS"]
-    with patch("src.nse_bhavcopy.rsi_scanner.get_rsi_universe", return_value=universe):
+    with patch("src.scanners.rsi_scanner.get_rsi_universe", return_value=universe):
         result = scan_rsi_signals(
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
         )
@@ -86,11 +86,11 @@ def test_scan_rsi_signals_filters_universe(tmp_path: str) -> None:
     path = _make_analyzed_csv(str(tmp_path), rows)
     with (
         patch(
-            "src.nse_bhavcopy.rsi_scanner.get_rsi_universe",
+            "src.scanners.rsi_scanner.get_rsi_universe",
             return_value=["TCS"],
         ),
         patch(
-            "src.nse_bhavcopy.rsi_scanner.get_nifty50",
+            "src.scanners.rsi_scanner.get_nifty50",
             return_value=["TCS"],
         ),
     ):
@@ -112,10 +112,10 @@ def test_scan_rsi_signals_sorts_by_rsi_ascending(tmp_path: str) -> None:
     path = _make_analyzed_csv(str(tmp_path), rows)
     with (
         patch(
-            "src.nse_bhavcopy.rsi_scanner.get_rsi_universe",
+            "src.scanners.rsi_scanner.get_rsi_universe",
             return_value=["A", "B", "C"],
         ),
-        patch("src.nse_bhavcopy.rsi_scanner.get_nifty50", return_value=[]),
+        patch("src.scanners.rsi_scanner.get_nifty50", return_value=[]),
     ):
         result = scan_rsi_signals(
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
@@ -138,10 +138,10 @@ def test_scan_rsi_signals_computes_amo_price(tmp_path: str) -> None:
     path = _make_analyzed_csv(str(tmp_path), rows)
     with (
         patch(
-            "src.nse_bhavcopy.rsi_scanner.get_rsi_universe",
+            "src.scanners.rsi_scanner.get_rsi_universe",
             return_value=["SBIN"],
         ),
-        patch("src.nse_bhavcopy.rsi_scanner.get_nifty50", return_value=[]),
+        patch("src.scanners.rsi_scanner.get_nifty50", return_value=[]),
     ):
         result = scan_rsi_signals(
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)
@@ -156,10 +156,10 @@ def test_scan_rsi_signals_excludes_above_threshold(tmp_path: str) -> None:
     path = _make_analyzed_csv(str(tmp_path), rows)
     with (
         patch(
-            "src.nse_bhavcopy.rsi_scanner.get_rsi_universe",
+            "src.scanners.rsi_scanner.get_rsi_universe",
             return_value=["SAFE"],
         ),
-        patch("src.nse_bhavcopy.rsi_scanner.get_nifty50", return_value=[]),
+        patch("src.scanners.rsi_scanner.get_nifty50", return_value=[]),
     ):
         result = scan_rsi_signals(
             path, cache_dir=str(tmp_path), output_dir=str(tmp_path)

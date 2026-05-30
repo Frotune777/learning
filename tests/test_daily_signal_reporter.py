@@ -8,7 +8,7 @@ import os
 
 import pandas as pd
 
-from src.nse_bhavcopy.daily_signal_reporter import generate_daily_report
+from src.presentation.daily_signal_reporter import generate_daily_report
 
 
 def test_generate_daily_report_handles_missing_files(tmp_path: str) -> None:

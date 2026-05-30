@@ -8,7 +8,7 @@ External:
 - pandas>=2.2.3: Mock dataframes and CSV verification
 - requests>=2.32.3: Handle requests mock integration
 Internal:
-- src.nse_bhavcopy.downloader: Core module under test
+- src.storage.downloader: Core module under test
 
 Key Components:
 Classes:
@@ -44,7 +44,7 @@ import pandas as pd
 import pytest
 import requests
 
-from src.nse_bhavcopy.downloader import BhavcopyDownloader
+from src.storage.downloader import BhavcopyDownloader
 
 
 def _create_mock_zip(columns_mode: str = "standard") -> bytes:

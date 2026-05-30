@@ -6,8 +6,8 @@ Dependencies:
 External:
 - pandas>=2.2.3: DataFrame utilities and Parquet reading
 Internal:
-- src.nse_bhavcopy.equity_master: [NSEEquityMasterBuilder]
-- src.nse_bhavcopy.historical_sync: [HistoricalSync]
+- src.storage.equity_master: [NSEEquityMasterBuilder]
+- src.storage.historical_sync: [HistoricalSync]
 - src.nse_bhavcopy.screener: [StockScreener]
 
 Key Components:
@@ -49,21 +49,21 @@ from datetime import datetime
 import pandas as pd
 
 from src.nse_bhavcopy.correlation import run_correlation_cli
-from src.nse_bhavcopy.downloader import BhavcopyDownloader
-from src.nse_bhavcopy.equity_master import NSEEquityMasterBuilder
-from src.nse_bhavcopy.etf_screener import run_liquid_etf_screener
+from src.storage.downloader import BhavcopyDownloader
+from src.storage.equity_master import NSEEquityMasterBuilder
+from src.scanners.etf_screener import run_liquid_etf_screener
 from src.nse_bhavcopy.heatmap import run_heatmap_cli
-from src.nse_bhavcopy.historical_sync import (
+from src.storage.historical_sync import (
     HistoricalSync,
 )
 from src.nse_bhavcopy.ma_slope import analyze_stock_ma_slope
-from src.nse_bhavcopy.minervini_screener import run_minervini_cli
-from src.nse_bhavcopy.mmi_scraper import run_mmi_cli
-from src.nse_bhavcopy.momentum_squeeze import run_squeeze_cli
-from src.nse_bhavcopy.pair_scanner import run_pair_scanner_cli
+from src.scanners.minervini_screener import run_minervini_cli
+from src.scrapers.mmi_scraper import run_mmi_cli
+from src.scanners.momentum_squeeze import run_squeeze_cli
+from src.scanners.pair_scanner import run_pair_scanner_cli
 from src.nse_bhavcopy.screener import StockScreener
 from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
-from src.nse_bhavcopy.sync_registry import SyncRegistry
+from src.storage.sync_registry import SyncRegistry
 from src.nse_bhavcopy.ta_indicators import (
     add_ta_indicators,
     calculate_technical_score,

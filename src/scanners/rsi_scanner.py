@@ -11,7 +11,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from src.nse_bhavcopy.nifty_index_fetcher import get_nifty50, get_rsi_universe
+from src.scrapers.nifty_index_fetcher import get_nifty50, get_rsi_universe
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
 

@@ -11,8 +11,8 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
-from src.nse_bhavcopy.downloader import BhavcopyDownloader
-from src.nse_bhavcopy.sync_registry import SyncRegistry, _last_trading_day
+from src.storage.downloader import BhavcopyDownloader
+from src.storage.sync_registry import SyncRegistry, _last_trading_day
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
 

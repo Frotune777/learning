@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.nse_bhavcopy.nifty_index_fetcher import (
+from src.scrapers.nifty_index_fetcher import (
     _CACHE_TTL_SECONDS,
     _cache_path,
     _is_cache_valid,
@@ -105,7 +105,7 @@ def test_get_index_symbols_fetches_and_caches(tmp_cache: str) -> None:
     mock_session.get.return_value = _make_nse_response(expected)
 
     with patch(
-        "src.nse_bhavcopy.nifty_index_fetcher.requests.Session",
+        "src.scrapers.nifty_index_fetcher.requests.Session",
         return_value=mock_session,
     ):
         result = get_index_symbols("nifty50", cache_dir=tmp_cache)
@@ -119,7 +119,7 @@ def test_get_index_symbols_serves_fresh_cache(tmp_cache: str) -> None:
     symbols = ["HDFCBANK", "ICICIBANK"]
     _save_cache(_cache_path("nifty50", tmp_cache), symbols)
 
-    with patch("src.nse_bhavcopy.nifty_index_fetcher._fetch_from_nse") as mock_fetch:
+    with patch("src.scrapers.nifty_index_fetcher._fetch_from_nse") as mock_fetch:
         result = get_index_symbols("nifty50", cache_dir=tmp_cache)
 
     mock_fetch.assert_not_called()
@@ -141,7 +141,7 @@ def test_get_index_symbols_falls_back_to_stale_cache(tmp_cache: str) -> None:
     os.utime(path, (stale_mtime, stale_mtime))
 
     with patch(
-        "src.nse_bhavcopy.nifty_index_fetcher._fetch_from_nse",
+        "src.scrapers.nifty_index_fetcher._fetch_from_nse",
         return_value=[],
     ):
         result = get_index_symbols("nifty50", cache_dir=tmp_cache)
@@ -155,7 +155,7 @@ def test_get_index_symbols_falls_back_to_stale_cache(tmp_cache: str) -> None:
 def test_get_nifty50_delegates_correctly(tmp_cache: str) -> None:
     """get_nifty50 calls get_index_symbols with 'nifty50' key."""
     with patch(
-        "src.nse_bhavcopy.nifty_index_fetcher.get_index_symbols",
+        "src.scrapers.nifty_index_fetcher.get_index_symbols",
         return_value=["RELIANCE"],
     ) as mock_gis:
         result = get_nifty50(cache_dir=tmp_cache)
@@ -167,7 +167,7 @@ def test_get_nifty50_delegates_correctly(tmp_cache: str) -> None:
 def test_get_nifty_next50_delegates_correctly(tmp_cache: str) -> None:
     """get_nifty_next50 calls get_index_symbols with 'nifty_next50' key."""
     with patch(
-        "src.nse_bhavcopy.nifty_index_fetcher.get_index_symbols",
+        "src.scrapers.nifty_index_fetcher.get_index_symbols",
         return_value=["ABCDEF"],
     ) as mock_gis:
         result = get_nifty_next50(cache_dir=tmp_cache)
@@ -185,11 +185,11 @@ def test_get_rsi_universe_deduplicates(tmp_cache: str) -> None:
     nn50 = ["HDFCBANK", "SHARED"]
     with (
         patch(
-            "src.nse_bhavcopy.nifty_index_fetcher.get_nifty50",
+            "src.scrapers.nifty_index_fetcher.get_nifty50",
             return_value=n50,
         ),
         patch(
-            "src.nse_bhavcopy.nifty_index_fetcher.get_nifty_next50",
+            "src.scrapers.nifty_index_fetcher.get_nifty_next50",
             return_value=nn50,
         ),
     ):
@@ -204,11 +204,11 @@ def test_get_rsi_universe_sorted(tmp_cache: str) -> None:
     """get_rsi_universe returns a sorted list."""
     with (
         patch(
-            "src.nse_bhavcopy.nifty_index_fetcher.get_nifty50",
+            "src.scrapers.nifty_index_fetcher.get_nifty50",
             return_value=["ZZZ", "AAA"],
         ),
         patch(
-            "src.nse_bhavcopy.nifty_index_fetcher.get_nifty_next50",
+            "src.scrapers.nifty_index_fetcher.get_nifty_next50",
             return_value=["MMM"],
         ),
     ):

@@ -6,8 +6,8 @@ Dependencies:
 External:
 - pandas>=2.2.3: DataFrame utilities and Parquet reading
 Internal:
-- src.nse_bhavcopy.equity_master: [NSEEquityMasterBuilder]
-- src.nse_bhavcopy.historical_sync: [HistoricalSync]
+- src.storage.equity_master: [NSEEquityMasterBuilder]
+- src.storage.historical_sync: [HistoricalSync]
 - src.nse_bhavcopy.screener: [StockScreener]
 
 Key Components:
@@ -49,21 +49,21 @@ from datetime import datetime
 import pandas as pd
 
 from src.nse_bhavcopy.correlation import run_correlation_cli
-from src.nse_bhavcopy.downloader import BhavcopyDownloader
-from src.nse_bhavcopy.equity_master import NSEEquityMasterBuilder
-from src.nse_bhavcopy.etf_screener import run_liquid_etf_screener
+from src.storage.downloader import BhavcopyDownloader
+from src.storage.equity_master import NSEEquityMasterBuilder
+from src.scanners.etf_screener import run_liquid_etf_screener
 from src.nse_bhavcopy.heatmap import run_heatmap_cli
-from src.nse_bhavcopy.historical_sync import (
+from src.storage.historical_sync import (
     HistoricalSync,
 )
 from src.nse_bhavcopy.ma_slope import analyze_stock_ma_slope
-from src.nse_bhavcopy.minervini_screener import run_minervini_cli
-from src.nse_bhavcopy.mmi_scraper import run_mmi_cli
-from src.nse_bhavcopy.momentum_squeeze import run_squeeze_cli
-from src.nse_bhavcopy.pair_scanner import run_pair_scanner_cli
+from src.scanners.minervini_screener import run_minervini_cli
+from src.scrapers.mmi_scraper import run_mmi_cli
+from src.scanners.momentum_squeeze import run_squeeze_cli
+from src.scanners.pair_scanner import run_pair_scanner_cli
 from src.nse_bhavcopy.screener import StockScreener
 from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
-from src.nse_bhavcopy.sync_registry import SyncRegistry
+from src.storage.sync_registry import SyncRegistry
 from src.nse_bhavcopy.ta_indicators import (
     add_ta_indicators,
     calculate_technical_score,
@@ -1674,7 +1674,7 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         from rich.table import Table
 
         from src.nse_bhavcopy.backtester import NSEEventBacktester
-        from src.nse_bhavcopy.ml_classifier import MLClassifier
+        from src.ml.ml_classifier import MLClassifier
 
         clf = MLClassifier(n_estimators=n_estimators, max_depth=max_depth)
         X, y = clf.prepare_features(df_prices, df_delivery)
@@ -1740,7 +1740,7 @@ def menu_fo_ban(data_dir: str) -> None:
     """
     _header("NSE F&O Ban Securities")
     try:
-        from src.nse_bhavcopy.fo_ban import FOBanManager
+        from src.scrapers.fo_ban import FOBanManager
 
         manager = FOBanManager(cache_dir=data_dir)
         ban_list = manager.fetch_fo_ban_list()
@@ -1784,7 +1784,7 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
         - No raw Bhavcopy ZIP found exits with informative error.
         - NSE holiday dates silently skipped.
     """
-    from src.nse_bhavcopy.bhavcopy_incremental import BhavcopyIncrementalSync
+    from src.storage.bhavcopy_incremental import BhavcopyIncrementalSync
 
     _header(
         "Bhavcopy Incremental Sync",

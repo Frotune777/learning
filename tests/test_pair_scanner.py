@@ -11,11 +11,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.nse_bhavcopy.pair_scanner import (
+from src.scanners.pair_scanner import (
     run_pair_scanner_cli,
     scan_cointegrated_pairs,
 )
-from src.nse_bhavcopy.pair_scanner import (
+from src.scanners.pair_scanner import (
     test_cointegration as run_coint_test,
 )
 

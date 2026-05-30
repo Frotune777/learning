@@ -1,5 +1,5 @@
 from src.core.signal import Signal
-from src.nse_bhavcopy.consensus_engine import aggregate_signals
+from src.core.consensus_engine import aggregate_signals
 from datetime import datetime
 
 def test_signal_validation():

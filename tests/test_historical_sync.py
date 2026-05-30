@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from src.nse_bhavcopy.historical_sync import HistoricalSync
+from src.storage.historical_sync import HistoricalSync
 
 
 def test_historical_sync_needs_full_refresh(tmp_path: Path) -> None:
