@@ -316,12 +316,15 @@ def filter_candidates(df: pd.DataFrame) -> pd.DataFrame:
     return candidates.sort_values("RS_Rating", ascending=False).reset_index()
 
 
-def run_minervini_cli() -> pd.DataFrame:
+from src.core.signal import Signal
+from datetime import datetime
+
+def run_minervini_cli() -> list[Signal]:
     """
     Entry point for CLI Minervini screener execution.
 
     Returns:
-        pd.DataFrame: The final sorted candidates.
+        list[Signal]: The final sorted candidates as Signal objects.
     """
     symbols = [
         "360ONE",
@@ -828,8 +831,34 @@ def run_minervini_cli() -> pd.DataFrame:
 
     results = run_minervini_screener(symbols)
     candidates = filter_candidates(results)
-    if not candidates.empty:
-        # Standardize the 'index' column to 'Symbol'
-        candidates = candidates.rename(columns={"index": "Symbol"})
+    
+    signals = []
+    if candidates.empty:
+        return signals
+        
+    candidates = candidates.rename(columns={"index": "Symbol"})
+    now = datetime.now()
+    
+    for _, row in candidates.iterrows():
+        symbol = row["Symbol"]
+        # Conviction based on RS_Rating (70 to 100 maps to 0.0 to 1.0)
+        rs_rating = float(row.get("RS_Rating", 70.0))
+        conv = min(1.0, max(0.0, (rs_rating - 70.0) / 30.0))
+        
+        sig = Signal(
+            symbol=symbol,
+            strategy_name="minervini_screener",
+            action=1,  # Passing candidates are buys
+            conviction=round(conv, 2),
+            timestamp=now,
+            meta={
+                "rs_rating": round(rs_rating, 2),
+                "template_score": row.get("Template_Score"),
+                "stage2": row.get("Stage2"),
+                "high_proximity": round(float(row.get("High_Proximity", 0)), 2),
+                "rvol": round(float(row.get("RVOL", 0)), 2)
+            }
+        )
+        signals.append(sig)
 
-    return candidates
+    return signals
