@@ -182,12 +182,14 @@ def _count_trailing_true(series: pd.Series) -> int:
     return count
 
 
+from src.core.signal import Signal
+
 def scan_darvas_breakouts(
     analyzed_df: pd.DataFrame,
     daily_dir: str = "data/historical/1d",
     output_dir: str = "data/signals",
     date_str: str = "",
-) -> pd.DataFrame:
+) -> list[Signal]:
     """
     Run Darvas Box detection across all symbols in the analyzed DataFrame.
 
@@ -205,9 +207,7 @@ def scan_darvas_breakouts(
             Uses today if empty.
 
     Returns:
-        pd.DataFrame: Darvas signals with columns: NSE Code, Signal,
-            Box High, Box Low, Box Days, Vol Confirmed, CMP, Tech Score.
-            Empty DataFrame if no confirmed signals.
+        list[Signal]: Darvas signals for symbols showing breakouts or breakdowns.
 
     Complexity:
         Time: O(S x N) where S = symbols, N = avg parquet rows
@@ -233,7 +233,16 @@ def scan_darvas_breakouts(
         )
         return pd.DataFrame()
 
-    records = []
+    def _map_action(action_str: str) -> int:
+        if "Breakout" in action_str:
+            return 1
+        if "Breakdown" in action_str:
+            return -1
+        return 0
+
+    from datetime import datetime
+    signals: list[Signal] = []
+
     for symbol in analyzed_df["SYMBOL"].dropna().unique():
         pq_path = os.path.join(daily_dir, f"{symbol}.parquet")
         if not os.path.isfile(pq_path):
@@ -245,37 +254,42 @@ def scan_darvas_breakouts(
             LOGGER.debug("Darvas: failed for %s: %s", symbol, exc)
             continue
 
-        if result["signal"] in (
-            "Breakout (Volume Confirmed)",
-            "Breakout (No Volume Confirmation)",
-            "Breakdown (Volume Confirmed)",
-        ):
+        sig_str = result["signal"]
+        action_int = _map_action(sig_str)
+        if action_int != 0:
             row_data = analyzed_df[analyzed_df["SYMBOL"] == symbol]
-            cmp = float(row_data["CMP"].iloc[0]) if not row_data.empty else np.nan
+            cmp_val = float(row_data["CMP"].iloc[0]) if not row_data.empty else np.nan
             tech = (
                 float(row_data["TECH_SCORE"].iloc[0]) if not row_data.empty else np.nan
             )
-            records.append(
-                {
-                    "NSE Code": symbol,
-                    "Signal": result["signal"],
-                    "Box High": result["box_high"],
-                    "Box Low": result["box_low"],
-                    "Box Days": result["box_days"],
-                    "Vol Confirmed": result["vol_confirmed"],
-                    "CMP": cmp,
-                    "Tech Score": tech,
+            
+            # Conviction: 1.0 if volume confirmed, 0.5 if not
+            conviction = 1.0 if result["vol_confirmed"] else 0.5
+            
+            sig = Signal(
+                symbol=symbol,
+                strategy_name="darvas_box",
+                action=action_int,
+                conviction=conviction,
+                timestamp=datetime.now(),
+                meta={
+                    "box_high": result["box_high"],
+                    "box_low": result["box_low"],
+                    "box_days": result["box_days"],
+                    "vol_confirmed": result["vol_confirmed"],
+                    "cmp": cmp_val,
+                    "tech_score": tech,
+                    "raw_signal": sig_str
                 }
             )
+            signals.append(sig)
 
-    if not records:
+    if not signals:
         LOGGER.info("Darvas scanner: no breakout/breakdown signals today.")
-        return pd.DataFrame()
+        return []
 
-    df_out = pd.DataFrame(records).sort_values(by="Vol Confirmed", ascending=False)
+    # Sort signals by volume confirmation and box days
+    signals.sort(key=lambda x: (x.meta["vol_confirmed"], x.meta["box_days"]), reverse=True)
 
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, f"darvas_signals_{date_str}.csv")
-    df_out.to_csv(out_path, index=False)
-    LOGGER.info("Darvas scanner: %d signals saved to %s", len(df_out), out_path)
-    return df_out
+    LOGGER.info("Darvas scanner: %d signals generated", len(signals))
+    return signals
