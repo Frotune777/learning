@@ -32,3 +32,6 @@ data/**
 
 # Aider files
 .aider*
+
+.env
+.env.*
