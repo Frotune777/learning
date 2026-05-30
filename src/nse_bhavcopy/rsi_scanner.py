@@ -54,12 +54,14 @@ def _rsi_to_step_hint(rsi: float) -> str:
     return "Step 1 (Entry < 35)"
 
 
+from src.core.signal import Signal
+
 def scan_rsi_signals(
     analyzed_csv_path: str,
     cache_dir: str = "data/indices",
     output_dir: str = "data/signals",
     force_index_refresh: bool = False,
-) -> pd.DataFrame:
+) -> list[Signal]:
     """
     Identify RSI < 35 buy candidates within the Nifty 50 + Next 50 universe.
 
@@ -138,38 +140,40 @@ def scan_rsi_signals(
         n50 = set()
     df_signals["IN_NIFTY50"] = df_signals["SYMBOL"].isin(n50)
 
-    keep_cols = [
-        "SYMBOL",
-        "RSI_14",
-        "CMP",
-        "PREVIOUS_CLOSE",
-        "AMO_PRICE",
-        "STEP_HINT",
-        "IN_NIFTY50",
-        "TREND_STATUS",
-        "TECH_SCORE",
-    ]
-    df_out = df_signals[[c for c in keep_cols if c in df_signals.columns]].copy()
-    df_out = df_out.rename(
-        columns={
-            "SYMBOL": "NSE Code",
-            "RSI_14": "RSI",
-            "CMP": "CMP",
-            "PREVIOUS_CLOSE": "Prev Close",
-            "AMO_PRICE": "AMO Price",
-            "STEP_HINT": "Step Hint",
-            "IN_NIFTY50": "In Nifty 50",
-            "TREND_STATUS": "Trend",
-            "TECH_SCORE": "Tech Score",
-        }
-    )
+    from src.core.signal import Signal
+    from datetime import datetime
 
-    os.makedirs(output_dir, exist_ok=True)
-    date_str = date.today().strftime("%Y%m%d")
-    out_path = os.path.join(output_dir, f"rsi_signals_{date_str}.csv")
-    df_out.to_csv(out_path, index=False)
-    LOGGER.info("RSI scanner: %d signals saved to %s", len(df_out), out_path)
-    return df_out
+    signals = []
+    for _, row in df_signals.iterrows():
+        # Step Hint logic is just an example, you could put it in meta
+        symbol = row.get("SYMBOL", "")
+        if not symbol:
+            continue
+            
+        rsi_val = float(row.get("RSI_14", 0.0))
+        cmp_val = float(row.get("CMP", 0.0))
+        
+        # Calculate conviction (lower RSI = higher conviction)
+        # e.g., RSI 35 = 0.0 conviction, RSI 10 = 1.0 conviction
+        conv = max(0.0, min(1.0, (RSI_ENTRY_THRESHOLD - rsi_val) / 25.0))
+        
+        sig = Signal(
+            symbol=symbol,
+            strategy_name="rsi_scanner",
+            action=1, # Always buy since RSI < 35
+            conviction=round(conv, 2),
+            timestamp=datetime.now(),
+            meta={
+                "rsi_value": round(rsi_val, 2),
+                "cmp": cmp_val,
+                "step_hint": row.get("STEP_HINT", ""),
+                "in_nifty50": row.get("IN_NIFTY50", False)
+            }
+        )
+        signals.append(sig)
+
+    LOGGER.info("RSI scanner: %d signals generated", len(signals))
+    return signals
 
 
 def get_todays_buy(df_signals: pd.DataFrame) -> pd.Series | None:
