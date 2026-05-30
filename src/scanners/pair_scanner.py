@@ -134,8 +134,10 @@ def test_cointegration(
 
 import uuid
 from src.core.signal import Signal
+from src.scanners.registry import register_scanner
 from datetime import datetime
 
+@register_scanner
 def scan_cointegrated_pairs(
     symbols: list[str],
     daily_dir: str,

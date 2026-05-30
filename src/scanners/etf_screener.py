@@ -13,7 +13,9 @@ from src.nse_live.nse_utils import NseUtils
 
 from src.core.signal import Signal
 from datetime import datetime
+from src.scanners.registry import register_scanner
 
+@register_scanner
 def run_liquid_etf_screener() -> list[Signal]:
     """
     Fetches the ETF master from the NSE website, filters for equity-based ETFs,

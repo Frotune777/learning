@@ -133,7 +133,9 @@ def momentum_squeeze(
 
 
 from src.core.signal import Signal
+from src.scanners.registry import register_scanner
 
+@register_scanner
 def run_squeeze_cli(
     symbol: str = "^NSEI",
     interval: str = "1d",

@@ -39,6 +39,10 @@ top_n_stocks = 250
 bottom_out_tolerance = 0.5
 bounce_buffer = 1.0
 
+[tool.sharegenius.scanner]
+max_workers = 0  # 0 = auto (CPU count)
+symbols_per_worker = 50
+
 [tool.ruff]
 line-length = 88
 target-version = "py313"

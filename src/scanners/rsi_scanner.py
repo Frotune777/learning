@@ -6,6 +6,7 @@ Last Modified: 2026-05-29
 
 import logging
 import os
+import time
 from datetime import date
 
 import numpy as np
@@ -55,7 +56,9 @@ def _rsi_to_step_hint(rsi: float) -> str:
 
 
 from src.core.signal import Signal
+from src.scanners.registry import register_scanner
 
+@register_scanner
 def scan_rsi_signals(
     analyzed_csv_path: str,
     cache_dir: str = "data/indices",
@@ -94,8 +97,10 @@ def scan_rsi_signals(
     if not os.path.isfile(analyzed_csv_path):
         raise FileNotFoundError(f"Analyzed CSV not found: {analyzed_csv_path}")
 
+    t0_load = time.time()
     df_all: pd.DataFrame = pd.read_csv(analyzed_csv_path)
-    LOGGER.info("RSI scanner: loaded %d rows from %s", len(df_all), analyzed_csv_path)
+    data_load_time = time.time() - t0_load
+    LOGGER.info("RSI scanner: loaded %d rows in %.3fs", len(df_all), data_load_time)
 
     universe: list[str] = get_rsi_universe(
         cache_dir=cache_dir, force_refresh=force_index_refresh
@@ -143,6 +148,7 @@ def scan_rsi_signals(
     from src.core.signal import Signal
     from datetime import datetime
 
+    t0_calc = time.time()
     signals = []
     for _, row in df_signals.iterrows():
         # Step Hint logic is just an example, you could put it in meta
@@ -173,7 +179,9 @@ def scan_rsi_signals(
         )
         signals.append(sig)
 
-    LOGGER.info("RSI scanner: %d signals generated", len(signals))
+    calc_time = time.time() - t0_calc
+    LOGGER.info("RSI scanner: %d signals generated in %.3fs (Load: %.3fs, Calc: %.3fs)", 
+                len(signals), calc_time, data_load_time, calc_time)
     return signals
 
 

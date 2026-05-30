@@ -318,7 +318,9 @@ def filter_candidates(df: pd.DataFrame) -> pd.DataFrame:
 
 from src.core.signal import Signal
 from datetime import datetime
+from src.scanners.registry import register_scanner
 
+@register_scanner
 def run_minervini_cli() -> list[Signal]:
     """
     Entry point for CLI Minervini screener execution.

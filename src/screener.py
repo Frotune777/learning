@@ -1575,28 +1575,51 @@ class StockScreener:
 from src.core.signal import Signal
 from src.core.consensus_engine import aggregate_signals
 from src.scanners.registry import get_all_scanners
+from src.engine.parallel_scanner import run_parallel_scan
+import functools
+import pandas as pd
 
-def run_all_scanners() -> dict[str, float]:
+def run_all_scanners(
+    analyzed_csv_path: str = "data/processed/top_250_analyzed_latest.csv",
+    daily_dir: str = "data/historical/1d",
+    max_workers: int | None = None
+) -> dict[str, float]:
     """
-    Aggregates signals from all active scanners in the registry.
+    Aggregates signals from all active scanners in the registry using the parallel engine.
 
     Returns:
         dict[str, float]: Consensus scores for each symbol.
     """
-    signals: list[Signal] = []
-    
-    # We call each scanner using their specific signatures
+    # Import specific scanners to bind arguments
     from src.scanners.rsi_scanner import scan_rsi_signals
     from src.scanners.darvas_box import scan_darvas_breakouts
     from src.scanners.momentum_squeeze import run_squeeze_cli
     from src.scanners.pair_scanner import scan_cointegrated_pairs
     from src.scanners.etf_screener import run_liquid_etf_screener
     from src.scanners.minervini_screener import run_minervini_cli
+
+    # Create dummy DataFrame for Darvas Box and Pair Scanner if CSV doesn't exist
+    try:
+        df = pd.read_csv(analyzed_csv_path)
+    except Exception:
+        df = pd.DataFrame(columns=["SYMBOL", "CMP", "PREVIOUS_CLOSE"])
+
+    symbols = df["SYMBOL"].dropna().unique().tolist() if "SYMBOL" in df.columns else []
+
+    # Bind arguments using functools.partial
+    scanner_partials = [
+        functools.partial(scan_rsi_signals, analyzed_csv_path=analyzed_csv_path),
+        functools.partial(scan_darvas_breakouts, analyzed_df=df, daily_dir=daily_dir),
+        functools.partial(run_squeeze_cli, symbol="^NSEI", daily_dir=daily_dir),
+        functools.partial(scan_cointegrated_pairs, symbols=symbols, daily_dir=daily_dir),
+        functools.partial(run_liquid_etf_screener),
+        functools.partial(run_minervini_cli),
+    ]
+
+    # Execute parallel scan
+    signals, metrics = run_parallel_scan(scanner_partials, max_workers=max_workers)
     
-    # Note: In a production integration, these would be called with 
-    # their respective dataframes and parameters. This serves as a stub 
-    # for the requested 'imports OK' test.
-    
-    # consensus = aggregate_signals(signals)
-    # return consensus
-    return {}
+    # Calculate consensus
+    consensus = aggregate_signals(signals)
+    return consensus
+

@@ -183,7 +183,9 @@ def _count_trailing_true(series: pd.Series) -> int:
 
 
 from src.core.signal import Signal
+from src.scanners.registry import register_scanner
 
+@register_scanner
 def scan_darvas_breakouts(
     analyzed_df: pd.DataFrame,
     daily_dir: str = "data/historical/1d",
