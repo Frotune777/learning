@@ -11,20 +11,23 @@ import pandas as pd
 from src.nse_live.nse_utils import NseUtils
 
 
-def run_liquid_etf_screener() -> pd.DataFrame:
+from src.core.signal import Signal
+from datetime import datetime
+
+def run_liquid_etf_screener() -> list[Signal]:
     """
     Fetches the ETF master from the NSE website, filters for equity-based ETFs,
     and returns the most liquid ETF for each major sector/category.
 
     Returns:
-        pd.DataFrame: A DataFrame of the most liquid ETFs sorted by Weight (Turnover).
+        list[Signal]: A list of Signal objects representing the most liquid ETF per category.
     """
     nse = NseUtils()
     df = nse.get_etf_list()
 
     if df is None or df.empty:
         print("Failed to fetch ETF data from NSE.")
-        return pd.DataFrame()
+        return []
 
     df = df[["symbol", "assets", "open", "high", "low", "ltP", "qty"]]
     df.columns = pd.Index(
@@ -146,4 +149,32 @@ def run_liquid_etf_screener() -> pd.DataFrame:
     df.sort_values(by="Weight", ascending=False, inplace=True)
     df.reset_index(inplace=True, drop=True)
 
-    return df
+    signals = []
+    now = datetime.now()
+    max_weight = df["Weight"].max() if not df.empty else 1.0
+    
+    for _, row in df.iterrows():
+        symbol = row["ETF"]
+        weight = row["Weight"]
+        category = row["Category"]
+        
+        # Conviction based on relative turnover (weight)
+        conv = min(1.0, float(weight / max_weight)) if max_weight > 0 else 1.0
+        
+        sig = Signal(
+            symbol=symbol,
+            strategy_name="etf_screener",
+            action=1,  # Selected liquid ETFs are implicitly positive candidates
+            conviction=round(conv, 2),
+            timestamp=now,
+            meta={
+                "category": category,
+                "weight": weight,
+                "volume": row["Volume"],
+                "cmp": row["Close"],
+                "underlying": row["Underlying"]
+            }
+        )
+        signals.append(sig)
+
+    return signals
