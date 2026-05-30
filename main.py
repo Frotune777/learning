@@ -806,6 +806,86 @@ def cmd_fo_ban(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_fyers_login(args: argparse.Namespace) -> None:
+    """
+    Print the Fyers login URL for the user to obtain an auth code.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI args with redirect_uri.
+
+    Returns:
+        None
+
+    Raises:
+        SystemExit: If FYERS_API_KEY not configured.
+
+    Example:
+        >>> cmd_fyers_login(args)
+    """
+    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
+
+    fetcher = FyersFetcher()
+    try:
+        redirect = getattr(args, "redirect_uri", None) or os.getenv(
+            "FYERS_REDIRECT_URI",
+            "https://trade.fyers.in/api-login/redirect-uri/index.html",
+        )
+        url = fetcher.login_url(redirect_uri=redirect)
+        print("\n  Open this URL in your browser to get the auth code:\n")
+        print(f"  {cyan(url)}\n")
+        print(f"  {dim('After login, copy the ?code= param from the redirect URL.')}")
+        print(f"  {dim('Then run:  uv run main.py fyers-token --code <auth_code>')}")
+    except RuntimeError as exc:
+        err(str(exc))
+        tip("Set FYERS_API_KEY or BROKER_API_KEY environment variable first.")
+        sys.exit(1)
+
+
+def cmd_fyers_token(args: argparse.Namespace) -> None:
+    """
+    Exchange a Fyers auth code for an access token and cache it locally.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI args with code.
+
+    Returns:
+        None
+
+    Raises:
+        SystemExit: If exchange fails or credentials missing.
+
+    Example:
+        >>> cmd_fyers_token(args)
+    """
+    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher, exchange_auth_code
+
+    api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
+    api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
+
+    if not api_key or not api_secret:
+        err(
+            "FYERS_API_KEY and FYERS_API_SECRET "
+            "(or BROKER_API_KEY / BROKER_API_SECRET) must be set as env vars."
+        )
+        sys.exit(1)
+
+    code = getattr(args, "code", "")
+    if not code:
+        err("--code is required. Run 'fyers-login' first.")
+        sys.exit(1)
+
+    token = exchange_auth_code(code, api_key, api_secret)
+    if not token:
+        err("Token exchange failed. Check your auth code and credentials.")
+        sys.exit(1)
+
+    fetcher = FyersFetcher()
+    fetcher.set_token(token)
+    print(f"\n{green('✔')}  Fyers access token saved to {fetcher.token_cache}")
+    print(f"   {dim('Token is valid for one trading day.')}")
+    print(f"   {dim('Run this command each morning before using the pipeline.')}")
+
+
 # ===========================================================================
 # Interactive menu — UI helpers
 # ===========================================================================
@@ -915,6 +995,10 @@ def _print_main_menu() -> None:
     print(
         f"  {cyan('21')}  {bold('Bhavcopy Incremental Sync')}       "
         f"{dim('Batch OHLCV update — 1 ZIP/day instead of 1 800+ API calls')}"
+    )
+    print(
+        f"  {cyan('22')}  {bold('Set Fyers API Token')}             "
+        f"{dim('Configure Fyers access token for historical data')}"
     )
     print()
     print(f"   {dim('0')}  {dim('Exit')}")
@@ -1501,9 +1585,16 @@ def menu_status(hist_dir: str, data_dir: str) -> None:
     if not synced.empty:
         _subheader("Top 10 Synced Symbols")
         print(
-            synced.head(10)[["symbol", "rows", "first_date", "last_date"]].to_string(
-                index=False
-            )
+            synced.head(10)[
+                [
+                    "symbol",
+                    "rows",
+                    "expected_rows",
+                    "coverage_pct",
+                    "first_date",
+                    "last_date",
+                ]
+            ].to_string(index=False)
         )
 
     if not missing.empty:
@@ -1545,7 +1636,7 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
     _header("Sync Registry", "Pending · OK · Failed breakdown")
 
     tf = _ask("Timeframe", DEFAULT_TIMEFRAME)
-    reg = SyncRegistry(registry_dir=data_dir, timeframe=tf)
+    reg = SyncRegistry(registry_dir=hist_dir, timeframe=tf)
     n = reg.load()
 
     if n == 0:
@@ -2643,6 +2734,57 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
 
     _pause()
 
+    _pause()
+
+
+def menu_fyers_token() -> None:
+    """
+    Interactive handler to set the Fyers API access token.
+    """
+    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher, exchange_auth_code
+
+    _header(
+        "Fyers API Token Setup",
+        "Exchange an auth code for a daily access token.",
+    )
+
+    api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
+    api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
+
+    if not api_key or not api_secret:
+        err("FYERS_API_KEY/BROKER_API_KEY and Secret must be set in environment.")
+        _pause()
+        return
+
+    fetcher = FyersFetcher()
+    redirect = os.getenv(
+        "FYERS_REDIRECT_URI", "https://trade.fyers.in/api-login/redirect-uri/index.html"
+    )
+    url = fetcher.login_url(redirect_uri=redirect)
+
+    print(f"\n  {bold('Step 1:')} Open this URL to login:\n")
+    print(f"  {cyan(url)}\n")
+    print(
+        f"  {bold('Step 2:')} After login, copy the '?code=' value from "
+        "the redirect URL.\n"
+    )
+
+    code = _ask("Enter the auth code (or press Enter to cancel)", "")
+    if not code:
+        warn("Cancelled.")
+        _pause()
+        return
+
+    token = exchange_auth_code(code, api_key, api_secret)
+    if token:
+        fetcher.set_token(token)
+        ok(f"Token saved to {fetcher.token_cache}")
+        tip("This token is valid for the rest of the trading day.")
+    else:
+        err("Failed to exchange code for token. Check credentials.")
+
+    _pause()
+
 
 # ===========================================================================
 # REPL loop
@@ -2709,6 +2851,7 @@ def interactive_menu(
         "19": lambda: menu_backtest(hist_dir, data_dir),
         "20": lambda: menu_fo_ban(data_dir),
         "21": lambda: menu_bhavcopy_sync(data_dir, hist_dir),
+        "22": lambda: menu_fyers_token(),
     }
 
     while True:
@@ -2951,6 +3094,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Seconds between Bhavcopy ZIP downloads (default: 1.0).",
     )
     p_bsync.set_defaults(func=cmd_bhavcopy_sync)
+
+    # ── fyers-login ─────────────────────────────────────────────────────
+    p_fl = sub.add_parser(
+        "fyers-login",
+        help="Print the Fyers login URL to get an authorization code.",
+    )
+    p_fl.add_argument(
+        "--redirect-uri",
+        default=None,
+        dest="redirect_uri",
+        help="Redirect URI registered in your Fyers app (default: https://trade.fyers.in/api-login/redirect-uri/index.html).",
+    )
+    p_fl.set_defaults(func=cmd_fyers_login)
+
+    # ── fyers-token ────────────────────────────────────────────────────
+    p_ft = sub.add_parser(
+        "fyers-token",
+        help="Exchange a Fyers auth code for an access token and cache it.",
+    )
+    p_ft.add_argument(
+        "--code",
+        required=True,
+        help="Authorization code from the Fyers login redirect URL.",
+    )
+    p_ft.set_defaults(func=cmd_fyers_token)
 
     # ── menu (default) ────────────────────────────────────────────────────
     sub.add_parser("menu", help="Launch the interactive menu (default).")

@@ -344,13 +344,13 @@ class BhavcopyDownloader:
         if series_col:
             df = df[df[series_col].astype(str).str.strip() == "EQ"]
 
-        # Filter out ETFs, Bees and gold keywords using exact boundary patterns
-        filter_pattern: str = r"(?:BEES|ETF)$|^(?:GOLD|LIQUID)$"
-        df = df[
-            ~df[sym_col]
-            .astype(str)
-            .str.contains(filter_pattern, case=False, na=False, regex=True)
-        ]
+        # ETFs, Bees, and gold keywords are now INCLUDED in the data update process
+        # filter_pattern: str = r"(?:BEES|ETF)$|^(?:GOLD|LIQUID)$"
+        # df = df[
+        #     ~df[sym_col]
+        #     .astype(str)
+        #     .str.contains(filter_pattern, case=False, na=False, regex=True)
+        # ]
 
         # Convert turnover to numeric safely
         df = df.copy()
@@ -577,9 +577,7 @@ class BhavcopyDownloader:
 
         # Build clean output DataFrame
         out: pd.DataFrame = pd.DataFrame()
-        out["Symbol"] = (
-            raw_df[sym_col].astype(str).str.strip().str.upper()
-        )
+        out["Symbol"] = raw_df[sym_col].astype(str).str.strip().str.upper()
         out["Date"] = pd.Timestamp(trade_date.date())
         out["Open"] = pd.to_numeric(raw_df[open_col], errors="coerce")
         out["High"] = pd.to_numeric(raw_df[high_col], errors="coerce")
