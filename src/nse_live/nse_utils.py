@@ -172,16 +172,43 @@ class NseUtils:
                         csv_df = csv_df.rename(columns={"Symbol": "symbol"})
                         csv_df = csv_df.set_index("symbol", drop=True)
                         
-                        # Populate default columns expected by the heatmap layout
-                        csv_df["open"] = 0.0
-                        csv_df["dayHigh"] = 0.0
-                        csv_df["dayLow"] = 0.0
-                        csv_df["lastPrice"] = 0.0
-                        csv_df["pChange"] = 0.0
-                        csv_df["ffmc"] = 0.0
-                        
+                        # Populate columns with actual latest data from historical Parquets where available
+                        import os
+                        for sym in csv_df.index:
+                            parquet_path = f"data/historical/1d/{sym.upper()}.parquet"
+                            if os.path.exists(parquet_path):
+                                try:
+                                    p_df = pd.read_parquet(parquet_path)
+                                    if not p_df.empty:
+                                        last_row = p_df.iloc[-1]
+                                        prev_row = p_df.iloc[-2] if len(p_df) > 1 else last_row
+                                        
+                                        csv_df.at[sym, "open"] = float(last_row.get("Open", 0.0))
+                                        csv_df.at[sym, "dayHigh"] = float(last_row.get("High", 0.0))
+                                        csv_df.at[sym, "dayLow"] = float(last_row.get("Low", 0.0))
+                                        csv_df.at[sym, "lastPrice"] = float(last_row.get("Close", 0.0))
+                                        
+                                        close_val = float(last_row.get("Close", 0.0))
+                                        prev_close = float(prev_row.get("Close", 0.0))
+                                        p_change = ((close_val - prev_close) / prev_close * 100.0) if prev_close > 0 else 0.0
+                                        csv_df.at[sym, "pChange"] = p_change
+                                        
+                                        # Use free-float market cap representation or closing volume as a proxy
+                                        csv_df.at[sym, "ffmc"] = float(last_row.get("Volume", 0.0)) * close_val
+                                        continue
+                                except Exception:
+                                    pass
+                            
+                            # Standard default if no local Parquet exists yet
+                            csv_df.at[sym, "open"] = 0.0
+                            csv_df.at[sym, "dayHigh"] = 0.0
+                            csv_df.at[sym, "dayLow"] = 0.0
+                            csv_df.at[sym, "lastPrice"] = 0.0
+                            csv_df.at[sym, "pChange"] = 0.0
+                            csv_df.at[sym, "ffmc"] = 0.0
+
                         df = csv_df
-                        print(f"Successfully loaded {len(df)} constituents via CSV fallback for {category}.")
+                        print(f"Successfully loaded {len(df)} constituents with active historical prices via CSV fallback for {category}.")
             except Exception as csv_exc:
                 print(f"CSV fallback failed for {category}: {csv_exc}")
 
