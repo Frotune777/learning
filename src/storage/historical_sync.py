@@ -24,7 +24,7 @@ from typing import Any
 import pandas as pd
 
 from src.data.fetcher.prices.base import AbstractPriceFetcher
-from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
+from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
 from src.storage.sync_registry import SyncRegistry, _last_trading_day
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -56,7 +56,9 @@ class HistoricalSync:
         self.timeframe: str = timeframe
         self.start_date: str = start_date
         self.rate_delay: float = rate_delay
-        self.fetcher: AbstractPriceFetcher = fetcher or YFinanceFetcher()
+        self.fetcher: AbstractPriceFetcher = fetcher or FyersFetcher(
+            rate_delay=self.rate_delay, fallback_enabled=False
+        )
 
         self._tf_dir: str = os.path.join(data_dir, timeframe)
         os.makedirs(self._tf_dir, exist_ok=True)
@@ -276,7 +278,7 @@ class HistoricalSync:
         )
         return merged
 
-    def sync_one(self, symbol: str, force: bool = False) -> bool:
+    def sync_one(self, symbol: str, force: bool = False, registry: SyncRegistry | None = None) -> bool:
         """
         Synchronise historical data for a single NSE equity symbol.
 
@@ -288,10 +290,21 @@ class HistoricalSync:
         symbol = symbol.strip().upper()
         existing = self._load(symbol)
 
+        # Check if full refresh was done recently (within last 15 days) to avoid rate limit loops
+        recently_full_refreshed = False
+        if registry:
+            rec = registry.get(symbol)
+            if rec and rec.last_full_refresh_at:
+                days_since = (datetime.now() - rec.last_full_refresh_at).days
+                if days_since < 15:
+                    recently_full_refreshed = True
+
         if existing.empty:
             # Case 1: Never downloaded → full history
             df = self._fetch_full(symbol)
-        elif self._needs_full_refresh(existing):
+            if registry and not df.empty:
+                registry.mark_full_refreshed(symbol)
+        elif self._needs_full_refresh(existing) and not recently_full_refreshed and not force:
             # Case 2: Partial/gappy data → full refresh to fill gaps
             LOGGER.info(
                 "%s: Existing data has gaps (%d rows, %s → %s). Running full refresh.",
@@ -301,6 +314,8 @@ class HistoricalSync:
                 existing.index.max().date(),
             )
             df = self._fetch_full(symbol)
+            if registry:
+                registry.mark_full_refreshed(symbol)
             # Only use new data if it's better than existing
             if not df.empty and len(df) >= len(existing):
                 LOGGER.info(
@@ -321,7 +336,13 @@ class HistoricalSync:
             else:
                 df = existing  # Keep what we have
         else:
-            # Case 3: Good data, just need recent bars → incremental
+            # Case 3: Good data or recently full refreshed (fallback to incremental to avoid rate limit) → incremental
+            if recently_full_refreshed and self._needs_full_refresh(existing):
+                LOGGER.info(
+                    "%s has low coverage but was recently full-refreshed. "
+                    "Performing incremental update instead of full refresh.",
+                    symbol,
+                )
             df = self._incremental_update(symbol, existing)
 
         if df.empty:
@@ -362,6 +383,18 @@ class HistoricalSync:
         else:
             queue = [s.strip().upper() for s in symbols]
 
+        # Load failed symbols from CSV and filter them out to prevent infinite retries
+        failed_symbols = self._load_failed_symbols()
+        if failed_symbols:
+            pre_len = len(queue)
+            queue = [s for s in queue if s not in failed_symbols]
+            skipped_failed_count = pre_len - len(queue)
+            if skipped_failed_count > 0:
+                LOGGER.info(
+                    "Skipped %d symbols because they are listed in failed_symbols.csv",
+                    skipped_failed_count,
+                )
+
         skipped = {
             s.strip().upper(): True for s in symbols if s.strip().upper() not in queue
         }
@@ -381,7 +414,7 @@ class HistoricalSync:
 
         for i, sym in enumerate(queue, 1):
             LOGGER.info("[%d/%d] Syncing %s...", i, total, sym)
-            ok = self.sync_one(sym)
+            ok = self.sync_one(sym, registry=registry)
             results[sym] = ok
 
             if ok:
@@ -393,8 +426,10 @@ class HistoricalSync:
                         last_bar=df.index.max().date(),
                         row_count=len(df),
                     )
+                    self._remove_failed_symbol(sym)
             else:
                 registry.mark_failed(sym)
+                self._record_failed_symbol(sym, reason="Fyers sync failed or returned empty")
 
             if i % save_every == 0:
                 registry.save()
@@ -411,6 +446,53 @@ class HistoricalSync:
             len(skipped),
         )
         return results
+
+    def _load_failed_symbols(self) -> set[str]:
+        path = os.path.join(self.data_dir, "failed_symbols.csv")
+        if not os.path.exists(path):
+            return set()
+        try:
+            df = pd.read_csv(path)
+            if "SYMBOL" in df.columns:
+                return set(df["SYMBOL"].astype(str).str.strip().str.upper().unique())
+        except Exception as exc:
+            LOGGER.warning("Failed to load failed_symbols.csv: %s", exc)
+        return set()
+
+    def _record_failed_symbol(self, symbol: str, reason: str = "Sync failed") -> None:
+        path = os.path.join(self.data_dir, "failed_symbols.csv")
+        symbol = symbol.strip().upper()
+        new_row = {
+            "SYMBOL": symbol,
+            "LAST_ATTEMPT": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ERROR_REASON": reason,
+        }
+        try:
+            if os.path.exists(path):
+                df = pd.read_csv(path)
+                df = df[df["SYMBOL"] != symbol]
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            else:
+                df = pd.DataFrame([new_row])
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            df.to_csv(path, index=False)
+            LOGGER.info("Recorded %s in failed_symbols.csv", symbol)
+        except Exception as exc:
+            LOGGER.warning("Failed to record failed symbol %s: %s", symbol, exc)
+
+    def _remove_failed_symbol(self, symbol: str) -> None:
+        path = os.path.join(self.data_dir, "failed_symbols.csv")
+        symbol = symbol.strip().upper()
+        if not os.path.exists(path):
+            return
+        try:
+            df = pd.read_csv(path)
+            if symbol in df["SYMBOL"].values:
+                df = df[df["SYMBOL"] != symbol]
+                df.to_csv(path, index=False)
+                LOGGER.info("Removed %s from failed_symbols.csv", symbol)
+        except Exception as exc:
+            LOGGER.warning("Failed to remove %s from failed_symbols.csv: %s", symbol, exc)
 
     def read(self, symbol: str) -> pd.DataFrame:
         return self._load(symbol)

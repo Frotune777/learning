@@ -1,6 +1,6 @@
 """
-File: main.py
-Purpose: Unified CLI and interactive menu for the NSE data pipeline.
+File: src/cli/actions.py
+Purpose: Non-interactive CLI subcommand handlers for the NSE data pipeline.
 
 Dependencies:
 External:
@@ -9,31 +9,22 @@ Internal:
 - src.storage.equity_master: [NSEEquityMasterBuilder]
 - src.storage.historical_sync: [HistoricalSync]
 - src.screener: [StockScreener]
+- src.core.symbol_utils: [find_latest_master, load_symbols, load_symbols_from_bhavcopy,
+                           load_symbols_strict, get_delivery_history_from_bhavcopy]
 
 Key Components:
-Classes:
-- None
 Functions:
 - cmd_build_master: Subcommand to build/refresh the equity master table.
 - cmd_sync_history: Subcommand to sync historical Parquet files.
 - cmd_screen: Subcommand to run the technical screener.
-- menu_build_master: Interactive menu handler for master build.
-- menu_sync_history: Interactive menu handler for history sync.
-- menu_screen: Interactive menu handler for screening.
-- interactive_menu: REPL-style menu loop.
-- main: CLI argument parse entry point.
+- cmd_backtest: Subcommand to run ML backtest for a symbol.
+- cmd_bhavcopy_sync: Subcommand for fast incremental OHLCV update.
+- cmd_fo_ban: Subcommand to display F&O ban list.
+- cmd_fyers_login: Subcommand to print Fyers login URL.
+- cmd_fyers_token: Subcommand to exchange Fyers auth code.
+- cmd_ml_anomaly: Subcommand to run ML data anomaly detection.
 
-Last Modified: 2026-05-27
-Modified By: Fortune
-
-Open Tasks:
-- [ ] [LOW] Add --output flag to redirect CSV results [1h]
-- [ ] [MEDIUM] Add --filter flag (e.g. --filter nifty50) to restrict symbols [2h]
-
-Related Files:
-- src/nse_bhavcopy/equity_master.py: Master table builder.
-- src/nse_bhavcopy/historical_sync.py: Parquet CRUD sync engine.
-- src/nse_bhavcopy/screener.py: Technical screening logic.
+Last Modified: 2026-05-31
 """
 
 from __future__ import annotations
@@ -47,12 +38,23 @@ from datetime import datetime
 
 import pandas as pd
 
-from src.screener import StockScreener
-from src.storage.downloader import BhavcopyDownloader
-from src.storage.equity_master import NSEEquityMasterBuilder
-from src.storage.historical_sync import (
-    HistoricalSync,
+from src.cli.formatters import (
+    cyan,
+    dim,
+    err,
+    green,
+    tip,
 )
+from src.core.config import Config
+from src.core.symbol_utils import (
+    find_latest_master,
+    get_delivery_history_from_bhavcopy,
+    load_symbols_from_bhavcopy,
+    load_symbols_strict,
+)
+from src.screener import StockScreener
+from src.storage.equity_master import NSEEquityMasterBuilder
+from src.storage.historical_sync import HistoricalSync
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -63,282 +65,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 LOGGER: logging.Logger = logging.getLogger("nse_pipeline")
-
-# ---------------------------------------------------------------------------
-# Defaults
-# ---------------------------------------------------------------------------
-DEFAULT_DATA_DIR: str = "data"
-DEFAULT_HIST_DIR: str = "data/historical"
-DEFAULT_MASTER_DIR: str = "data"
-DEFAULT_START_DATE: str = "2000-01-01"
-DEFAULT_TIMEFRAME: str = "1d"
-
-# ---------------------------------------------------------------------------
-# ANSI colour helpers  (gracefully degrade on Windows / dumb terminals)
-# ---------------------------------------------------------------------------
-_USE_COLOR = sys.stdout.isatty()
-
-
-from src.cli.formatters import (
-    cyan,
-    dim,
-    err,
-    green,
-    tip,
-)
-
-
-def _find_latest_master(data_dir: str = DEFAULT_DATA_DIR) -> str | None:
-    """
-    Find the most recently dated master Parquet file in data_dir.
-
-    Logic:
-        Step 1: Glob for nse_equity_master_*.parquet files.
-        Step 2: Sort by name (date-stamped) descending.
-        Step 3: Return first match or None.
-
-    Parameters:
-        data_dir (str): Directory to search. | Default "data".
-
-    Returns:
-        str | None: Path to latest master Parquet, or None if not found.
-
-    Raises:
-        None
-
-    Example:
-        >>> path = _find_latest_master()
-
-    Performance:
-        Time Complexity: O(F) [F = number of matching files]
-        Space Complexity: O(F)
-
-    Edge Cases Handled:
-        - Returns None gracefully when no master exists yet.
-    """
-    pattern = os.path.join(data_dir, "nse_equity_master_*.parquet")
-    files = sorted(glob.glob(pattern), reverse=True)
-    return files[0] if files else None
-
-
-def _get_delivery_history(processed_dir: str, symbol: str) -> pd.DataFrame | None:
-    """
-    Aggregate delivery percentage history from processed Bhavcopy files.
-
-    Parameters:
-        processed_dir (str): Directory containing top_250_*.csv files. |
-            Must exist.
-        symbol (str): Ticker symbol. | Case-insensitive.
-
-    Returns:
-        pd.DataFrame | None: Delivery history DataFrame with Date and DELIV_PCT,
-            or None.
-
-    Raises:
-        None
-
-    Complexity:
-        Time: O(F * N) where F is files count and N is rows per file.
-        Space: O(F)
-
-    Example:
-        >>> df = _get_delivery_history("data/processed", "TCS")
-    """
-    import glob
-    import re
-
-    rows = []
-    pattern = os.path.join(processed_dir, "top_250_*.csv")
-    for path in glob.glob(pattern):
-        if "analyzed" in path:
-            continue
-        filename = os.path.basename(path)
-        match = re.search(r"top_250_(\d{8})\.csv", filename)
-        if match:
-            date_str = match.group(1)
-            try:
-                dt = datetime.strptime(date_str, "%Y%m%d")
-                df = pd.read_csv(path)
-                if "SYMBOL" in df.columns and "DELIV_PCT" in df.columns:
-                    row_slice = df[df["SYMBOL"].str.upper() == symbol.upper()]
-                    if not row_slice.empty:
-                        deliv_pct = float(row_slice["DELIV_PCT"].values[0])
-                        rows.append({"Date": dt, "DELIV_PCT": deliv_pct})
-            except Exception:
-                continue
-    if rows:
-        return pd.DataFrame(rows).sort_values("Date")
-    return None
-
-
-def _find_latest_raw_zip(raw_dir: str = "data/raw") -> str | None:
-    """
-    Find the most recently dated Bhavcopy ZIP in raw_dir.
-
-    Logic:
-        Step 1: Glob for BhavCopy_NSE_CM_*.zip files.
-        Step 2: Sort by name (date-stamped) descending.
-        Step 3: Return first match or None.
-
-    Parameters:
-        raw_dir (str): Raw data directory. | Default "data/raw".
-
-    Returns:
-        str | None: Path to latest raw ZIP, or None.
-
-    Raises:
-        None
-
-    Example:
-        >>> path = _find_latest_raw_zip()
-
-    Performance:
-        Time Complexity: O(F)
-        Space Complexity: O(F)
-
-    Edge Cases Handled:
-        - Returns None gracefully when no ZIP exists yet.
-    """
-    pattern = os.path.join(raw_dir, "BhavCopy_NSE_CM_*.zip")
-    files = sorted(glob.glob(pattern), reverse=True)
-    return files[0] if files else None
-
-
-def _load_symbols_from_bhavcopy(
-    raw_dir: str,
-    cap_filter: str | None = None,
-    index_filter: str | None = None,
-    master_path: str | None = None,
-    limit: int | None = None,
-) -> list[str]:
-    """
-    Load EQ symbols from the latest Bhavcopy ZIP with optional master filters.
-
-    Logic:
-        Step 1: Find the latest raw Bhavcopy ZIP.
-        Step 2: Extract all EQ symbols using BhavcopyDownloader.get_eq_symbols().
-        Step 3: If cap_filter or index_filter given, intersect with master symbols.
-        Step 4: Apply limit and return sorted list.
-
-    Parameters:
-        raw_dir (str): Directory containing raw Bhavcopy ZIPs. | Writable path.
-        cap_filter (str | None): Market cap filter applied via master intersection.
-        index_filter (str | None): Index column filter applied via master.
-        master_path (str | None): Path to master Parquet for intersection filters.
-        limit (int | None): Max symbols to return.
-
-    Returns:
-        list[str]: Sorted EQ symbols that traded in the latest Bhavcopy.
-
-    Raises:
-        SystemExit: If no raw ZIP found.
-
-    Example:
-        >>> syms = _load_symbols_from_bhavcopy("data/raw")
-        >>> print(len(syms))  # ~1800
-
-    Performance:
-        Time Complexity: O(N)
-        Space Complexity: O(N)
-
-    Edge Cases Handled:
-        - No ZIP found exits with clear message.
-        - Filter intersection reduces to empty list — logged as warning.
-    """
-    zip_path = _find_latest_raw_zip(raw_dir)
-    if zip_path is None:
-        LOGGER.error(
-            "No Bhavcopy ZIP found in '%s'. Run 'build-master' first "
-            "(it downloads the Bhavcopy) or use --source master.",
-            raw_dir,
-        )
-        sys.exit(1)
-
-    LOGGER.info("Loading EQ symbols from Bhavcopy ZIP: %s", zip_path)
-    with open(zip_path, "rb") as fh:
-        file_bytes = fh.read()
-
-    dl = BhavcopyDownloader(raw_dir=raw_dir)
-    symbols = dl.get_eq_symbols(file_bytes)
-    LOGGER.info("Bhavcopy EQ symbols: %d", len(symbols))
-
-    if (cap_filter or index_filter) and master_path:
-        master_symbols = set(_load_symbols(master_path, cap_filter, index_filter))
-        before = len(symbols)
-        symbols = [s for s in symbols if s in master_symbols]
-        LOGGER.info("After filter intersection: %d (from %d)", len(symbols), before)
-
-    if limit:
-        symbols = symbols[:limit]
-    LOGGER.info("Using %d symbols for sync.", len(symbols))
-    return symbols
-
-
-def _load_symbols(
-    master_path: str | None,
-    cap_filter: str | None = None,
-    index_filter: str | None = None,
-    limit: int | None = None,
-) -> list[str]:
-    """
-    Load symbol list from master Parquet with optional filters.
-
-    Logic:
-        Step 1: Load Parquet to DataFrame.
-        Step 2: Apply market_cap_category filter if provided.
-        Step 3: Apply index membership filter if provided.
-        Step 4: Apply limit if provided.
-        Step 5: Return sorted uppercase symbol list.
-
-    Parameters:
-        master_path (str | None): Path to master Parquet. | None raises error.
-        cap_filter (str | None): "Large", "Mid", "Small", "Other". | Default None.
-        index_filter (str | None): Column like "is_nifty_50". | Default None.
-        limit (int | None): Max symbols to return. | Default None (all).
-
-    Returns:
-        list[str]: Filtered and sorted symbol list.
-
-    Raises:
-        SystemExit: If master_path is None (no master built yet).
-
-    Example:
-        >>> symbols = _load_symbols("data/nse_equity_master_20260527.parquet",
-        ...                         cap_filter="Large")
-
-    Performance:
-        Time Complexity: O(N)
-        Space Complexity: O(N)
-
-    Edge Cases Handled:
-        - Missing master file exits with informative error message.
-        - Unknown filter columns logged as warning.
-    """
-    if master_path is None:
-        LOGGER.error("No master table found. Run 'build-master' first.")
-        sys.exit(1)
-
-    df = pd.read_parquet(master_path)
-
-    if cap_filter:
-        df = df[df["market_cap_category"] == cap_filter]
-        LOGGER.info("Cap filter '%s': %d symbols", cap_filter, len(df))
-
-    if index_filter:
-        if index_filter in df.columns:
-            df = df[df[index_filter] == True]  # noqa: E712
-            LOGGER.info("Index filter '%s': %d symbols", index_filter, len(df))
-        else:
-            LOGGER.warning(
-                "Index column '%s' not found — ignoring filter.",
-                index_filter,
-            )
-
-    symbols = sorted(df["Symbol"].dropna().str.strip().str.upper().tolist())
-    if limit:
-        symbols = symbols[:limit]
-    LOGGER.info("Using %d symbols for operation.", len(symbols))
-    return symbols
 
 
 # ===========================================================================
@@ -422,13 +148,13 @@ def cmd_sync_history(args: argparse.Namespace) -> None:
 
     source: str = getattr(args, "source", "bhavcopy")
     raw_dir: str = os.path.join(args.data_dir, "raw")
-    master_path = _find_latest_master(args.data_dir)
+    master_path = find_latest_master(args.data_dir)
     cap_filter = getattr(args, "cap_filter", None)
     index_filter = getattr(args, "index_filter", None)
     limit = getattr(args, "limit", None)
 
     if source == "bhavcopy":
-        symbols = _load_symbols_from_bhavcopy(
+        symbols = load_symbols_from_bhavcopy(
             raw_dir=raw_dir,
             cap_filter=cap_filter,
             index_filter=index_filter,
@@ -436,7 +162,7 @@ def cmd_sync_history(args: argparse.Namespace) -> None:
             limit=limit,
         )
     else:
-        symbols = _load_symbols(
+        symbols = load_symbols_strict(
             master_path,
             cap_filter=cap_filter,
             index_filter=index_filter,
@@ -534,7 +260,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
             sys.exit(1)
 
         processed_dir = os.path.join(args.data_dir, "processed")
-        df_delivery = _get_delivery_history(processed_dir, symbol)
+        df_delivery = get_delivery_history_from_bhavcopy(processed_dir, symbol)
 
         from rich.console import Console
         from rich.table import Table
@@ -634,7 +360,7 @@ def cmd_bhavcopy_sync(args: argparse.Namespace) -> None:
     no_ta: bool = getattr(args, "no_ta", False)
     delay: float = getattr(args, "delay", 1.0)
 
-    symbols = _load_symbols_from_bhavcopy(
+    symbols = load_symbols_from_bhavcopy(
         raw_dir=raw_dir,
         master_path=None,
         limit=limit,
@@ -642,12 +368,11 @@ def cmd_bhavcopy_sync(args: argparse.Namespace) -> None:
 
     syncer = BhavcopyIncrementalSync(
         data_dir=args.hist_dir,
-        timeframe=getattr(args, "timeframe", DEFAULT_TIMEFRAME),
+        timeframe=getattr(args, "timeframe", Config.DEFAULT_TIMEFRAME),
         raw_dir=raw_dir,
         rate_delay=delay,
-        recompute_ta=not no_ta,
     )
-    results = syncer.run(symbols, days_back=days_back, recompute_ta=not no_ta)
+    results = syncer.run(symbols, days_back=days_back)
 
     ok_count = sum(v for v in results.values())
     needs_refresh = [s for s, v in results.items() if not v]

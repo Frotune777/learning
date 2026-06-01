@@ -1,30 +1,19 @@
-import glob
-import json
-from functools import lru_cache, wraps
-from pathlib import Path
-from typing import Any, ClassVar
-
-import structlog
-from tqdm import tqdm
-
 """
 File: src/cli/menus.py
-Purpose: Interactive CLI Menus
+Purpose: Interactive REPL menu handlers for the NSE data pipeline CLI.
+Last Modified: 2026-05-31
 """
 
 import argparse
+import glob
 import logging
 import os
-import sys
+import structlog
 from collections.abc import Callable
 from datetime import datetime
 
 import pandas as pd
-
-from src.core.config import Config
-from src.core.utils import get_fyers_fetcher, get_nse_utils
-
-logger = logging.getLogger("nse_pipeline")
+from tqdm import tqdm
 
 from src.cli.actions import (
     cmd_ml_anomaly,
@@ -51,6 +40,17 @@ from src.cli.formatters import (
     white,
     yellow,
 )
+from src.cli.visual import VisualUI
+from src.cli.reporter import ScreenerReporter
+from src.core.config import SCREENER_STRATEGIES, Config, UserPrefs
+from src.core.decorators import dry_run_capable
+from src.core.symbol_utils import (
+    combine_strings,
+    find_latest_master,
+    get_delivery_history_from_bhavcopy,
+    load_symbols,
+)
+from src.core.utils import get_fyers_fetcher, get_nse_utils
 from src.nse_bhavcopy.correlation import run_correlation_cli
 from src.nse_bhavcopy.heatmap import run_heatmap_cli
 from src.nse_bhavcopy.ma_slope import analyze_stock_ma_slope
@@ -67,277 +67,24 @@ from src.storage.equity_master import NSEEquityMasterBuilder
 from src.storage.historical_sync import HistoricalSync
 from src.storage.sync_registry import SyncRegistry
 
-# ---------------------------------------------------------------------------
-# Constants & Configuration
-# ---------------------------------------------------------------------------
-
-
-class Config:
-    """Central configuration management."""
-
-    # Default paths
-    DEFAULT_DATA_DIR: str = "data"
-    DEFAULT_HIST_DIR: str = "data/historical"
-    DEFAULT_MASTER_DIR: str = "data"
-    DEFAULT_START_DATE: str = "2000-01-01"
-    DEFAULT_TIMEFRAME: str = "1d"
-
-    # Sync defaults
-    SYNC_DEFAULTS: ClassVar[dict[str, Any]] = {
-        "max_pairs": 50,
-        "default_symbol_limit": 100,
-        "max_pval_threshold": 0.05,
-        "default_days_back": 10,
-        "rate_delay": 0.5,
-        "default_delay": 1.0,
-    }
-
-    # Display limits
-    DISPLAY_LIMITS: ClassVar[dict[str, int]] = {
-        "symbol_preview": 15,
-        "top_synced": 10,
-        "heatmap_preview": 25,
-        "max_failed_display": 15,
-    }
-
-    # Technical thresholds
-    TECH_THRESHOLDS: ClassVar[dict[str, int]] = {
-        "rsi_overbought": 70,
-        "rsi_oversold": 30,
-        "adx_trending": 25,
-        "cci_overbought": 100,
-        "cci_oversold": -100,
-    }
-
-    @classmethod
-    def get_data_dir(cls) -> str:
-        return os.getenv("NSE_DATA_DIR", cls.DEFAULT_DATA_DIR)
-
-    @classmethod
-    def get_hist_dir(cls) -> str:
-        return os.getenv("NSE_HIST_DIR", cls.DEFAULT_HIST_DIR)
-
-
-# ---------------------------------------------------------------------------
-# User Preferences Persistence
-# ---------------------------------------------------------------------------
-
-
-class UserPrefs:
-    """Persistent user preferences across sessions."""
-
-    def __init__(self):
-        self.path = Path.home() / ".nse_pipeline_prefs.json"
-        self.data = self._load()
-
-    def _load(self) -> dict:
-        if self.path.exists():
-            try:
-                with open(self.path) as f:
-                    return json.load(f)
-            except (OSError, json.JSONDecodeError):
-                return {}
-        return {}
-
-    def _save(self) -> None:
-        try:
-            with open(self.path, "w") as f:
-                json.dump(self.data, f, indent=2)
-        except OSError:
-            pass
-
-    def get_last(self, key: str, default: Any = None) -> Any:
-        return self.data.get(key, default)
-
-    def set_last(self, key: str, value: Any) -> None:
-        self.data[key] = value
-        self._save()
-
-
-# ---------------------------------------------------------------------------
-# Structured Logging Setup
-# ---------------------------------------------------------------------------
-
-
-def setup_logging() -> None:
-    """Configure structured logging."""
-    structlog.configure(
-        processors=[
-            structlog.stdlib.filter_by_level,
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.TimeStamper(fmt="%H:%M:%S"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-            structlog.dev.ConsoleRenderer(),
-        ],
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
-
-
-setup_logging()
 logger = structlog.get_logger("nse_pipeline")
 
-# Basic logging fallback
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
-
 # ---------------------------------------------------------------------------
-# ANSI colour helpers
+# Screener Strategy Configuration — imported from src.core.config
 # ---------------------------------------------------------------------------
-_USE_COLOR = sys.stdout.isatty()
-
-
-# ---------------------------------------------------------------------------
-# Decorators
-# ---------------------------------------------------------------------------
-
-
-def validate_symbol(func: Callable) -> Callable:
-    """Validate stock symbol input."""
-
-    @wraps(func)
-    def wrapper(symbol: str, *args, **kwargs):
-        if not symbol or not symbol.replace(".", "").replace("^", "").isalnum():
-            raise ValueError(f"Invalid symbol format: {symbol}")
-        return func(symbol.upper(), *args, **kwargs)
-
-    return wrapper
-
-
-def with_progress_bar(description: str = "Processing"):
-    """Add progress bar to iterator functions."""
-
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            result = func(*args, **kwargs)
-            if isinstance(result, list | dict) and len(result) > 0:
-                yield from tqdm(result, desc=description)
-            else:
-                yield from result
-
-        return wrapper
-
-    return decorator
-
-
-def dry_run_capable(func: Callable) -> Callable:
-    """Add dry-run capability to functions."""
-
-    @wraps(func)
-    def wrapper(*args, dry_run: bool = False, **kwargs):
-        if dry_run:
-            logger.info("dry_run_mode", function=func.__name__)
-            print(f"\n  {dim('[DRY RUN] Would execute:')} {func.__name__}")
-            return None
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
-# ---------------------------------------------------------------------------
-# Cached API Clients
-# ---------------------------------------------------------------------------
-
-
-@lru_cache(maxsize=1)
-def get_nse_utils():
-    """Get cached NseUtils instance."""
-    from src.nse_live.nse_utils import NseUtils
-
-    return NseUtils()
-
-
-@lru_cache(maxsize=1)
-def get_fyers_fetcher():
-    """Get cached FyersFetcher instance."""
-    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
-
-    return FyersFetcher()
-
-
-# ---------------------------------------------------------------------------
-# Screener Strategy Configuration (Declarative)
-# ---------------------------------------------------------------------------
-
-SCREENER_STRATEGIES = [
-    {
-        "name": "Nifty Shop (Single Leg)",
-        "file_prefix": "strategy_nifty_shop",
-        "description": "RSI laddering strategy for mean reversion. Level 1 (RSI < 35), Level 2 (< 30), Level 3 (< 25). Targets 6.28% profit.",  # noqa: E501
-        "category": "momentum",
-    },
-    {
-        "name": "Buy Low Sell High",
-        "file_prefix": "strategy_buy_low",
-        "description": "Demand level accumulation. Triggers when CMP is within 2.0% of the 200-Day Low.",  # noqa: E501
-        "category": "mean_reversion",
-    },
-    {
-        "name": "Turtle Trading",
-        "file_prefix": "strategy_turtle",
-        "description": "Explosive momentum breakout. Triggers a 'Buy' only when CMP forcefully crosses the previous 55-Day High.",  # noqa: E501
-        "category": "breakout",
-    },
-    {
-        "name": "RDX Indicator",
-        "file_prefix": "strategy_rdx",
-        "description": "Strict momentum screener. Requires ADX > 25, bullish DI crossover, and RSI > 60.",  # noqa: E501
-        "category": "momentum",
-    },
-    {
-        "name": "100 SMA Breakout",
-        "file_prefix": "strategy_100sma_breakout",
-        "description": "Institutional 6-month base breakout. Triggers crossing 100 SMA while trading > 20% above 6-month lows.",  # noqa: E501
-        "category": "breakout",
-    },
-    {
-        "name": "ETF Shop Method",
-        "file_prefix": "strategy_etf_shop",
-        "description": "Index fund retracement variant. Triggers a 'Buy' if the ETF falls more than 2.0% below its 20 DMA.",  # noqa: E501
-        "category": "etf",
-    },
-    {
-        "name": "Super BO Stocks",
-        "file_prefix": "strategy_super_bo",
-        "description": "Recovery strategy. Stocks rising from downtrends facing 200 SMA resistance while above 50, 100, 150 SMAs.",  # noqa: E501
-        "category": "recovery",
-    },
-    {
-        "name": "DMADMA (Reverse)",
-        "file_prefix": "strategy_dmadma_reverse",
-        "description": "Bull market continuation. Triggers on a 150 SMA breakout while the stock remains above the 200 SMA.",  # noqa: E501
-        "category": "trend",
-    },
-    {
-        "name": "DMADMA (No SL)",
-        "file_prefix": "strategy_dmadma_no_sl",
-        "description": "Pure momentum following — no stop loss. Golden cross analog where the 50 SMA rises above the 200 SMA.",  # noqa: E501
-        "category": "trend",
-    },
-]
 
 
 # ---------------------------------------------------------------------------
 # Utility Functions
 # ---------------------------------------------------------------------------
 
+# _find_latest_master, _load_symbols, _get_delivery_history, combine_strings
+# are imported from src.core.symbol_utils at the top of this file.
+
 
 def _find_latest_master(data_dir: str) -> str | None:
-    """Find the most recent equity master Parquet file."""
-    pattern = os.path.join(data_dir, "nse_equity_master_*.parquet")
-    files = glob.glob(pattern)
-    if not files:
-        return None
-    return max(files)
+    """Thin wrapper around src.core.symbol_utils.find_latest_master."""
+    return find_latest_master(data_dir)
 
 
 def _load_symbols(
@@ -346,59 +93,13 @@ def _load_symbols(
     index_filter: str | None = None,
     limit: int | None = None,
 ) -> list[str]:
-    """Load and filter symbols from master table."""
-    if master_path is None or not os.path.exists(master_path):
-        logger.warning("master_not_found", path=master_path)
-        return []
-
-    builder = NSEEquityMasterBuilder(output_dir=os.path.dirname(master_path))
-    symbols = builder.get_symbols(master_path)
-
-    # Apply filters
-    if cap_filter or index_filter:
-        try:
-            df = pd.read_parquet(master_path)
-            if cap_filter and "market_cap_category" in df.columns:
-                df = df[df["market_cap_category"] == cap_filter]
-            if index_filter and index_filter in df.columns:
-                df = df[df[index_filter]]
-            symbols = df["symbol"].tolist()
-        except Exception as e:
-            logger.error("filter_failed", error=str(e))
-
-    if limit and limit > 0:
-        symbols = symbols[:limit]
-
-    return symbols
+    """Thin wrapper around src.core.symbol_utils.load_symbols."""
+    return load_symbols(master_path, cap_filter, index_filter, limit)
 
 
 def _get_delivery_history(processed_dir: str, symbol: str) -> pd.DataFrame | None:
-    """Fetch delivery percentage history for a symbol."""
-    pattern = os.path.join(processed_dir, f"{symbol}_*.csv")
-    files = sorted(glob.glob(pattern))
-    if not files:
-        return None
-
-    dfs = []
-    for file in files:
-        try:
-            df = pd.read_csv(file)
-            if "DELIV_PER" in df.columns:
-                dfs.append(df[["TIMESTAMP", "DELIV_PER"]])
-        except Exception:
-            continue
-
-    if not dfs:
-        return None
-
-    combined = pd.concat(dfs, ignore_index=True)
-    combined["TIMESTAMP"] = pd.to_datetime(combined["TIMESTAMP"])
-    return combined.sort_values("TIMESTAMP").drop_duplicates("TIMESTAMP")
-
-
-def combine_strings(values):
-    """Helper for aggregating string values in grouped data."""
-    return " | ".join(str(v) for v in values if pd.notna(v))
+    """Thin wrapper around src.core.symbol_utils.get_delivery_history_from_bhavcopy."""
+    return get_delivery_history_from_bhavcopy(processed_dir, symbol)
 
 
 # ---------------------------------------------------------------------------
@@ -440,10 +141,28 @@ MENU_SECTIONS = {
             "menu_recompute_ta",
             "refresh all local Parquet files",
         ),
+        (
+            "24",
+            "Strategy Inspector",
+            "menu_strategy_inspector",
+            "all 13 strategy signals for one stock",
+        ),
+        (
+            "25",
+            "Consensus Leaderboard",
+            "menu_consensus_leaderboard",
+            "top stocks ranked by multi-strategy agreement",
+        ),
     ],
     "STATUS": [
         ("5", "Parquet Sync Status", "menu_status", "rows, date ranges per symbol"),
         ("6", "Sync Registry", "menu_registry", "pending / failed / ok breakdown"),
+        (
+            "26",
+            "Data Quality & Auto-Healer",
+            "menu_data_quality",
+            "scan master symbols and fix data gaps",
+        ),
     ],
     "QUANTITATIVE": [
         ("9", "Liquid ETF Screener", "menu_liquid_etf", "top liquid ETFs per sector"),
@@ -502,7 +221,7 @@ MENU_SECTIONS = {
             "21",
             "Bhavcopy Incremental Sync",
             "menu_bhavcopy_sync",
-            "Batch OHLCV update — 1 ZIP/day instead of 1 800+ API calls",
+            "Batch OHLCV update — 1 ZIP/day instead of 800+ API calls",
         ),
         (
             "22",
@@ -520,17 +239,24 @@ MENU_SECTIONS = {
 }
 
 
+# Singleton VisualUI and Reporter instances (shared by all menu functions)
+_UI = VisualUI()
+_REPORTER = ScreenerReporter()
+
+
 def _print_main_menu() -> None:
-    """Print the top-level menu from declarative configuration."""
-    print()
+    """Render the top-level menu using VisualUI for premium aesthetics."""
+    sections_rich: dict[str, list[dict]] = {}
     for section_name, items in MENU_SECTIONS.items():
-        print(f"  {dim(section_name)}")
+        opts = []
         for num, label, _, hint in items:
-            print(f"   {cyan(num)}  {bold(label)}  {dim(hint)}")
-        print()
-    print(f"   {dim('0')}  {dim('Exit')}")
-    print()
-    print(_rule())
+            opts.append({"id": num, "name": label, "emoji": "", "status": "Ready", "details": hint})
+        sections_rich[section_name] = opts
+    # Append Exit
+    sections_rich["EXIT"] = [
+        {"id": "0", "name": "Exit", "emoji": "❌", "status": "", "details": "Close application"}
+    ]
+    _UI.render_menu("NSE DATA PIPELINE — MAIN MENU", sections_rich)
 
 
 # ---------------------------------------------------------------------------
@@ -811,7 +537,10 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
 
 def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
     """Interactive handler for running the technical screener."""
-    _header("Technical Screener", "Scans synced Parquet data for technical setups")
+    _UI.render_header(
+        "TECHNICAL SCREENER",
+        "Scans synced Parquet data for technical setups · Bull Run + CAR + Swing + 13 Strategies",
+    )
 
     if _confirm("Fetch latest history + update TA indicators first?"):
         menu_sync_filtered(data_dir, hist_dir)
@@ -830,12 +559,34 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
 
     now = datetime.now()
     screener = StockScreener(processed_dir=hist_dir)
-    screener.screen_stocks(top_250_path=top_csv, date_obj=now)
+    save_to_disk = _confirm("Automatically save all 5+ analyzed & filtered CSVs to disk?")
 
-    ok(f"Screening complete  →  results in {hist_dir}")
+    screener.screen_stocks(top_250_path=top_csv, date_obj=now, save_to_disk=save_to_disk)
+
+    ok("Screening complete")
+    if save_to_disk:
+        ok(f"All standard reports exported to {hist_dir}")
+    else:
+        info("Results computed in-memory (no files written yet)")
     logger.info("screening_completed", date=now.strftime("%Y-%m-%d"))
 
-    _screener_results_menu(hist_dir, now.strftime("%Y%m%d"))
+    # ---- Upgraded results display (replaces raw CSV viewer) ----
+    df_analyzed = getattr(screener, "df_analyzed", None)
+    if df_analyzed is None:
+        analyzed_csv = os.path.join(
+            hist_dir, f"top_250_analyzed_{now.strftime('%Y%m%d')}.csv"
+        )
+        if os.path.exists(analyzed_csv):
+            df_analyzed = pd.read_csv(analyzed_csv)
+
+    if df_analyzed is not None and not df_analyzed.empty:
+        _REPORTER.print_summary_table(
+            df_analyzed,
+            title=f"ANALYSIS RESULTS — {now.strftime('%Y-%m-%d')}",
+        )
+    else:
+        err("No analysis results to display.")
+        _pause()
 
 
 def menu_status(hist_dir: str, data_dir: str) -> None:
@@ -931,6 +682,114 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
     if pending_queue:
         limit = Config.DISPLAY_LIMITS["symbol_preview"] // 3
         print(f"  {dim('Next 5:')} {', '.join(pending_queue[:limit])}")
+
+    _pause()
+
+
+def menu_data_quality(hist_dir: str, data_dir: str) -> None:
+    """Scan all master symbols for data quality and provide automated healing."""
+    _header("Data Quality & Auto-Healer", "Scan for data gaps, low coverage, or missing parquets")
+
+    master_path = _find_latest_master(data_dir)
+    if master_path is None:
+        err("No master table found.")
+        tip("Run option [1] to build the master first.")
+        _pause()
+        return
+
+    builder = NSEEquityMasterBuilder(output_dir=data_dir)
+    symbols = builder.get_symbols(master_path)
+    if not symbols:
+        err("No symbols loaded from Equity Master.")
+        _pause()
+        return
+
+    print(f"\n  {dim('Scanning')} {bold(str(len(symbols)))} {dim('symbols in master Equity list...')}")
+    
+    hs = HistoricalSync(data_dir=hist_dir)
+    status_df = hs.status(symbols)
+
+    total_symbols = len(status_df)
+    missing = status_df[status_df["rows"] == 0]
+    low_coverage = status_df[(status_df["rows"] > 0) & (status_df["coverage_pct"] < 95.0)]
+    healthy = status_df[(status_df["rows"] > 0) & (status_df["coverage_pct"] >= 95.0)]
+
+    # Load failed symbols
+    failed_symbols = hs._load_failed_symbols()
+
+    # Display System Quality Audit Panel
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.console import Console
+    console = Console()
+
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_row(dim("Total Equities in Master:"), bold(str(total_symbols)))
+    table.add_row(green("Healthy Data (>=95% Coverage):"), bold(str(len(healthy))))
+    table.add_row(yellow("Low Coverage (<95% Coverage):"), bold(str(len(low_coverage))))
+    table.add_row(red("Missing Parquet Cache:"), bold(str(len(missing))))
+    table.add_row(dim("Failed Sync Blacklist (failed_symbols.csv):"), bold(str(len(failed_symbols))))
+
+    panel = Panel(
+        table,
+        title="[bold cyan]DATA QUALITY SYSTEM AUDIT[/bold cyan]",
+        border_style="cyan",
+        expand=False,
+    )
+    console.print(panel)
+
+    # Show low quality symbols if any
+    if not missing.empty:
+        print(f"\n  {red('● Missing Parquets')} ({len(missing)}):")
+        preview = missing["symbol"].head(10).tolist()
+        print(f"    {dim(', '.join(preview))}{' ...' if len(missing) > 10 else ''}")
+
+    if not low_coverage.empty:
+        print(f"\n  {yellow('● Low Coverage Equities')} ({len(low_coverage)}):")
+        preview = []
+        for _, r in low_coverage.head(5).iterrows():
+            preview.append(f"{r['symbol']} ({r['coverage_pct']:.1f}%)")
+        print(f"    {dim(', '.join(preview))}{' ...' if len(low_coverage) > 5 else ''}")
+
+    to_heal = sorted(list(set(missing["symbol"].tolist()) | set(low_coverage["symbol"].tolist())))
+
+    if not to_heal:
+        ok("All symbols have healthy historical Parquet data (>=95% coverage)!")
+        _pause()
+        return
+
+    print(f"\n  {bold(yellow(f'Total Unhealthy / Missing symbols to heal: {len(to_heal)}'))}")
+
+    # Give interactive options
+    print(f"\n  {dim('Interactive Healer Menu:')}")
+    print(f"    {bold('H')}. Auto-Heal Data Gaps (targeted overwrite sync of {len(to_heal)} symbols)")
+    print(f"    {bold('F')}. Clear Failed Sync Blacklist ({len(failed_symbols)} symbols)")
+    print(f"    {bold('Q')}. Quit to Main Menu")
+
+    choice = input(f"\n  {dim('>')} ").strip().upper()
+
+    if choice == "H":
+        if not _confirm(f"Start targeted auto-healing of {len(to_heal)} symbols?"):
+            warn("Cancelled.")
+            _pause()
+            return
+        
+        ok("Initializing Auto-Healer pipeline...")
+        # Targeted Sync with resume=False to force refreshing/backfilling the parquets
+        hs.sync(to_heal, resume=False)
+        ok("Auto-healing process completed!")
+    elif choice == "F":
+        path = os.path.join(hist_dir, "failed_symbols.csv")
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                ok("Successfully cleared failed_symbols.csv blacklist!")
+            except Exception as e:
+                err(f"Failed to clear blacklist: {e}")
+        else:
+            warn("No blacklist file found.")
+    else:
+        warn("Quit healing.")
 
     _pause()
 
@@ -1986,6 +1845,84 @@ def menu_ml_anomaly(hist_dir: str, data_dir: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# NEW MENU HANDLERS (24 & 25) — Strategy Inspector + Consensus Leaderboard
+# ---------------------------------------------------------------------------
+
+
+def menu_strategy_inspector(hist_dir: str) -> None:
+    """
+    Show all 13 strategy signals for a single stock using the ScreenerReporter.
+    Reads the latest analyzed CSV from hist_dir.
+    """
+    _UI.render_header(
+        "STRATEGY INSPECTOR",
+        "All 13 strategy signals for a single stock · color-coded · with narrative",
+    )
+
+    # Find latest analyzed file
+    analyzed_files = sorted(
+        glob.glob(os.path.join(hist_dir, "top_250_analyzed_*.csv")), reverse=True
+    )
+    if not analyzed_files:
+        err("No analyzed CSV found. Run the Technical Screener (option 4) first.")
+        _pause()
+        return
+
+    latest = analyzed_files[0]
+    df = pd.read_csv(latest)
+    df = _REPORTER._ensure_consensus(df)
+    print(f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}")  # noqa: E501
+    print()
+
+    symbol = input(f"  {dim('Enter NSE Symbol')} (e.g. TCS): ").strip().upper()
+    if not symbol:
+        warn("No symbol entered.")
+        _pause()
+        return
+
+    _REPORTER.print_strategy_inspector(symbol, df)
+
+    # Narrative
+    row_match = df[df["SYMBOL"].astype(str).str.upper() == symbol]
+    if not row_match.empty:
+        row = row_match.iloc[0]
+        narrative = _REPORTER.generate_narrative(row)
+        print()
+        print(f"  {cyan('▸')} {bold('AI Narrative:')}")  # noqa: E501
+        print(f"  {dim(narrative)}")
+
+    _pause()
+
+
+def menu_consensus_leaderboard(hist_dir: str) -> None:
+    """
+    Display stocks ranked by CONSENSUS_SCORE from the latest analyzed CSV.
+    """
+    _UI.render_header(
+        "CONSENSUS LEADERBOARD",
+        "Top stocks ranked by multi-strategy agreement score",
+    )
+
+    analyzed_files = sorted(
+        glob.glob(os.path.join(hist_dir, "top_250_analyzed_*.csv")), reverse=True
+    )
+    if not analyzed_files:
+        err("No analyzed CSV found. Run the Technical Screener (option 4) first.")
+        _pause()
+        return
+
+    latest = analyzed_files[0]
+    df = pd.read_csv(latest)
+    print(f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}")
+
+    top_str = input(f"  {dim('How many top stocks to show')} [20]: ").strip()
+    top_n = int(top_str) if top_str.isdigit() else 20
+
+    _REPORTER.print_consensus_leaderboard(df, top_n=top_n)
+    _pause()
+
+
+# ---------------------------------------------------------------------------
 # REPL loop
 # ---------------------------------------------------------------------------
 
@@ -1997,7 +1934,11 @@ def interactive_menu(
     """REPL-style interactive menu loop for the NSE pipeline."""
     processed_dir = os.path.join(data_dir, "processed")
 
-    _print_banner()
+    # Premium header via VisualUI (replaces plain _print_banner)
+    _UI.render_header(
+        "NSE DATA PIPELINE",
+        f"Equity Master · Historical Sync · 13-Strategy Screener · ML Analysis  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+    )
 
     # Action dispatch mapping
     _DISPATCH: dict[str, Callable[[], None]] = {
@@ -2024,6 +1965,9 @@ def interactive_menu(
         "21": lambda: menu_bhavcopy_sync(data_dir, hist_dir),
         "22": lambda: menu_fyers_token(),
         "23": lambda: menu_ml_anomaly(hist_dir, data_dir),
+        "24": lambda: menu_strategy_inspector(hist_dir),
+        "25": lambda: menu_consensus_leaderboard(hist_dir),
+        "26": lambda: menu_data_quality(hist_dir, data_dir),
     }
 
     while True:
@@ -2043,4 +1987,4 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-23.")
+            warn(f"'{choice}' is not a valid option — enter 0-26.")

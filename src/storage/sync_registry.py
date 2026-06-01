@@ -103,6 +103,7 @@ class SyncRecord:
         last_synced_at (datetime | None): Timestamp of last successful sync.
         fail_count (int): Consecutive failure count. | Default 0.
         expected_rows (int): Expected row count based on trading days. | Default 0.
+        last_full_refresh_at (datetime | None): Timestamp of last full refresh execution.
     """
 
     symbol: str
@@ -114,6 +115,7 @@ class SyncRecord:
     last_synced_at: datetime | None = None
     fail_count: int = 0
     expected_rows: int = 0
+    last_full_refresh_at: datetime | None = None
 
     def needs_update(self, today: date | None = None) -> bool:
         """
@@ -135,16 +137,16 @@ class SyncRecord:
         if self.status == "pending" or self.last_bar_date is None:
             return True
 
+        # Cooldown check: if successfully synced in the last 24 hours, skip!
+        if self.last_synced_at:
+            hours_since = (datetime.now() - self.last_synced_at).total_seconds() / 3600.0
+            if hours_since < 24.0:
+                return False
+
         ref = today or _last_trading_day()
 
         # Check 1: Recency — is last bar before the most recent trading day?
         if self.last_bar_date < ref:
-            if self.last_synced_at:
-                hours_since = (
-                    datetime.now() - self.last_synced_at
-                ).total_seconds() / 3600.0
-                if hours_since < 4.0:
-                    return False
             return True
 
         # Check 2: Completeness — do we have suspiciously few rows?
@@ -251,6 +253,7 @@ class SyncRegistry:
                     last_synced_at=self._to_datetime(row.get("last_synced_at")),
                     fail_count=int(row.get("fail_count", 0)),
                     expected_rows=int(row.get("expected_rows", 0)),
+                    last_full_refresh_at=self._to_datetime(row.get("last_full_refresh_at")),
                 )
                 self._store[rec.symbol] = rec
             LOGGER.info("Registry loaded: %d symbols.", len(self._store))
@@ -274,6 +277,7 @@ class SyncRegistry:
                 "last_synced_at": r.last_synced_at,
                 "fail_count": r.fail_count,
                 "expected_rows": r.expected_rows,
+                "last_full_refresh_at": r.last_full_refresh_at,
             }
             for r in self._store.values()
         ]
@@ -315,6 +319,12 @@ class SyncRegistry:
         rec.expected_rows = rec._estimate_trading_days(first_bar, last_bar)
         rec.last_synced_at = datetime.now()
         rec.fail_count = 0
+        self._store[sym] = rec
+
+    def mark_full_refreshed(self, symbol: str) -> None:
+        sym = symbol.strip().upper()
+        rec = self._store.get(sym) or SyncRecord(symbol=sym, timeframe=self.timeframe)
+        rec.last_full_refresh_at = datetime.now()
         self._store[sym] = rec
 
     def mark_failed(self, symbol: str) -> None:

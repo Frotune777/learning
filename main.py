@@ -157,7 +157,7 @@ def main() -> None:
         try:
             args.func(args)
         except Exception as e:
-            logger.error("command_failed", command=args.command, error=str(e))
+            logger.error("command_failed: command=%s error=%s", args.command, str(e))
             print(f"\n  {red('Error:')} {e!s}\n")
             sys.exit(1)
     else:

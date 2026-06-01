@@ -93,7 +93,10 @@ class NseUtils:
         }
 
         self.session = requests.Session()
-        self.session.get("http://nseindia.com", headers=self.headers)
+        try:
+            self.session.get("https://www.nseindia.com", headers=self.headers, timeout=10)
+        except Exception:
+            pass
         self.cookies = self.session.cookies.get_dict()
 
     def pre_market_info(self, category: str = "All") -> typing.Any:
@@ -123,19 +126,68 @@ class NseUtils:
         return df
 
     def get_index_details(self, category: str, list_only: bool = False) -> typing.Any:
-        category = category.upper().replace("&", "%26").replace(" ", "%20")
+        df = pd.DataFrame()
+        try:
+            category_clean = category.upper().replace("&", "%26").replace(" ", "%20")
 
-        ref_url = (
-            "https://www.nseindia.com/market-data/live-equity-market?symbol={category}"
-        )
-        ref = requests.get(ref_url, headers=self.headers)
-        url = f"https://www.nseindia.com/api/equity-stockIndices?index={category}"
-        data = requests.get(
-            url, headers=self.headers, cookies=ref.cookies.get_dict()
-        ).json()
-        df = pd.DataFrame(data["data"])
-        df = df.drop(["meta"], axis=1)
-        df = df.set_index("symbol", drop=True)
+            ref_url = (
+                f"https://www.nseindia.com/market-data/live-equity-market?symbol={category_clean}"
+            )
+            ref = requests.get(ref_url, headers=self.headers, timeout=10)
+            url = f"https://www.nseindia.com/api/equity-stockIndices?index={category_clean}"
+            resp = requests.get(
+                url, headers=self.headers, cookies=ref.cookies.get_dict(), timeout=10
+            )
+            
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    if "data" in data:
+                        df = pd.DataFrame(data["data"])
+                        df = df.drop(["meta"], axis=1, errors="ignore")
+                        df = df.set_index("symbol", drop=True)
+                except Exception as e:
+                    print(f"Error parsing NSE India JSON: {e}")
+            else:
+                print(f"NSE India API returned status code {resp.status_code}")
+
+        except Exception as exc:
+            print(f"Failed to fetch index details for {category} via API: {exc}")
+
+        # Fallback to direct CSV if API failed or returned empty
+        if df.empty:
+            print(f"Index API failed for {category}. Attempting direct CSV fallback...")
+            try:
+                import io
+                cat_lower = category.lower().replace(" ", "")
+                # Normalize key names for standard files
+                if cat_lower == "niftynext50":
+                    cat_lower = "niftynext50"
+                csv_url = f"https://nsearchives.nseindia.com/content/indices/ind_{cat_lower}list.csv"
+                csv_resp = requests.get(csv_url, headers=self.headers, timeout=10)
+                if csv_resp.status_code == 200:
+                    csv_df = pd.read_csv(io.StringIO(csv_resp.text))
+                    if "Symbol" in csv_df.columns:
+                        # Map expected columns for normal heatmap operations
+                        csv_df = csv_df.rename(columns={"Symbol": "symbol"})
+                        csv_df = csv_df.set_index("symbol", drop=True)
+                        
+                        # Populate default columns expected by the heatmap layout
+                        csv_df["open"] = 0.0
+                        csv_df["dayHigh"] = 0.0
+                        csv_df["dayLow"] = 0.0
+                        csv_df["lastPrice"] = 0.0
+                        csv_df["pChange"] = 0.0
+                        csv_df["ffmc"] = 0.0
+                        
+                        df = csv_df
+                        print(f"Successfully loaded {len(df)} constituents via CSV fallback for {category}.")
+            except Exception as csv_exc:
+                print(f"CSV fallback failed for {category}: {csv_exc}")
+
+        if df.empty:
+            return pd.DataFrame()
+            
         if list_only:
             symbol_list = sorted(df.index[1:].tolist())
             return symbol_list

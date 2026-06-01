@@ -88,8 +88,8 @@ def _create_mock_zip(columns_mode: str = "standard") -> bytes:
             ],
             "SERIES": ["EQ", "EQ", "EQ", "EQ", "EQ", "EQ"],
             "CLOSE": [2500.0, 3200.0, 1500.0, 200.0, 50.0, 100.0],
-            "TURNOVER": [1000.0, 2000.0, 1500.0, 5000.0, 6000.0, 7000.0],
-            "DlvrbleQty": [500.0, 1000.0, 700.0, 2500.0, 3000.0, 3500.0],
+            "TURNOVER": [1000.0, 2000.0, 1500.0, 50.0, 60.0, 70.0],
+            "DlvrbleQty": [500.0, 1000.0, 700.0, 25.0, 30.0, 35.0],
             "PctOfDlvrbleQtyTltTrdQty": [50.0, 50.0, 46.6, 50.0, 50.0, 50.0],
         }
     else:
@@ -439,15 +439,14 @@ def test_clean_dataframe_etf_boundaries() -> None:
 
     cleaned_df: pd.DataFrame = downloader._clean_dataframe(raw_df)
 
-    # Legitimate equities (GOLDIAM, LIQUIDFLEX) must be preserved.
-    # ETFs (GOLD, LIQUID, GOLD-BEES, NIFTY-ETF) must be filtered.
+    # Since ETFs are now kept in the data update process, they should all be present.
     symbols_present = cleaned_df["SYMBOL"].tolist()
     assert "GOLDIAM" in symbols_present
     assert "LIQUIDFLEX" in symbols_present
-    assert "GOLD" not in symbols_present
-    assert "LIQUID" not in symbols_present
-    assert "GOLD-BEES" not in symbols_present
-    assert "NIFTY-ETF" not in symbols_present
+    assert "GOLD" in symbols_present
+    assert "LIQUID" in symbols_present
+    assert "GOLD-BEES" in symbols_present
+    assert "NIFTY-ETF" in symbols_present
 
 
 def test_process_bhavcopy_invalid_magic_bytes() -> None:

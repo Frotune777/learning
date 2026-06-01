@@ -543,6 +543,10 @@ def test_screen_stocks_success(tmp_path: Path) -> None:
             "RSI",
             "Tech Score",
             "Tech Rating",
+            "Corp Action",
+            "Catalyst Boost",
+            "Event Risk (Days)",
+            "Insider Score",
         ]
 
         # Verify Filter B (swing list)
@@ -564,6 +568,10 @@ def test_screen_stocks_success(tmp_path: Path) -> None:
             "Action",
             "RSI",
             "Tech Score",
+            "Corp Action",
+            "Catalyst Boost",
+            "Event Risk (Days)",
+            "Insider Score",
         ]
 
         # Verify Filter C (super list)
@@ -585,6 +593,10 @@ def test_screen_stocks_success(tmp_path: Path) -> None:
             "Today Low",
             "GTT Trigger",
             "Action",
+            "Corp Action",
+            "Catalyst Boost",
+            "Event Risk (Days)",
+            "Insider Score",
         ]
 
 

@@ -203,8 +203,41 @@ def _fetch_from_nse(index_key: str) -> list[str]:
         )
         return sorted(symbols)
 
-    except requests.RequestException as exc:
-        LOGGER.error("NSE API request failed for index '%s': %s", index_key, exc)
+    except Exception as exc:
+        LOGGER.warning(
+            "NSE API request failed for index '%s' (%s). Trying direct CSV fallback...",
+            index_key,
+            exc,
+        )
+        try:
+            import io
+            import pandas as pd
+            csv_map = {
+                "nifty50": "nifty50",
+                "nifty_next50": "niftynext50",
+                "nifty100": "nifty100",
+                "nifty200": "nifty200",
+            }
+            csv_key = csv_map.get(index_key)
+            if csv_key:
+                csv_url = f"https://nsearchives.nseindia.com/content/indices/ind_{csv_key}list.csv"
+                csv_resp = requests.get(csv_url, headers=_REQUEST_HEADERS, timeout=_REQUEST_TIMEOUT)
+                if csv_resp.status_code == 200:
+                    csv_df = pd.read_csv(io.StringIO(csv_resp.text))
+                    if "Symbol" in csv_df.columns:
+                        symbols = sorted(csv_df["Symbol"].dropna().astype(str).str.strip().str.upper().tolist())
+                        LOGGER.info(
+                            "Fetched %d symbols for index '%s' via CSV fallback.",
+                            len(symbols),
+                            index_key,
+                        )
+                        return symbols
+        except Exception as fallback_exc:
+            LOGGER.error(
+                "CSV fallback failed for index '%s': %s",
+                index_key,
+                fallback_exc,
+            )
         return []
 
 

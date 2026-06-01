@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-01
+
+### Added
+- Ported and integrated 5 advanced trading strategies: Minervini Volatility Contraction Pattern (VCP), TTM Squeeze (Bollinger Band compression inside Keltner Channels), Dual Supertrend (Pine-Script match), Candlestick Pattern Recognition, and Lorentzian Machine Learning Classification.
+- Overhauled consensus and scoring engine to use strategy weightings, trend state classification (BULL RUN, RECOVERY, BEAR TERRITORY, SIDEWAYS), and dynamic Quant Decision Support (simulated trading actions, confidence metrics, ATR-based stops & targets).
+- Added bulleted AI Quant Narrative explaining positive catalysts, risk factors, and actionable verdicts.
+- Developed state-of-the-art dark-mode Streamlit dashboard with detailed Landing Page, Daily Signals Explorer, and a double-tabbed Strategy Inspector (Leaderboard & Deep-Dive Inspector).
+- Built a premium double-border visual CLI REPL menu using `VisualUI` panels, tables, and categorized options.
+- Phase 5 Data Quality Safeguards: 
+  - Integrated lightweight `requests` + `BeautifulSoup` parsing for Tickertape's Market Mood Index (MMI) via `__NEXT_DATA__` React state extraction (100x faster, zero local Chrome dependency).
+  - Added robust CSV fallbacks for NSE Index constituents loading from `nsearchives.nseindia.com` in `get_index_details` and `nifty_index_fetcher.py` to bypass Cloudflare and 404 blocks.
+  - Implemented interactive CLI Option `26` (Data Quality & Auto-Healer) to diagnose and heal low-coverage equities.
+  - Added a Data Quality status KPI card to the Streamlit Strategy Inspector page.
+
+### Changed
+- Refactored `screener.screen_stocks` to support in-memory passes with optional CSV exports.
+- Upgraded the entire platform test coverage to 187 passing unit and integration tests.
+
 ## [1.2.0] - 2026-05-30
 
 ### Added

@@ -222,3 +222,111 @@ Actual: 1.5 hours
 Description:
 Add standalone diagnostic scripts to `scratch/` and develop unit test suites verifying full circuit breaker transitions, cookie warm-ups, local token resolver mappings, and incremental Parquet file updates.
 
+---
+
+## Phase 4: Institutional Refactoring, Scoring, Portfolio, and Dashboard - 100% Complete
+
+### Task 4.1: Quantitative Core & Strategy Fixes
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 4 hours
+Actual: 1.5 hours
+
+Description:
+- Correct the inverted DMA crossover condition in `src/engine/strategies.py` [x]
+- Update `src/nse_bhavcopy/ta_indicators.py` to calculate all SMA, EMA, and rolling metrics in one pass [x]
+- Update `src/screener.py` to use precalculated indicators, enhance Bull Run filters (A & B) with `DMA20`, and implement correct textbook CAR logic [x]
+
+---
+
+### Task 4.2: Data Ingestion (Fyers Integration)
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 2 hours
+Actual: 0.5 hours
+
+Description:
+- Modify `src/storage/historical_sync.py` to default to `FyersFetcher` with fallback disabled, utilizing Bhavcopy incremental sync for daily updates [x]
+
+---
+
+### Task 4.3: Scoring & Portfolio Engines (Simulated)
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 4 hours
+Actual: 1.0 hours
+
+Description:
+- Create `src/scoring/scoring_engine.py` to implement the multi-factor weighted scoring and ranking model [x]
+- Create `src/portfolio/portfolio_engine.py` for simulated cash, max position caps, sector limits, and ATR sizing [x]
+
+---
+
+### Task 4.4: Streamlit Dashboard Implementation
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 6 hours
+Actual: 2.0 hours
+
+Description:
+- Add `streamlit` to `pyproject.toml` and sync dependencies [x]
+- Create Streamlit main page and subpages for Daily Signals, Portfolio, and Backtest Explorer [x]
+
+---
+
+### Task 4.5: Test Suite & Verification
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 3 hours
+Actual: 1.0 hours
+
+Description:
+- Update existing tests in `tests/test_screener.py` and create unit tests for scoring and portfolio engines. Verify linting and type check. [x]
+
+---
+
+## Phase 5: Data Quality, Auto-Healer & Resilient Fallbacks - 100% Complete
+
+### Task 5.1: Selenium-Free Market Mood Index (MMI) Scraper
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 2 hours
+Actual: 1.0 hours
+
+Description:
+- Query Tickertape directly via `requests` and parse Next.js raw state (`__NEXT_DATA__`) to fetch MMI (100x speedup).
+- Retain Selenium as a robust, secondary automated fallback.
+
+---
+
+### Task 5.2: NSE Index API CSV Fallbacks
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 3 hours
+Actual: 1.5 hours
+
+Description:
+- Upgrade `NseUtils.get_index_details` in `nse_utils.py` and `_fetch_from_nse` in `nifty_index_fetcher.py` to automatically intercept 404/403 blocks and load constituent lists from NSE's public CSV archives.
+
+---
+
+### Task 5.3: CLI Option 26 & Streamlit Quality KPI Card
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+Estimated: 3 hours
+Actual: 2.0 hours
+
+Description:
+- Build Option `26` (Data Quality & Auto-Healer) in `menus.py` to scan master lists and targeted-overwrite missing parquets using Fyers API.
+- Add Data Quality status indicator card inside Streamlit Single-Stock Strategy Inspector page.
+- Execute full 187/187 test suite validation check cleanly.
+
+

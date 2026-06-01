@@ -77,8 +77,10 @@ def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["EMA_200"] = pd.Series(talib.EMA(close, timeperiod=200), index=df.index)
 
     # Add SMAs
+    df["SMA_20"] = pd.Series(talib.SMA(close, timeperiod=20), index=df.index)
     df["SMA_50"] = pd.Series(talib.SMA(close, timeperiod=50), index=df.index)
     df["SMA_100"] = pd.Series(talib.SMA(close, timeperiod=100), index=df.index)
+    df["SMA_150"] = pd.Series(talib.SMA(close, timeperiod=150), index=df.index)
     df["SMA_200"] = pd.Series(talib.SMA(close, timeperiod=200), index=df.index)
 
     # Add High/Low-dependent indicators if available
@@ -101,6 +103,73 @@ def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df["CCI_14"] = pd.Series(
             talib.CCI(high, low, close, timeperiod=14), index=df.index
         )
+
+        # Rolling High/Low Metrics
+        df["20D_LOW"] = pd.Series(low.rolling(window=20).min(), index=df.index)
+        df["126D_LOW"] = pd.Series(low.rolling(window=126).min(), index=df.index)
+        df["200D_LOW"] = pd.Series(low.rolling(window=200).min(), index=df.index)
+        df["55D_HIGH"] = pd.Series(high.rolling(window=55).max(), index=df.index)
+        df["52W_HIGH"] = pd.Series(high.rolling(window=252).max(), index=df.index)
+        df["52W_LOW"] = pd.Series(low.rolling(window=252).min(), index=df.index)
+
+    # Add RSI and MACD Divergences
+    df["RSI_Divergence"] = "None"
+    df["MACD_Divergence"] = "None"
+
+    lookback = 20
+    if len(df) >= lookback:
+        try:
+            # RSI Divergence detection
+            if "RSI_14" in df.columns:
+                recent = df.tail(lookback)
+                prices = recent["Close"].to_numpy(dtype=float)
+                rsi_vals = recent["RSI_14"].to_numpy(dtype=float)
+                
+                p_min_idx = prices.argmin()
+                p_max_idx = prices.argmax()
+                
+                if p_min_idx > lookback // 2:
+                    prev_p = prices[:p_min_idx]
+                    prev_rsi = rsi_vals[:p_min_idx]
+                    if len(prev_p) > 0:
+                        prev_min_idx = prev_p.argmin()
+                        if prices[p_min_idx] < prev_p[prev_min_idx] and rsi_vals[p_min_idx] > prev_rsi[prev_min_idx]:
+                            df.loc[df.index[-1], "RSI_Divergence"] = "Bullish"
+                            
+                if p_max_idx > lookback // 2:
+                    prev_p = prices[:p_max_idx]
+                    prev_rsi = rsi_vals[:p_max_idx]
+                    if len(prev_p) > 0:
+                        prev_max_idx = prev_p.argmax()
+                        if prices[p_max_idx] > prev_p[prev_max_idx] and rsi_vals[p_max_idx] < prev_rsi[prev_max_idx]:
+                            df.loc[df.index[-1], "RSI_Divergence"] = "Bearish"
+
+            # MACD Divergence detection
+            if "MACD_HIST" in df.columns:
+                recent = df.tail(lookback)
+                prices = recent["Close"].to_numpy(dtype=float)
+                macd_hist = recent["MACD_HIST"].to_numpy(dtype=float)
+                
+                p_min_idx = prices.argmin()
+                p_max_idx = prices.argmax()
+                
+                if p_min_idx > lookback // 2:
+                    prev_p = prices[:p_min_idx]
+                    prev_macd = macd_hist[:p_min_idx]
+                    if len(prev_p) > 0:
+                        prev_min_idx = prev_p.argmin()
+                        if prices[p_min_idx] < prev_p[prev_min_idx] and macd_hist[p_min_idx] > prev_macd[prev_min_idx]:
+                            df.loc[df.index[-1], "MACD_Divergence"] = "Bullish"
+                            
+                if p_max_idx > lookback // 2:
+                    prev_p = prices[:p_max_idx]
+                    prev_macd = macd_hist[:p_max_idx]
+                    if len(prev_p) > 0:
+                        prev_max_idx = prev_p.argmax()
+                        if prices[p_max_idx] > prev_p[prev_max_idx] and macd_hist[p_max_idx] < prev_macd[prev_max_idx]:
+                            df.loc[df.index[-1], "MACD_Divergence"] = "Bearish"
+        except Exception as e:
+            LOGGER.warning("Error calculating divergences: %s", e)
 
     return df
 

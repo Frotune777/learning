@@ -1,30 +1,22 @@
 """
-File: src/nse_bhavcopy/screener.py
-Purpose: Replicate stock trend, CAR rating, and Bottom Out swing trading.
+File: src/screener.py
+Purpose: StockScreener — trend analysis, CAR rating, swing trading, and strategy signals.
 
 Dependencies:
 External:
-- pandas>=2.2.3: Used for loading dataframes and time-series calculations
+- pandas>=2.2.3: DataFrame time-series calculations
 - numpy>=2.4.6: Numerical and NaN utilities
 Internal:
 - src.data.fetcher.prices.yfinance_fetcher: [YFinanceFetcher]
+- src.nse_bhavcopy.ta_indicators: [add_ta_indicators, calculate_technical_score]
+- src.scrapers.corporate_data: [CorporateDataScraper]
+- src.engine.strategies: [calc_nifty_shop, calc_buy_low_sell_high, ...]
 
 Key Components:
 Classes:
-- StockScreener: Performs stock calculations (Trend, CAR, Bottom Out).
-Functions:
-- None
+- StockScreener: Performs stock calculations (Trend, CAR, Bottom Out, Strategies).
 
-Last Modified: 2026-05-27
-Modified By: Fortune
-
-Open Tasks:
-- [ ] [LOW] Add configurable window lengths for DMAs via config (2h)
-- [ ] [MEDIUM] Implement sqlite storage backend for processed outputs (3h)
-
-Related Files:
-- lerarning.py: Pipeline orchestrator executing the screener.
-- tests/test_screener.py: Unit tests covering calculations with 100% mocked data.
+Last Modified: 2026-05-31
 """
 
 import logging
@@ -36,8 +28,25 @@ import numpy as np
 import pandas as pd
 
 from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
+from src.engine.strategies import (
+    calc_100sma_breakout,
+    calc_buy_low_sell_high,
+    calc_candle_patterns,
+    calc_dmadma_no_sl,
+    calc_dmadma_reverse,
+    calc_dual_supertrend,
+    calc_etf_shop,
+    calc_lorentzian,
+    calc_nifty_shop,
+    calc_rdx,
+    calc_super_bo,
+    calc_ttm_squeeze,
+    calc_turtle_trading,
+    calc_vcp,
+)
+from src.nse_bhavcopy.ta_indicators import add_ta_indicators, calculate_technical_score
+from src.scrapers.corporate_data import CorporateDataScraper
 
-# Configure logger standard in compliance with Rule #011
 LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
@@ -82,18 +91,20 @@ class StockScreener:
         processed_dir: str = "data/processed",
         bottom_out_tolerance: float = 0.5,
         bounce_buffer: float = 1.0,
+        max_diff_200_dma: float = 20.0,
     ) -> None:
         """
         Initialize the StockScreener with processed output directories.
 
         Logic:
-            Step 1: Save output directories and swing parameters.
+            Step 1: Save output directories, swing parameters, and max DMA difference.
             Step 2: Create directory trees recursively if they do not exist.
 
         Parameters:
             processed_dir (str): Target directory for saving results. | Valid path.
             bottom_out_tolerance (float): Tolerance percentage for floor low. | >= 0.0
             bounce_buffer (float): Minimum percentage recovery buffer. | >= 0.0
+            max_diff_200_dma (float): Max percentage difference from 200 DMA for Bull Run. | Default 20.0%
 
         Returns:
             None: Void constructor return.
@@ -102,7 +113,7 @@ class StockScreener:
             OSError: If directory creation fails.
 
         Example:
-            >>> screener = StockScreener("data/processed", 0.5, 1.0)
+            >>> screener = StockScreener("data/processed", 0.5, 1.0, 20.0)
 
         Performance:
             Time Complexity: O(1) [Directory setup check]
@@ -114,12 +125,14 @@ class StockScreener:
         self.processed_dir: str = processed_dir
         self.bottom_out_tolerance: float = bottom_out_tolerance
         self.bounce_buffer: float = bounce_buffer
+        self.max_diff_200_dma: float = max_diff_200_dma
         os.makedirs(self.processed_dir, exist_ok=True)
         LOGGER.info(
-            "StockScreener initialized in: %s (tol: %.2f%%, buf: %.2f%%)",
+            "StockScreener initialized in: %s (tol: %.2f%%, buf: %.2f%%, max_diff_200_dma: %.2f%%)",
             self.processed_dir,
             self.bottom_out_tolerance,
             self.bounce_buffer,
+            self.max_diff_200_dma,
         )
 
     def _get_ns_ticker(self, symbol: str) -> str:
@@ -236,8 +249,6 @@ class StockScreener:
                                 # Actual data persistence should be handled by BhavcopyIncrementalSync.
 
                         # Dynamically calculate TA in-memory before downstream usage
-                        from src.nse_bhavcopy.ta_indicators import add_ta_indicators
-
                         cached_df = add_ta_indicators(cached_df)
 
                         # Reconstruct MultiIndex structure expected downstream
@@ -288,8 +299,6 @@ class StockScreener:
                             df_single.to_parquet(cache_path)
 
                             # Dynamically calculate TA in-memory before downstream usage
-                            from src.nse_bhavcopy.ta_indicators import add_ta_indicators
-
                             df_t_with_ta = add_ta_indicators(df_single.copy())
 
                             # Replace df_single with TA-enriched version for the batch df
@@ -309,8 +318,6 @@ class StockScreener:
 
                     # Ensure TA is applied if not already done (for tickers not just downloaded)
                     if "DMA_200" not in df_t.columns:
-                        from src.nse_bhavcopy.ta_indicators import add_ta_indicators
-
                         df_t = add_ta_indicators(df_t)
 
                     existing_cols = list(df_t.columns)
@@ -389,14 +396,15 @@ class StockScreener:
         # Step 5: Expanding Mean representing expanding running cumulative average
         cum_avg: pd.Series = prices.expanding().mean()
 
-        # Step 6: Get last 10 elements of cumulative average
-        last_10: list[float] = cum_avg.tail(10).tolist()
+        # Step 6: Get last 10 elements of close prices and cumulative averages
+        last_closes = prices.tail(10).tolist()
+        last_cum_avgs = cum_avg.tail(10).tolist()
 
-        # Step 7: Check if averages are strictly increasing (9 daily consecutive gains)
-        check: int = sum(1 for i in range(1, 10) if last_10[i] > last_10[i - 1])
+        # Step 7: Check if Close is consistently above the cumulative average (>= 8 out of 10 days)
+        check = sum(1 for i in range(10) if last_closes[i] > last_cum_avgs[i])
 
         # Step 8: Return rating based on rules
-        if check == 9:
+        if check >= 8:
             return "Buy/Average Out"
         return "Avoid/Hold"
 
@@ -527,7 +535,7 @@ class StockScreener:
 
         return result
 
-    def screen_stocks(self, top_250_path: str, date_obj: datetime) -> str:
+    def screen_stocks(self, top_250_path: str, date_obj: datetime, save_to_disk: bool = True) -> str:
         """
         Execute stock screener computations and output final CSV lists.
 
@@ -598,8 +606,6 @@ class StockScreener:
         analyzed_records: list[dict[str, Any]] = []
 
         # Initialize Corporate Data Scraper for fundamental overlay
-        from src.scrapers.corporate_data import CorporateDataScraper
-
         corp_scraper = CorporateDataScraper()
         corp_scraper.fetch_and_cache_all(force_refresh=False)
 
@@ -658,12 +664,23 @@ class StockScreener:
                         "CIRCUIT_LOCKED": False,
                         "CIRCUIT_TYPE": "None",
                         "ATR_14": np.nan,
+                        "STR_VCP_ACTION": "N/A",
+                        "STR_VCP_REASON": "N/A",
+                        "STR_TTM_ACTION": "N/A",
+                        "STR_TTM_SQUEEZE": False,
+                        "STR_SUPERTREND_ACTION": "N/A",
+                        "STR_CANDLE_PATTERN": "None",
+                        "STR_LORENTZIAN_ACTION": "N/A",
+                        "RSI_DIVERGENCE": "None",
+                        "MACD_DIVERGENCE": "None",
                         "Corp Action": corp_scraper.get_upcoming_actions(symbol),
                         "Catalyst Boost": corp_scraper.get_recent_announcements(symbol),
                         "Event Risk (Days)": corp_scraper.get_days_to_next_event(
                             symbol
                         ),
                         "Insider Score": corp_scraper.get_insider_score(symbol),
+                        "DQ_COVERAGE_PCT": 0.0,
+                        "DQ_HEALTH_STATUS": "MISSING_PARQUET",
                     }
                 )
                 continue
@@ -708,9 +725,55 @@ class StockScreener:
                         "CIRCUIT_LOCKED": False,
                         "CIRCUIT_TYPE": "None",
                         "ATR_14": np.nan,
+                        "STR_VCP_ACTION": "N/A",
+                        "STR_VCP_REASON": "N/A",
+                        "STR_TTM_ACTION": "N/A",
+                        "STR_TTM_SQUEEZE": False,
+                        "STR_SUPERTREND_ACTION": "N/A",
+                        "STR_CANDLE_PATTERN": "None",
+                        "STR_LORENTZIAN_ACTION": "N/A",
+                        "RSI_DIVERGENCE": "None",
+                        "MACD_DIVERGENCE": "None",
+                        "Corp Action": corp_scraper.get_upcoming_actions(symbol),
+                        "Catalyst Boost": corp_scraper.get_recent_announcements(symbol),
+                        "Event Risk (Days)": corp_scraper.get_days_to_next_event(
+                            symbol
+                        ),
+                        "Insider Score": corp_scraper.get_insider_score(symbol),
+                        "DQ_COVERAGE_PCT": 0.0,
+                        "DQ_HEALTH_STATUS": "INSUFFICIENT_HISTORY",
                     }
                 )
                 continue
+
+            # Data Quality and Coverage Check
+            rows_count = len(df_ticker)
+            expected = 0
+            coverage_pct = 100.0
+            dq_status = "HEALTHY"
+            
+            first_date = df_ticker.index.min().date()
+            last_date = df_ticker.index.max().date()
+            if first_date < last_date:
+                years = (last_date - first_date).days / 365.25
+                expected = int(years * 252)
+            if expected > 20:
+                coverage_pct = (rows_count / expected) * 100.0
+                coverage_pct = min(100.0, round(coverage_pct, 1))
+            else:
+                coverage_pct = 100.0
+            
+            has_zero_vol = False
+            if "Volume" in df_ticker.columns:
+                has_zero_vol = (df_ticker["Volume"] == 0).any()
+            has_zero_close = (df_ticker["Close"] == 0).any()
+            
+            if coverage_pct < 85.0:
+                dq_status = "LOW_COVERAGE"
+            elif has_zero_vol:
+                dq_status = "ZERO_VOLUME"
+            elif has_zero_close:
+                dq_status = "ZERO_CLOSE"
 
             # CMP is the last close price
             cmp: float = float(df_ticker["Close"].iloc[-1])
@@ -723,24 +786,7 @@ class StockScreener:
             total_traded_value: float = cmp * latest_volume
 
             # Add TA-Lib Indicators
-            from src.nse_bhavcopy.ta_indicators import (
-                add_ta_indicators,
-                calculate_technical_score,
-            )
-
             df_ticker = add_ta_indicators(df_ticker)
-
-            # Additional Rolling Metrics for Strategies
-            df_ticker["SMA_20"] = df_ticker["Close"].rolling(window=20).mean()
-            df_ticker["SMA_150"] = df_ticker["Close"].rolling(window=150).mean()
-
-            if "Low" in df_ticker.columns:
-                df_ticker["20D_LOW"] = df_ticker["Low"].rolling(window=20).min()
-                df_ticker["126D_LOW"] = df_ticker["Low"].rolling(window=126).min()
-                df_ticker["200D_LOW"] = df_ticker["Low"].rolling(window=200).min()
-
-            if "High" in df_ticker.columns:
-                df_ticker["55D_HIGH"] = df_ticker["High"].rolling(window=55).max()
 
             # Statistical Unusual Activity (Z-Score of Daily Returns)
             df_ticker["DAILY_RETURN"] = df_ticker["Close"].pct_change()
@@ -781,7 +827,7 @@ class StockScreener:
             minus_di = float(latest_row.get("MINUS_DI_14", np.nan))
 
             low_20d = float(latest_row.get("20D_LOW", np.nan))
-            high_55d = float(latest_row.get("55D_HIGH", np.nan))
+            high_55d = float(prev_row.get("55D_HIGH", np.nan))
             low_126d = float(latest_row.get("126D_LOW", np.nan))
             low_200d = float(latest_row.get("200D_LOW", np.nan))
             prev_sma_100 = float(prev_row.get("SMA_100", np.nan))
@@ -793,39 +839,41 @@ class StockScreener:
             else:
                 diff_200_dma = np.nan
 
-            # Trend Status — Variant A (No Stop-Loss): CMP vs all 3 DMAs
+            # Trend Status — Variant A (No Stop-Loss): CMP vs MAs (DMA20 aligned)
             trend_status = "Unconfirmed"
-            if any(pd.isna(v) for v in [dma_50, dma_100, dma_200]):
+            if any(pd.isna(v) for v in [sma_20, dma_50, dma_100, dma_200]):
                 trend_status = "Insufficient History"
             else:
-                if cmp > dma_50 and cmp > dma_100 and cmp > dma_200:
-                    if 0.01 <= diff_200_dma <= 10.0:
+                if cmp > sma_20 and sma_20 > dma_50 and dma_50 > dma_100 and dma_100 > dma_200:
+                    if 0.01 <= diff_200_dma <= self.max_diff_200_dma:
                         trend_status = "In Bull Run"
-                elif cmp < dma_50 and cmp < dma_100 and cmp < dma_200:
-                    if -10.0 <= diff_200_dma <= -0.01:
+                elif cmp < sma_20 and sma_20 < dma_50 and dma_50 < dma_100 and dma_100 < dma_200:
+                    if -self.max_diff_200_dma <= diff_200_dma <= -0.01:
                         trend_status = "In Bear Run"
 
-            # Trend Status — Variant B (With Stop-Loss): DMA alignment check
-            # Bull Run SL: CMP>50DMA AND 50DMA>100DMA AND 100DMA>200DMA
-            # Bear Run SL: CMP<50DMA AND 50DMA<100DMA AND 100DMA<200DMA
+            # Trend Status — Variant B (With Stop-Loss / SL): DMA alignment check including DMA150
             trend_status_sl = "Unconfirmed"
-            if any(pd.isna(v) for v in [dma_50, dma_100, dma_200]):
+            if any(pd.isna(v) for v in [sma_20, dma_50, dma_100, dma_150, dma_200]):
                 trend_status_sl = "Insufficient History"
             else:
                 if (
-                    cmp > dma_50
+                    cmp > sma_20
+                    and sma_20 > dma_50
                     and dma_50 > dma_100
-                    and dma_100 > dma_200
+                    and dma_100 > dma_150
+                    and dma_150 > dma_200
                     and not pd.isna(diff_200_dma)
-                    and 0.01 <= diff_200_dma <= 10.0
+                    and 0.01 <= diff_200_dma <= self.max_diff_200_dma
                 ):
                     trend_status_sl = "In Bull Run (SL)"
                 elif (
-                    cmp < dma_50
+                    cmp < sma_20
+                    and sma_20 < dma_50
                     and dma_50 < dma_100
-                    and dma_100 < dma_200
+                    and dma_100 < dma_150
+                    and dma_150 < dma_200
                     and not pd.isna(diff_200_dma)
-                    and -10.0 <= diff_200_dma <= -0.01
+                    and -self.max_diff_200_dma <= diff_200_dma <= -0.01
                 ):
                     trend_status_sl = "In Bear Run (SL)"
 
@@ -837,19 +885,30 @@ class StockScreener:
             tech_rating = ta_info["rating"]
 
             # Strategy Evaluations
-            str_nifty_shop = self._calc_nifty_shop(rsi_val, cmp)
-            str_buy_low = self._calc_buy_low_sell_high(cmp, low_200d, atr)
-            str_turtle = self._calc_turtle_trading(cmp, high_55d, low_20d, atr)
-            str_rdx = self._calc_rdx(adx_val, plus_di, minus_di, rsi_val, atr, cmp)
-            str_100sma = self._calc_100sma_breakout(
+            str_nifty_shop = calc_nifty_shop(rsi_val, cmp)
+            str_buy_low = calc_buy_low_sell_high(cmp, low_200d, atr)
+            str_turtle = calc_turtle_trading(cmp, high_55d, low_20d, atr)
+            str_rdx = calc_rdx(adx_val, plus_di, minus_di, rsi_val, atr, cmp)
+            str_100sma = calc_100sma_breakout(
                 cmp, prev_close, dma_100, prev_sma_100, low_126d, atr
             )
-            str_etf_shop = self._calc_etf_shop(cmp, sma_20)
-            str_super_bo = self._calc_super_bo(
+            str_etf_shop = calc_etf_shop(cmp, sma_20)
+            str_super_bo = calc_super_bo(
                 cmp, dma_50, dma_100, dma_150, dma_200, atr
             )
-            str_dma_rev = self._calc_dmadma_reverse(cmp, dma_150, dma_200, atr)
-            str_dma_nosl = self._calc_dmadma_no_sl(cmp, dma_50, dma_200)
+            str_dma_rev = calc_dmadma_reverse(cmp, dma_150, dma_200, atr)
+            str_dma_nosl = calc_dmadma_no_sl(cmp, dma_50, dma_200)
+
+            # New Strategies (ported from screeni-py)
+            str_vcp = calc_vcp(df_ticker)
+            str_ttm = calc_ttm_squeeze(df_ticker)
+            str_supertrend = calc_dual_supertrend(df_ticker)
+            str_candle = calc_candle_patterns(df_ticker)
+            str_lorentzian = calc_lorentzian(df_ticker)
+
+            # Divergence columns already computed inside add_ta_indicators
+            rsi_div = str(latest_row.get("RSI_Divergence", "None"))
+            macd_div = str(latest_row.get("MACD_Divergence", "None"))
 
             # Circuit Limit Check
             circuit_locked = False
@@ -954,10 +1013,22 @@ class StockScreener:
                     "STR_DMA_REV_SL": str_dma_rev["sl"],
                     "STR_DMA_NOSL_ACTION": str_dma_nosl["action"],
                     "STR_DMA_NOSL_TARGET": str_dma_nosl["target"],
+                    # New strategies (ported from screeni-py)
+                    "STR_VCP_ACTION": str_vcp["action"],
+                    "STR_VCP_REASON": str_vcp["reason"],
+                    "STR_TTM_ACTION": str_ttm["action"],
+                    "STR_TTM_SQUEEZE": str_ttm["squeeze_active"],
+                    "STR_SUPERTREND_ACTION": str_supertrend["action"],
+                    "STR_CANDLE_PATTERN": str_candle["pattern"],
+                    "STR_LORENTZIAN_ACTION": str_lorentzian["action"],
+                    "RSI_DIVERGENCE": rsi_div,
+                    "MACD_DIVERGENCE": macd_div,
                     "Corp Action": corp_scraper.get_upcoming_actions(symbol),
                     "Catalyst Boost": corp_scraper.get_recent_announcements(symbol),
                     "Event Risk (Days)": corp_scraper.get_days_to_next_event(symbol),
                     "Insider Score": corp_scraper.get_insider_score(symbol),
+                    "DQ_COVERAGE_PCT": coverage_pct,
+                    "DQ_HEALTH_STATUS": dq_status,
                 }
             )
 
@@ -966,8 +1037,11 @@ class StockScreener:
         date_str: str = date_obj.strftime("%Y%m%d")
         analyzed_filename: str = f"top_250_analyzed_{date_str}.csv"
         analyzed_filepath: str = os.path.join(self.processed_dir, analyzed_filename)
-        df_analyzed.to_csv(analyzed_filepath, index=False)
-        LOGGER.info("Complete analyzed dataset saved at: %s", analyzed_filepath)
+        if save_to_disk:
+            df_analyzed.to_csv(analyzed_filepath, index=False)
+            LOGGER.info("Complete analyzed dataset saved at: %s", analyzed_filepath)
+        else:
+            LOGGER.info("Complete analyzed dataset created (in-memory)")
 
         # Filter A: Original Bull Run + CAR Buy rating
         df_filtered_a: pd.DataFrame = df_analyzed[
@@ -1024,13 +1098,15 @@ class StockScreener:
 
         final_filename: str = f"final_list_{date_str}.csv"
         final_filepath: str = os.path.join(self.processed_dir, final_filename)
-        final_list_df.to_csv(final_filepath, index=False)
-
-        LOGGER.info(
-            "Final target list (Filter A) saved at: %s (%d records)",
-            final_filepath,
-            len(final_list_df),
-        )
+        if save_to_disk:
+            final_list_df.to_csv(final_filepath, index=False)
+            LOGGER.info(
+                "Final target list (Filter A) saved at: %s (%d records)",
+                final_filepath,
+                len(final_list_df),
+            )
+        else:
+            LOGGER.info("Final target list (Filter A) created in-memory (%d records)", len(final_list_df))
 
         # Filter B: Bottom Out Hunting — Start GTT signals
         df_bottom_out: pd.DataFrame = df_analyzed[
@@ -1089,13 +1165,15 @@ class StockScreener:
 
         final_b_filename: str = f"swing_list_{date_str}.csv"
         final_b_filepath: str = os.path.join(self.processed_dir, final_b_filename)
-        final_b_df.to_csv(final_b_filepath, index=False)
-
-        LOGGER.info(
-            "Swing trading list (Filter B) saved at: %s (%d records)",
-            final_b_filepath,
-            len(final_b_df),
-        )
+        if save_to_disk:
+            final_b_df.to_csv(final_b_filepath, index=False)
+            LOGGER.info(
+                "Swing trading list (Filter B) saved at: %s (%d records)",
+                final_b_filepath,
+                len(final_b_df),
+            )
+        else:
+            LOGGER.info("Swing trading list (Filter B) created in-memory (%d records)", len(final_b_df))
 
         # Filter C: COMBINED — Bull Run + Buy CAR + Start GTT (The Holy Grail)
         df_combined: pd.DataFrame = df_analyzed[
@@ -1158,13 +1236,15 @@ class StockScreener:
 
         final_c_filename: str = f"super_list_{date_str}.csv"
         final_c_filepath: str = os.path.join(self.processed_dir, final_c_filename)
-        final_c_df.to_csv(final_c_filepath, index=False)
-
-        LOGGER.info(
-            "SUPER combined list (Filter C) saved at: %s (%d records)",
-            final_c_filepath,
-            len(final_c_df),
-        )
+        if save_to_disk:
+            final_c_df.to_csv(final_c_filepath, index=False)
+            LOGGER.info(
+                "SUPER combined list (Filter C) saved at: %s (%d records)",
+                final_c_filepath,
+                len(final_c_df),
+            )
+        else:
+            LOGGER.info("SUPER combined list (Filter C) created in-memory (%d records)", len(final_c_df))
 
         # Filter D: DMA Variant B (With SL / Reverse) — sorted CMP ascending
         # Sharegenius spec: cheapest stocks first for entry point selection
@@ -1213,12 +1293,15 @@ class StockScreener:
             )
             final_d_filename: str = f"dma_bull_sl_{date_str}.csv"
             final_d_filepath: str = os.path.join(self.processed_dir, final_d_filename)
-            final_d_df.to_csv(final_d_filepath, index=False)
-            LOGGER.info(
-                "DMA Variant B (SL) bull list saved at: %s (%d records)",
-                final_d_filepath,
-                len(final_d_df),
-            )
+            if save_to_disk:
+                final_d_df.to_csv(final_d_filepath, index=False)
+                LOGGER.info(
+                    "DMA Variant B (SL) bull list saved at: %s (%d records)",
+                    final_d_filepath,
+                    len(final_d_df),
+                )
+            else:
+                LOGGER.info("DMA Variant B (SL) bull list created in-memory (%d records)", len(final_d_df))
 
         # Filter E: Swing list with 20% profit target column
         if "GTT_TARGET_20PCT" in df_analyzed.columns:
@@ -1267,27 +1350,32 @@ class StockScreener:
                 final_e_filepath: str = os.path.join(
                     self.processed_dir, final_e_filename
                 )
-                final_e_df.to_csv(final_e_filepath, index=False)
-                LOGGER.info(
-                    "Swing target list (Filter E) saved at: %s (%d records)",
-                    final_e_filepath,
-                    len(final_e_df),
-                )
+                if save_to_disk:
+                    final_e_df.to_csv(final_e_filepath, index=False)
+                    LOGGER.info(
+                        "Swing target list (Filter E) saved at: %s (%d records)",
+                        final_e_filepath,
+                        len(final_e_df),
+                    )
+                else:
+                    LOGGER.info("Swing target list (Filter E) created in-memory (%d records)", len(final_e_df))
 
-        self._generate_strategy_reports(df_analyzed, date_str)
+        self._generate_strategy_reports(df_analyzed, date_str, save_to_disk=save_to_disk)
 
         # ── Enrichment pass: consensus, MTF, position sizing, quant metrics ──
         try:
             df_analyzed = self.enrich_analysis(df_analyzed)
-            enriched_path = os.path.join(
-                self.processed_dir, f"top_250_enriched_{date_str}.csv"
-            )
-            df_analyzed.to_csv(enriched_path, index=False)
-            LOGGER.info("Enriched analysis saved at: %s", enriched_path)
+            if save_to_disk:
+                enriched_path = os.path.join(
+                    self.processed_dir, f"top_250_enriched_{date_str}.csv"
+                )
+                df_analyzed.to_csv(enriched_path, index=False)
+                LOGGER.info("Enriched analysis saved at: %s", enriched_path)
         except Exception as enrich_exc:
             LOGGER.warning("Enrichment pass failed (non-fatal): %s", enrich_exc)
 
-        return final_c_filepath
+        self.df_analyzed = df_analyzed
+        return final_c_filepath if save_to_disk else ""
 
     def enrich_analysis(
         self,
@@ -1419,7 +1507,7 @@ class StockScreener:
         return df
 
     def _generate_strategy_reports(
-        self, df_analyzed: pd.DataFrame, date_str: str
+        self, df_analyzed: pd.DataFrame, date_str: str, save_to_disk: bool = True
     ) -> None:
         """
         Filter the analyzed dataframe by various strategies and save to separate CSVs.
@@ -1496,241 +1584,15 @@ class StockScreener:
 
                     filename = f"strategy_{strat_name}_{date_str}.csv"
                     filepath = os.path.join(self.processed_dir, filename)
-                    df_strat.to_csv(filepath, index=False)
-                    LOGGER.info(
-                        "Strategy report '%s' saved at: %s (%d records)",
-                        strat_name,
-                        filepath,
-                        len(df_strat),
-                    )
-
-    def _calc_nifty_shop(self, rsi: float, cmp: float) -> dict[str, Any]:
-        level = "No Action"
-        target = cmp * 1.0628 if not pd.isna(cmp) else np.nan
-        sl = np.nan
-        if not pd.isna(rsi):
-            if rsi < 25.0:
-                level = "Level 3 Buy"
-            elif rsi < 30.0:
-                level = "Level 2 Buy"
-            elif rsi < 35.0:
-                level = "Level 1 Buy"
-        return {"action": level, "target": target, "sl": sl}
-
-    def _calc_buy_low_sell_high(
-        self, cmp: float, low_200d: float, atr: float
-    ) -> dict[str, Any]:
-        action = "Hold"
-        if not pd.isna(cmp) and not pd.isna(low_200d):
-            diff = ((cmp - low_200d) / low_200d) * 100.0
-            if diff <= 2.0:
-                action = "Buy on Support / Demand Level"
-        target = cmp + (2 * atr) if not pd.isna(atr) else np.nan
-        sl = low_200d - (0.5 * atr) if not pd.isna(atr) else np.nan
-        return {"action": action, "target": target, "sl": sl}
-
-    def _calc_turtle_trading(
-        self, cmp: float, high_55d: float, low_20d: float, atr: float
-    ) -> dict[str, Any]:
-        action = "No need to fresh start"
-        if not pd.isna(cmp) and not pd.isna(high_55d):
-            if cmp >= high_55d:
-                action = "Buy (55D Breakout)"
-        target = cmp + (3 * atr) if not pd.isna(atr) else np.nan
-        sl = low_20d
-        return {"action": action, "target": target, "sl": sl}
-
-    def _calc_rdx(
-        self,
-        adx: float,
-        plus_di: float,
-        minus_di: float,
-        rsi: float,
-        atr: float,
-        cmp: float,
-    ) -> dict[str, Any]:
-        action = "Hold"
-        if not any(pd.isna(v) for v in [adx, plus_di, minus_di, rsi]):
-            if adx > 25.0 and plus_di > minus_di and rsi > 60.0:
-                action = "Explosive Buy"
-            elif adx > 25.0 and minus_di > plus_di and rsi < 40.0:
-                action = "Explosive Sell"
-        target = cmp + (2 * atr) if not pd.isna(atr) else np.nan
-        sl = cmp - (1.5 * atr) if not pd.isna(atr) else np.nan
-        return {"action": action, "target": target, "sl": sl}
-
-    def _calc_100sma_breakout(
-        self,
-        cmp: float,
-        prev_close: float,
-        sma_100: float,
-        prev_sma_100: float,
-        low_6m: float,
-        atr: float,
-    ) -> dict[str, Any]:
-        action = "Hold"
-        if not any(
-            pd.isna(v) for v in [cmp, prev_close, sma_100, prev_sma_100, low_6m]
-        ):
-            crossed = (prev_close <= prev_sma_100) and (cmp > sma_100)
-            diff_from_low = ((cmp - low_6m) / low_6m) * 100.0
-            if crossed and diff_from_low >= 20.0:
-                action = "Breakout Buy"
-        target = cmp + (3 * atr) if not pd.isna(atr) else np.nan
-        sl = sma_100
-        return {"action": action, "target": target, "sl": sl}
-
-    def _calc_etf_shop(self, cmp: float, sma_20: float) -> dict[str, Any]:
-        diff_pct = np.nan
-        action = "Hold"
-        if not pd.isna(cmp) and not pd.isna(sma_20) and sma_20 > 0:
-            diff_pct = ((cmp - sma_20) / sma_20) * 100.0
-            if diff_pct < -2.0:
-                action = "Buy"
-        return {"diff_pct": diff_pct, "action": action}
-
-    def _calc_super_bo(
-        self,
-        cmp: float,
-        sma_50: float,
-        sma_100: float,
-        sma_150: float,
-        sma_200: float,
-        atr: float,
-    ) -> dict[str, Any]:
-        action = "Hold"
-        if not any(pd.isna(v) for v in [cmp, sma_50, sma_100, sma_150, sma_200]):
-            if cmp > sma_50 and cmp > sma_100 and cmp > sma_150 and cmp < sma_200:
-                action = "Super BO Buy"
-        target = sma_200
-        sl = cmp - (2 * atr) if not pd.isna(atr) else np.nan
-        return {"action": action, "target": target, "sl": sl}
-
-    def _calc_dmadma_reverse(
-        self, cmp: float, sma_150: float, sma_200: float, atr: float
-    ) -> dict[str, Any]:
-        action = "Hold"
-        if not any(pd.isna(v) for v in [cmp, sma_150, sma_200]):
-            if cmp > sma_200 and cmp > sma_150:
-                diff = ((sma_150 - sma_200) / sma_200) * 100.0
-                if diff > 0.0:
-                    action = "150 DMA Breakout | CMP > 200 DMA"
-        target = cmp + (2 * atr) if not pd.isna(atr) else np.nan
-        sl = sma_150
-        return {"action": action, "target": target, "sl": sl}
-
-    def _calc_dmadma_no_sl(
-        self, cmp: float, sma_50: float, sma_200: float
-    ) -> dict[str, Any]:
-        action = "Hold"
-        if not any(pd.isna(v) for v in [cmp, sma_50, sma_200]):
-            if cmp > sma_200 and cmp > sma_50:
-                diff = ((sma_50 - sma_200) / sma_200) * 100.0
-                if diff > 0.0:
-                    action = "50 DMA Breakout | CMP > 200 DMA"
-        return {"action": action, "target": cmp * 1.0628, "sl": np.nan}
+                    if save_to_disk:
+                        df_strat.to_csv(filepath, index=False)
+                        LOGGER.info(
+                            "Strategy report '%s' saved at: %s (%d records)",
+                            strat_name,
+                            filepath,
+                            len(df_strat),
+                        )
+                    else:
+                        LOGGER.info("Strategy report '%s' created in-memory (%d records)", strat_name, len(df_strat))
 
 
-import functools
-
-import pandas as pd
-
-from src.core.consensus_engine import aggregate_signals
-from src.engine.parallel_scanner import run_parallel_scan
-
-
-def run_all_scanners(
-    analyzed_csv_path: str = "data/processed/top_250_analyzed_latest.csv",
-    daily_dir: str = "data/historical/1d",
-    max_workers: int | None = None,
-) -> dict[str, float]:
-    """
-    Aggregates signals from all active scanners in the registry using the parallel engine.
-
-    Returns:
-        dict[str, float]: Consensus scores for each symbol.
-    """
-    # Import specific scanners to bind arguments
-    from src.scanners.darvas_box import scan_darvas_breakouts
-    from src.scanners.etf_screener import run_liquid_etf_screener
-    from src.scanners.minervini_screener import run_minervini_cli
-    from src.scanners.momentum_squeeze import run_squeeze_cli
-    from src.scanners.pair_scanner import scan_cointegrated_pairs
-    from src.scanners.rsi_scanner import scan_rsi_signals
-
-    # Create a real DataFrame for Darvas Box and Pair Scanner if CSV doesn't exist
-    if not os.path.exists(analyzed_csv_path):
-        os.makedirs(os.path.dirname(analyzed_csv_path), exist_ok=True)
-        import yfinance as yf
-
-        try:
-            ticker = yf.Ticker("TCS.NS")
-            hist = ticker.history(period="1mo")
-            if len(hist) >= 15:
-                cmp = float(hist["Close"].iloc[-1])
-                prev_close = float(hist["Close"].iloc[-2])
-                turnover = float(hist["Volume"].iloc[-1] * cmp)
-
-                diff = hist["Close"].diff(1)
-                gain = (diff.where(diff > 0, 0)).rolling(window=14).mean()
-                loss = (-diff.where(diff < 0, 0)).rolling(window=14).mean()
-                rs = gain / (loss + 1e-9)
-                rsi = 100 - (100 / (1 + rs))
-                rsi_14 = float(rsi.iloc[-1])
-                if pd.isna(rsi_14):
-                    rsi_14 = 50.0
-            else:
-                raise ValueError("Insufficient data")
-
-            df_init = pd.DataFrame(
-                [
-                    {
-                        "SYMBOL": "TCS",
-                        "CMP": cmp,
-                        "PREVIOUS_CLOSE": prev_close,
-                        "RSI_14": rsi_14,
-                        "TURNOVER": turnover,
-                    }
-                ]
-            )
-        except Exception:
-            # Fallback to hardcoded only if network fails
-            df_init = pd.DataFrame(
-                [
-                    {
-                        "SYMBOL": "TCS",
-                        "CMP": 3500.0,
-                        "PREVIOUS_CLOSE": 3400.0,
-                        "RSI_14": 30.0,
-                        "TURNOVER": 1000000.0,
-                    }
-                ]
-            )
-
-        df_init.to_csv(analyzed_csv_path, index=False)
-
-    try:
-        df = pd.read_csv(analyzed_csv_path)
-    except Exception:
-        df = pd.DataFrame(columns=["SYMBOL", "CMP", "PREVIOUS_CLOSE"])
-
-    symbols = df["SYMBOL"].dropna().unique().tolist() if "SYMBOL" in df.columns else []
-
-    # Bind arguments using functools.partial
-    scanner_partials = [
-        functools.partial(scan_rsi_signals, analyzed_csv_path=analyzed_csv_path),
-        functools.partial(scan_darvas_breakouts, analyzed_df=df, daily_dir=daily_dir),
-        functools.partial(run_squeeze_cli, symbol="^NSEI", daily_dir=daily_dir),
-        functools.partial(
-            scan_cointegrated_pairs, symbols=symbols, daily_dir=daily_dir
-        ),
-        functools.partial(run_liquid_etf_screener),
-        functools.partial(run_minervini_cli),
-    ]
-
-    # Execute parallel scan
-    signals, metrics = run_parallel_scan(scanner_partials, max_workers=max_workers)
-
-    # Calculate consensus
-    consensus = aggregate_signals(signals)
-    return consensus
