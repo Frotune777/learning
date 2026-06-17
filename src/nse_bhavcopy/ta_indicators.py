@@ -124,24 +124,30 @@ def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
                 recent = df.tail(lookback)
                 prices = recent["Close"].to_numpy(dtype=float)
                 rsi_vals = recent["RSI_14"].to_numpy(dtype=float)
-                
+
                 p_min_idx = prices.argmin()
                 p_max_idx = prices.argmax()
-                
+
                 if p_min_idx > lookback // 2:
                     prev_p = prices[:p_min_idx]
                     prev_rsi = rsi_vals[:p_min_idx]
                     if len(prev_p) > 0:
                         prev_min_idx = prev_p.argmin()
-                        if prices[p_min_idx] < prev_p[prev_min_idx] and rsi_vals[p_min_idx] > prev_rsi[prev_min_idx]:
+                        if (
+                            prices[p_min_idx] < prev_p[prev_min_idx]
+                            and rsi_vals[p_min_idx] > prev_rsi[prev_min_idx]
+                        ):
                             df.loc[df.index[-1], "RSI_Divergence"] = "Bullish"
-                            
+
                 if p_max_idx > lookback // 2:
                     prev_p = prices[:p_max_idx]
                     prev_rsi = rsi_vals[:p_max_idx]
                     if len(prev_p) > 0:
                         prev_max_idx = prev_p.argmax()
-                        if prices[p_max_idx] > prev_p[prev_max_idx] and rsi_vals[p_max_idx] < prev_rsi[prev_max_idx]:
+                        if (
+                            prices[p_max_idx] > prev_p[prev_max_idx]
+                            and rsi_vals[p_max_idx] < prev_rsi[prev_max_idx]
+                        ):
                             df.loc[df.index[-1], "RSI_Divergence"] = "Bearish"
 
             # MACD Divergence detection
@@ -149,24 +155,30 @@ def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
                 recent = df.tail(lookback)
                 prices = recent["Close"].to_numpy(dtype=float)
                 macd_hist = recent["MACD_HIST"].to_numpy(dtype=float)
-                
+
                 p_min_idx = prices.argmin()
                 p_max_idx = prices.argmax()
-                
+
                 if p_min_idx > lookback // 2:
                     prev_p = prices[:p_min_idx]
                     prev_macd = macd_hist[:p_min_idx]
                     if len(prev_p) > 0:
                         prev_min_idx = prev_p.argmin()
-                        if prices[p_min_idx] < prev_p[prev_min_idx] and macd_hist[p_min_idx] > prev_macd[prev_min_idx]:
+                        if (
+                            prices[p_min_idx] < prev_p[prev_min_idx]
+                            and macd_hist[p_min_idx] > prev_macd[prev_min_idx]
+                        ):
                             df.loc[df.index[-1], "MACD_Divergence"] = "Bullish"
-                            
+
                 if p_max_idx > lookback // 2:
                     prev_p = prices[:p_max_idx]
                     prev_macd = macd_hist[:p_max_idx]
                     if len(prev_p) > 0:
                         prev_max_idx = prev_p.argmax()
-                        if prices[p_max_idx] > prev_p[prev_max_idx] and macd_hist[p_max_idx] < prev_macd[prev_max_idx]:
+                        if (
+                            prices[p_max_idx] > prev_p[prev_max_idx]
+                            and macd_hist[p_max_idx] < prev_macd[prev_max_idx]
+                        ):
                             df.loc[df.index[-1], "MACD_Divergence"] = "Bearish"
         except Exception as e:
             LOGGER.warning("Error calculating divergences: %s", e)

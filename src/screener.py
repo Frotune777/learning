@@ -3,20 +3,28 @@ File: src/screener.py
 Purpose: StockScreener — trend analysis, CAR rating, swing trading, and strategy signals.
 
 Dependencies:
-External:
-- pandas>=2.2.3: DataFrame time-series calculations
-- numpy>=2.4.6: Numerical and NaN utilities
-Internal:
-- src.data.fetcher.prices.yfinance_fetcher: [YFinanceFetcher]
-- src.nse_bhavcopy.ta_indicators: [add_ta_indicators, calculate_technical_score]
-- src.scrapers.corporate_data: [CorporateDataScraper]
-- src.engine.strategies: [calc_nifty_shop, calc_buy_low_sell_high, ...]
+    External:
+        - pandas>=2.2.3: DataFrame time-series calculations
+        - numpy>=2.4.6: Numerical and NaN utilities
+    Internal:
+        - src.data.fetcher.prices.yfinance_fetcher: [YFinanceFetcher]
+        - src.nse_bhavcopy.ta_indicators: [add_ta_indicators, calculate_technical_score]
+        - src.scrapers.corporate_data: [CorporateDataScraper]
+        - src.engine.strategies: [calc_nifty_shop, calc_buy_low_sell_high, ...]
 
 Key Components:
-Classes:
-- StockScreener: Performs stock calculations (Trend, CAR, Bottom Out, Strategies).
+    Classes:
+        - StockScreener: Performs stock calculations (Trend, CAR, Bottom Out, Strategies).
 
-Last Modified: 2026-05-31
+Last Modified: 2026-06-17
+Modified By: Fortune
+
+Open Tasks:
+    - [ ] [MEDIUM] Implement real-time market data screening [8h]
+
+Related Files:
+    - src/cli/actions.py: Uses StockScreener to run technical screening.
+    - src/dashboard/app.py: Visualizes screener outputs.
 """
 
 import logging
@@ -92,19 +100,22 @@ class StockScreener:
         bottom_out_tolerance: float = 0.5,
         bounce_buffer: float = 1.0,
         max_diff_200_dma: float = 20.0,
+        hist_dir: str | None = None,
     ) -> None:
         """
         Initialize the StockScreener with processed output directories.
 
         Logic:
             Step 1: Save output directories, swing parameters, and max DMA difference.
-            Step 2: Create directory trees recursively if they do not exist.
+            Step 2: Save the historical data directory path.
+            Step 3: Create processed directory trees recursively if they do not exist.
 
         Parameters:
             processed_dir (str): Target directory for saving results. | Valid path.
             bottom_out_tolerance (float): Tolerance percentage for floor low. | >= 0.0
             bounce_buffer (float): Minimum percentage recovery buffer. | >= 0.0
             max_diff_200_dma (float): Max percentage difference from 200 DMA for Bull Run. | Default 20.0%
+            hist_dir (str | None): Historical Parquet storage path. | Default None.
 
         Returns:
             None: Void constructor return.
@@ -113,7 +124,7 @@ class StockScreener:
             OSError: If directory creation fails.
 
         Example:
-            >>> screener = StockScreener("data/processed", 0.5, 1.0, 20.0)
+            >>> screener = StockScreener("data/processed", 0.5, 1.0, 20.0, "data/historical")
 
         Performance:
             Time Complexity: O(1) [Directory setup check]
@@ -121,11 +132,20 @@ class StockScreener:
 
         Edge Cases Handled:
             - processed_dir exists (handled gracefully).
+
+        TODO:
+            - [ ] Add support for custom strategy configuration ([MEDIUM] [4h])
+
+        Notes:
+            Decoupled historical parquet directory and processed output directory.
         """
         self.processed_dir: str = processed_dir
         self.bottom_out_tolerance: float = bottom_out_tolerance
         self.bounce_buffer: float = bounce_buffer
         self.max_diff_200_dma: float = max_diff_200_dma
+        self.hist_dir: str = hist_dir or os.path.join(
+            os.path.dirname(processed_dir), "historical"
+        )
         os.makedirs(self.processed_dir, exist_ok=True)
         LOGGER.info(
             "StockScreener initialized in: %s (tol: %.2f%%, buf: %.2f%%, max_diff_200_dma: %.2f%%)",
@@ -192,7 +212,7 @@ class StockScreener:
         LOGGER.info("Retrieving historical prices for %d symbols...", len(tickers))
 
         # We load from data/historical/1d/ which matches HistoricalSync
-        cache_dir: str = os.path.join(self.processed_dir, "1d")
+        cache_dir: str = os.path.join(self.hist_dir, "1d")
         os.makedirs(cache_dir, exist_ok=True)
 
         fetcher = YFinanceFetcher()
@@ -535,7 +555,9 @@ class StockScreener:
 
         return result
 
-    def screen_stocks(self, top_250_path: str, date_obj: datetime, save_to_disk: bool = True) -> str:
+    def screen_stocks(
+        self, top_250_path: str, date_obj: datetime, save_to_disk: bool = True
+    ) -> str:
         """
         Execute stock screener computations and output final CSV lists.
 
@@ -751,7 +773,7 @@ class StockScreener:
             expected = 0
             coverage_pct = 100.0
             dq_status = "HEALTHY"
-            
+
             first_date = df_ticker.index.min().date()
             last_date = df_ticker.index.max().date()
             if first_date < last_date:
@@ -762,12 +784,12 @@ class StockScreener:
                 coverage_pct = min(100.0, round(coverage_pct, 1))
             else:
                 coverage_pct = 100.0
-            
+
             has_zero_vol = False
             if "Volume" in df_ticker.columns:
                 has_zero_vol = (df_ticker["Volume"] == 0).any()
             has_zero_close = (df_ticker["Close"] == 0).any()
-            
+
             if coverage_pct < 85.0:
                 dq_status = "LOW_COVERAGE"
             elif has_zero_vol:
@@ -844,10 +866,20 @@ class StockScreener:
             if any(pd.isna(v) for v in [sma_20, dma_50, dma_100, dma_200]):
                 trend_status = "Insufficient History"
             else:
-                if cmp > sma_20 and sma_20 > dma_50 and dma_50 > dma_100 and dma_100 > dma_200:
+                if (
+                    cmp > sma_20
+                    and sma_20 > dma_50
+                    and dma_50 > dma_100
+                    and dma_100 > dma_200
+                ):
                     if 0.01 <= diff_200_dma <= self.max_diff_200_dma:
                         trend_status = "In Bull Run"
-                elif cmp < sma_20 and sma_20 < dma_50 and dma_50 < dma_100 and dma_100 < dma_200:
+                elif (
+                    cmp < sma_20
+                    and sma_20 < dma_50
+                    and dma_50 < dma_100
+                    and dma_100 < dma_200
+                ):
                     if -self.max_diff_200_dma <= diff_200_dma <= -0.01:
                         trend_status = "In Bear Run"
 
@@ -893,9 +925,7 @@ class StockScreener:
                 cmp, prev_close, dma_100, prev_sma_100, low_126d, atr
             )
             str_etf_shop = calc_etf_shop(cmp, sma_20)
-            str_super_bo = calc_super_bo(
-                cmp, dma_50, dma_100, dma_150, dma_200, atr
-            )
+            str_super_bo = calc_super_bo(cmp, dma_50, dma_100, dma_150, dma_200, atr)
             str_dma_rev = calc_dmadma_reverse(cmp, dma_150, dma_200, atr)
             str_dma_nosl = calc_dmadma_no_sl(cmp, dma_50, dma_200)
 
@@ -1106,7 +1136,10 @@ class StockScreener:
                 len(final_list_df),
             )
         else:
-            LOGGER.info("Final target list (Filter A) created in-memory (%d records)", len(final_list_df))
+            LOGGER.info(
+                "Final target list (Filter A) created in-memory (%d records)",
+                len(final_list_df),
+            )
 
         # Filter B: Bottom Out Hunting — Start GTT signals
         df_bottom_out: pd.DataFrame = df_analyzed[
@@ -1173,7 +1206,10 @@ class StockScreener:
                 len(final_b_df),
             )
         else:
-            LOGGER.info("Swing trading list (Filter B) created in-memory (%d records)", len(final_b_df))
+            LOGGER.info(
+                "Swing trading list (Filter B) created in-memory (%d records)",
+                len(final_b_df),
+            )
 
         # Filter C: COMBINED — Bull Run + Buy CAR + Start GTT (The Holy Grail)
         df_combined: pd.DataFrame = df_analyzed[
@@ -1244,7 +1280,10 @@ class StockScreener:
                 len(final_c_df),
             )
         else:
-            LOGGER.info("SUPER combined list (Filter C) created in-memory (%d records)", len(final_c_df))
+            LOGGER.info(
+                "SUPER combined list (Filter C) created in-memory (%d records)",
+                len(final_c_df),
+            )
 
         # Filter D: DMA Variant B (With SL / Reverse) — sorted CMP ascending
         # Sharegenius spec: cheapest stocks first for entry point selection
@@ -1301,7 +1340,10 @@ class StockScreener:
                     len(final_d_df),
                 )
             else:
-                LOGGER.info("DMA Variant B (SL) bull list created in-memory (%d records)", len(final_d_df))
+                LOGGER.info(
+                    "DMA Variant B (SL) bull list created in-memory (%d records)",
+                    len(final_d_df),
+                )
 
         # Filter E: Swing list with 20% profit target column
         if "GTT_TARGET_20PCT" in df_analyzed.columns:
@@ -1358,9 +1400,14 @@ class StockScreener:
                         len(final_e_df),
                     )
                 else:
-                    LOGGER.info("Swing target list (Filter E) created in-memory (%d records)", len(final_e_df))
+                    LOGGER.info(
+                        "Swing target list (Filter E) created in-memory (%d records)",
+                        len(final_e_df),
+                    )
 
-        self._generate_strategy_reports(df_analyzed, date_str, save_to_disk=save_to_disk)
+        self._generate_strategy_reports(
+            df_analyzed, date_str, save_to_disk=save_to_disk
+        )
 
         # ── Enrichment pass: consensus, MTF, position sizing, quant metrics ──
         try:
@@ -1593,6 +1640,8 @@ class StockScreener:
                             len(df_strat),
                         )
                     else:
-                        LOGGER.info("Strategy report '%s' created in-memory (%d records)", strat_name, len(df_strat))
-
-
+                        LOGGER.info(
+                            "Strategy report '%s' created in-memory (%d records)",
+                            strat_name,
+                            len(df_strat),
+                        )

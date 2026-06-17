@@ -1,19 +1,48 @@
-import sys
+"""
+File: src/dashboard/pages/02_portfolio.py
+Purpose: Render simulated active holdings, cash metrics, and risk exposures.
+
+Dependencies:
+    External:
+        - streamlit==1.40.0: Render interactive web application components
+        - pandas==2.2.3: Load and display data summaries
+        - numpy==1.26.4: Perform vector operations
+    Internal:
+        - src.portfolio.portfolio_engine: Handle simulated positions
+
+Key Components:
+    Classes:
+        - None
+    Functions:
+        - None
+
+Last Modified: 2026-06-17
+Modified By: [Fortune]
+
+Open Tasks:
+    - [ ] [MEDIUM] Improve sector exposure guidelines section
+
+Related Files:
+    - src/dashboard/app.py: Main landing page dashboard view
+"""
+
 import os
+import sys
+
 # Force project root into sys.path to resolve ModuleNotFoundError
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.." if os.path.basename(os.path.dirname(__file__)) == "dashboard" else "../../.."))
+root_dir = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../.."
+        if os.path.basename(os.path.dirname(__file__)) == "dashboard"
+        else "../../..",
+    )
+)
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-"""
-File: src/dashboard/pages/02_portfolio.py
-Purpose: Renders simulated active holdings, cash metrics, and risk exposures.
-Last Modified: 2026-06-01
-"""
-
-import streamlit as st
 import pandas as pd
-import numpy as np
+import streamlit as st
 
 from src.portfolio.portfolio_engine import Portfolio
 
@@ -54,7 +83,7 @@ if pos_df.empty:
 else:
     # Display table
     st.dataframe(pos_df, use_container_width=True)
-    
+
     # Sell/Close positions
     st.subheader("Exit Position")
     exit_col1, exit_col2 = st.columns(2)
@@ -62,7 +91,9 @@ else:
         exit_sym = st.selectbox("Select Position to Exit", list(port.positions.keys()))
     with exit_col2:
         curr_pos = port.positions[exit_sym]
-        exit_price = st.number_input("Exit Price (INR)", value=float(curr_pos["current_price"]))
+        exit_price = st.number_input(
+            "Exit Price (INR)", value=float(curr_pos["current_price"])
+        )
         if st.button("Execute Sell"):
             port.exit_position(exit_sym, exit_price)
             # Update session state
@@ -80,7 +111,7 @@ if sectors:
     # Convert dict to DataFrame for plotting
     sec_df = pd.DataFrame(list(sectors.items()), columns=["Sector", "Allocation %"])
     sec_df["Allocation %"] = sec_df["Allocation %"] * 100.0
-    
+
     col_chart, col_limits = st.columns(2)
     with col_chart:
         st.bar_chart(sec_df.set_index("Sector"))
@@ -90,7 +121,9 @@ if sectors:
         st.write("- Maximum allocation per position: **10.0%**")
         for sect, val in sectors.items():
             if val > port.max_sector_exposure_pct:
-                st.error(f"⚠️ Sector **{sect}** ({val:.1%}) breaches the 25% exposure limit!")
+                st.error(
+                    f"⚠️ Sector **{sect}** ({val:.1%}) breaches the 25% exposure limit!"
+                )
             else:
                 st.success(f"✔ Sector **{sect}** ({val:.1%}) is within safety limits.")
 else:

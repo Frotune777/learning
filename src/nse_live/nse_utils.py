@@ -94,7 +94,9 @@ class NseUtils:
 
         self.session = requests.Session()
         try:
-            self.session.get("https://www.nseindia.com", headers=self.headers, timeout=10)
+            self.session.get(
+                "https://www.nseindia.com", headers=self.headers, timeout=10
+            )
         except Exception:
             pass
         self.cookies = self.session.cookies.get_dict()
@@ -130,15 +132,13 @@ class NseUtils:
         try:
             category_clean = category.upper().replace("&", "%26").replace(" ", "%20")
 
-            ref_url = (
-                f"https://www.nseindia.com/market-data/live-equity-market?symbol={category_clean}"
-            )
+            ref_url = f"https://www.nseindia.com/market-data/live-equity-market?symbol={category_clean}"
             ref = requests.get(ref_url, headers=self.headers, timeout=10)
             url = f"https://www.nseindia.com/api/equity-stockIndices?index={category_clean}"
             resp = requests.get(
                 url, headers=self.headers, cookies=ref.cookies.get_dict(), timeout=10
             )
-            
+
             if resp.status_code == 200:
                 try:
                     data = resp.json()
@@ -159,6 +159,7 @@ class NseUtils:
             print(f"Index API failed for {category}. Attempting direct CSV fallback...")
             try:
                 import io
+
                 cat_lower = category.lower().replace(" ", "")
                 # Normalize key names for standard files
                 if cat_lower == "niftynext50":
@@ -171,7 +172,7 @@ class NseUtils:
                         # Map expected columns for normal heatmap operations
                         csv_df = csv_df.rename(columns={"Symbol": "symbol"})
                         csv_df = csv_df.set_index("symbol", drop=True)
-                        
+
                         # Populate default columns expected by the heatmap layout
                         csv_df["open"] = 0.0
                         csv_df["dayHigh"] = 0.0
@@ -179,15 +180,17 @@ class NseUtils:
                         csv_df["lastPrice"] = 0.0
                         csv_df["pChange"] = 0.0
                         csv_df["ffmc"] = 0.0
-                        
+
                         df = csv_df
-                        print(f"Successfully loaded {len(df)} constituents via CSV fallback for {category}.")
+                        print(
+                            f"Successfully loaded {len(df)} constituents via CSV fallback for {category}."
+                        )
             except Exception as csv_exc:
                 print(f"CSV fallback failed for {category}: {csv_exc}")
 
         if df.empty:
             return pd.DataFrame()
-            
+
         if list_only:
             symbol_list = sorted(df.index[1:].tolist())
             return symbol_list

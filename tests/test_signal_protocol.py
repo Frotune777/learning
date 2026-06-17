@@ -75,4 +75,3 @@ def test_add_consensus_score() -> None:
     ].values[0]
     assert "HIGH CONVICTION BUY" in tcs_callout
     assert "9/13" in tcs_callout  # 9 buy signals out of 13 total strategies
-

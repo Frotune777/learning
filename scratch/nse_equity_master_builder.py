@@ -614,7 +614,7 @@ if __name__ == "__main__":
 
         # Save
         files = builder.save(df)
-        print(f"\nSaved to:")
+        print("\nSaved to:")
         for fmt, path in files.items():
             print(f"  {fmt}: {path}")
 

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - 2026-06-01
+## [1.3.0] - 2026-06-17
 
 ### Added
 - Ported and integrated 5 advanced trading strategies: Minervini Volatility Contraction Pattern (VCP), TTM Squeeze (Bollinger Band compression inside Keltner Channels), Dual Supertrend (Pine-Script match), Candlestick Pattern Recognition, and Lorentzian Machine Learning Classification.
@@ -18,10 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added robust CSV fallbacks for NSE Index constituents loading from `nsearchives.nseindia.com` in `get_index_details` and `nifty_index_fetcher.py` to bypass Cloudflare and 404 blocks.
   - Implemented interactive CLI Option `26` (Data Quality & Auto-Healer) to diagnose and heal low-coverage equities.
   - Added a Data Quality status KPI card to the Streamlit Strategy Inspector page.
+  - Added quantitative data quality audit and indicator validation scripts (`scratch/data_quality_audit.py`, `scratch/detailed_audit.py`).
 
 ### Changed
 - Refactored `screener.screen_stocks` to support in-memory passes with optional CSV exports.
 - Upgraded the entire platform test coverage to 187 passing unit and integration tests.
+- Fixed directory path resolution in historical cache test cases in `tests/test_screener.py`.
 
 ## [1.2.0] - 2026-05-30
 

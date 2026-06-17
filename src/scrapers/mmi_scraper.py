@@ -5,6 +5,7 @@ Last Modified: 2026-06-01
 """
 
 import json
+
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -24,7 +25,7 @@ def fetch_mmi_score() -> tuple[float, str]:
         Returns (0.0, "Unknown") on failure.
     """
     url = "https://www.tickertape.in/market-mood-index"
-    
+
     # ----------------------------------------------------
     # Method 1: Lightweight HTTP requests + __NEXT_DATA__
     # ----------------------------------------------------
@@ -38,7 +39,12 @@ def fetch_mmi_score() -> tuple[float, str]:
             script = soup.find("script", id="__NEXT_DATA__")
             if script:
                 data = json.loads(script.string)
-                mmi_val = data.get("props", {}).get("pageProps", {}).get("nowData", {}).get("currentValue")
+                mmi_val = (
+                    data.get("props", {})
+                    .get("pageProps", {})
+                    .get("nowData", {})
+                    .get("currentValue")
+                )
                 if mmi_val is not None:
                     mmi_score = float(mmi_val)
                     if mmi_score >= 70:

@@ -278,7 +278,9 @@ class HistoricalSync:
         )
         return merged
 
-    def sync_one(self, symbol: str, force: bool = False, registry: SyncRegistry | None = None) -> bool:
+    def sync_one(
+        self, symbol: str, force: bool = False, registry: SyncRegistry | None = None
+    ) -> bool:
         """
         Synchronise historical data for a single NSE equity symbol.
 
@@ -304,7 +306,11 @@ class HistoricalSync:
             df = self._fetch_full(symbol)
             if registry and not df.empty:
                 registry.mark_full_refreshed(symbol)
-        elif self._needs_full_refresh(existing) and not recently_full_refreshed and not force:
+        elif (
+            self._needs_full_refresh(existing)
+            and not recently_full_refreshed
+            and not force
+        ):
             # Case 2: Partial/gappy data → full refresh to fill gaps
             LOGGER.info(
                 "%s: Existing data has gaps (%d rows, %s → %s). Running full refresh.",
@@ -429,7 +435,9 @@ class HistoricalSync:
                     self._remove_failed_symbol(sym)
             else:
                 registry.mark_failed(sym)
-                self._record_failed_symbol(sym, reason="Fyers sync failed or returned empty")
+                self._record_failed_symbol(
+                    sym, reason="Fyers sync failed or returned empty"
+                )
 
             if i % save_every == 0:
                 registry.save()
@@ -492,7 +500,9 @@ class HistoricalSync:
                 df.to_csv(path, index=False)
                 LOGGER.info("Removed %s from failed_symbols.csv", symbol)
         except Exception as exc:
-            LOGGER.warning("Failed to remove %s from failed_symbols.csv: %s", symbol, exc)
+            LOGGER.warning(
+                "Failed to remove %s from failed_symbols.csv: %s", symbol, exc
+            )
 
     def read(self, symbol: str) -> pd.DataFrame:
         return self._load(symbol)

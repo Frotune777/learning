@@ -949,7 +949,7 @@ def test_fetch_history_parquet_cache_loop(tmp_path: Path) -> None:
     Verify that _fetch_history successfully writes Parquet cache files to disk.
     """
     processed_dir: str = str(tmp_path / "processed")
-    screener = StockScreener(processed_dir=processed_dir)
+    screener = StockScreener(processed_dir=processed_dir, hist_dir=processed_dir)
 
     # Setup mock download response (MultiIndexed)
     cols = pd.MultiIndex.from_tuples(
@@ -996,7 +996,7 @@ def test_fetch_history_incremental_cache_crud(tmp_path: Path) -> None:
     Verify that _fetch_history performs incremental CRUD on existing Parquet caches.
     """
     processed_dir: str = str(tmp_path / "processed")
-    screener = StockScreener(processed_dir=processed_dir)
+    screener = StockScreener(processed_dir=processed_dir, hist_dir=processed_dir)
 
     cache_dir = os.path.join(processed_dir, "1d")
     os.makedirs(cache_dir, exist_ok=True)

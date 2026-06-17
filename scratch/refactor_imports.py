@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 
 moves = {
@@ -48,9 +47,9 @@ for root, _, files in os.walk("tests"):
 py_files.append("main.py")
 
 for path in py_files:
-    with open(path, "r") as f:
+    with open(path) as f:
         content = f.read()
-    
+
     modified = False
     for mod_file, d in moves.items():
         mod_name = mod_file[:-3]
@@ -59,7 +58,7 @@ for path in py_files:
         if old_import in content:
             content = content.replace(old_import, new_import)
             modified = True
-            
+
         old_import2 = f"from src.nse_bhavcopy import {mod_name}"
         new_import2 = f"from src.{d} import {mod_name}"
         if old_import2 in content:

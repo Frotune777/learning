@@ -33,11 +33,15 @@ from rich.columns import Columns
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
-from rich.rule import Rule
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 from rich.table import Table
 from rich.text import Text
-
 
 # ---------------------------------------------------------------------------
 # Color & Style Constants
@@ -184,7 +188,11 @@ class VisualUI:
 
         title_pad = (w - 2 - len(title)) // 2
         self.console.print(
-            "║" + " " * title_pad + title + " " * (w - 2 - len(title) - title_pad) + "║",
+            "║"
+            + " " * title_pad
+            + title
+            + " " * (w - 2 - len(title) - title_pad)
+            + "║",
             style="bold white",
         )
 
@@ -206,7 +214,9 @@ class VisualUI:
     # Format 2: Categorized Menu (╭─╮)
     # =========================================================================
 
-    def render_menu(self, title: str, sections: dict[str, list[dict[str, Any]]]) -> None:
+    def render_menu(
+        self, title: str, sections: dict[str, list[dict[str, Any]]]
+    ) -> None:
         """Print a categorized menu with rounded box borders."""
         self.console.print()
         w = self.width
@@ -217,7 +227,11 @@ class VisualUI:
 
         for section_name, options in sections.items():
             self.console.print("├" + "─" * (w - 2) + "┤", style="cyan")
-            self.console.print(f"│   [magenta]📋 {section_name}[/magenta]" + " " * (w - len(section_name) - 11) + "│")
+            self.console.print(
+                f"│   [magenta]📋 {section_name}[/magenta]"
+                + " " * (w - len(section_name) - 11)
+                + "│"
+            )
 
             for opt in options:
                 num = opt.get("id", "")
@@ -226,7 +240,11 @@ class VisualUI:
                 status = opt.get("status", "")
                 details = opt.get("details", "")
 
-                status_colored = f"[green]{status}[/green]" if status == "Ready" else f"[dim]{status}[/dim]"
+                status_colored = (
+                    f"[green]{status}[/green]"
+                    if status == "Ready"
+                    else f"[dim]{status}[/dim]"
+                )
                 line = f"│  [cyan]{num:>3}.[/cyan] {emoji} {name}  {status_colored}"
 
                 details_text = f"[dim]{details}[/dim]"
@@ -305,7 +323,9 @@ class VisualUI:
             except (ValueError, TypeError):
                 score_int = 0
             score_text = Text(str(score_int))
-            score_text.stylize("bold green" if score_int >= 4 else "yellow" if score_int > 0 else "dim")
+            score_text.stylize(
+                "bold green" if score_int >= 4 else "yellow" if score_int > 0 else "dim"
+            )
 
             callout = str(row.get("CONSENSUS_CALLOUT", ""))
             callout_text = Text(callout[:38])
@@ -325,19 +345,30 @@ class VisualUI:
             rsi_str = f"{rsi:.1f}" if pd.notna(rsi) else "—"
             rsi_text = Text(rsi_str)
             if pd.notna(rsi):
-                rsi_text.stylize("red" if rsi >= 70 else "green" if rsi <= 35 else "white")
+                rsi_text.stylize(
+                    "red" if rsi >= 70 else "green" if rsi <= 35 else "white"
+                )
 
             deliv = row.get("DELIV_PCT", float("nan"))
             deliv_str = f"{deliv:.1f}" if pd.notna(deliv) else "—"
 
             table.add_row(
-                rank, str(row.get("SYMBOL", "")), cmp_str,
-                trend_text, car_text, score_text, callout_text,
-                stars, rsi_text, deliv_str,
+                rank,
+                str(row.get("SYMBOL", "")),
+                cmp_str,
+                trend_text,
+                car_text,
+                score_text,
+                callout_text,
+                stars,
+                rsi_text,
+                deliv_str,
             )
 
         self.console.print(table)
-        self.console.print(f"\n  [dim]{min(len(df), max_rows)} of {len(df)} records shown[/dim]")
+        self.console.print(
+            f"\n  [dim]{min(len(df), max_rows)} of {len(df)} records shown[/dim]"
+        )
 
     # =========================================================================
     # Format 4: Strategy Inspector (all 13 strategies for one stock)
@@ -417,8 +448,20 @@ class VisualUI:
             box=BoxStyles.PANEL,
         )
 
-        rsi_color = "green" if "Bullish" in rsi_div else "red" if "Bearish" in rsi_div else "dim"
-        macd_color = "green" if "Bullish" in macd_div else "red" if "Bearish" in macd_div else "dim"
+        rsi_color = (
+            "green"
+            if "Bullish" in rsi_div
+            else "red"
+            if "Bearish" in rsi_div
+            else "dim"
+        )
+        macd_color = (
+            "green"
+            if "Bullish" in macd_div
+            else "red"
+            if "Bearish" in macd_div
+            else "dim"
+        )
         div_panel = Panel(
             f"[bold white]RSI Divergence:[/bold white] [{rsi_color}]{rsi_div}[/{rsi_color}]\n"
             f"[bold white]MACD Divergence:[/bold white] [{macd_color}]{macd_div}[/{macd_color}]",
@@ -429,7 +472,15 @@ class VisualUI:
 
         score = row.get("CONSENSUS_SCORE", 0)
         callout = str(row.get("CONSENSUS_CALLOUT", "No consensus data"))
-        score_color = "bold green" if score >= 4 else "yellow" if score > 0 else "red" if score < 0 else "dim"
+        score_color = (
+            "bold green"
+            if score >= 4
+            else "yellow"
+            if score > 0
+            else "red"
+            if score < 0
+            else "dim"
+        )
         consensus_panel = Panel(
             f"[bold white]Score:[/bold white] [{score_color}]{score}/13[/{score_color}]\n"
             f"[dim]{callout}[/dim]",
@@ -487,13 +538,18 @@ class VisualUI:
         score_text = Text()
         score_text.append(f"Score:  {score:.1f} / 10\n", style="bold white")
         score_text.append(f"[{bar}] {score_pct:.0f}%\n", style="yellow")
-        score_text.append(f"Rating: ", style="dim")
+        score_text.append("Rating: ", style="dim")
         rating = data.get("tech_rating", "NEUTRAL")
-        r_color = "green" if "BUY" in rating else "red" if "SELL" in rating else "yellow"
+        r_color = (
+            "green" if "BUY" in rating else "red" if "SELL" in rating else "yellow"
+        )
         score_text.append(rating, style=f"bold {r_color}")
 
         score_panel = Panel(
-            score_text, title="📊 TECH SCORE", border_style="magenta", box=BoxStyles.PANEL
+            score_text,
+            title="📊 TECH SCORE",
+            border_style="magenta",
+            box=BoxStyles.PANEL,
         )
 
         self.console.print(Columns([price_panel, score_panel]))
@@ -501,8 +557,10 @@ class VisualUI:
 
         # Indicators table
         ind_table = Table(
-            box=BoxStyles.MENU, show_header=True,
-            header_style="bold cyan", title="🔍 TECHNICAL INDICATORS",
+            box=BoxStyles.MENU,
+            show_header=True,
+            header_style="bold cyan",
+            title="🔍 TECHNICAL INDICATORS",
             title_style="bold white",
         )
         ind_table.add_column("Indicator", style="white", width=18)
@@ -511,7 +569,13 @@ class VisualUI:
 
         for ind in data.get("indicators", []):
             sig = ind.get("signal", "")
-            sig_color = "green" if "Bull" in sig or "Buy" in sig else "red" if "Bear" in sig or "Sell" in sig else "yellow"
+            sig_color = (
+                "green"
+                if "Bull" in sig or "Buy" in sig
+                else "red"
+                if "Bear" in sig or "Sell" in sig
+                else "yellow"
+            )
             ind_table.add_row(
                 ind.get("name", ""),
                 str(ind.get("value", "—")),
@@ -531,10 +595,16 @@ class VisualUI:
             self.console.print("[yellow]No consensus data available.[/yellow]")
             return
 
-        ranked = df[df["CONSENSUS_SCORE"] > 0].sort_values("CONSENSUS_SCORE", ascending=False).head(top_n)
+        ranked = (
+            df[df["CONSENSUS_SCORE"] > 0]
+            .sort_values("CONSENSUS_SCORE", ascending=False)
+            .head(top_n)
+        )
 
         if ranked.empty:
-            self.console.print("[yellow]No stocks with positive consensus score found.[/yellow]")
+            self.console.print(
+                "[yellow]No stocks with positive consensus score found.[/yellow]"
+            )
             return
 
         table = Table(
@@ -563,7 +633,13 @@ class VisualUI:
 
             callout = str(row.get("CONSENSUS_CALLOUT", ""))[:46]
             callout_text = Text(callout)
-            callout_text.stylize("bold green" if "HIGH CONVICTION" in callout else "green" if "BUY" in callout else "dim")
+            callout_text.stylize(
+                "bold green"
+                if "HIGH CONVICTION" in callout
+                else "green"
+                if "BUY" in callout
+                else "dim"
+            )
 
             def _badge(col: str, buy_val: str) -> Text:
                 val = str(row.get(col, ""))
@@ -614,9 +690,13 @@ class VisualUI:
                 name = phase.get("name", "")
                 t = phase.get("time", 0)
                 if status == "Complete":
-                    self.console.print(f"   {name}: [green]✅ Complete[/green] [dim]({t}s)[/dim]")
+                    self.console.print(
+                        f"   {name}: [green]✅ Complete[/green] [dim]({t}s)[/dim]"
+                    )
                 elif status == "In progress":
-                    self.console.print(f"   {name}: [yellow]🔄 In progress[/yellow] [dim]({t}s elapsed)[/dim]")
+                    self.console.print(
+                        f"   {name}: [yellow]🔄 In progress[/yellow] [dim]({t}s elapsed)[/dim]"
+                    )
                 else:
                     self.console.print(f"   {name}: [dim]⏳ Pending[/dim]")
 
@@ -626,7 +706,9 @@ class VisualUI:
 
     def render_system_check(self, metrics: dict[str, Any]) -> None:
         """Render system health as a Rich panel grid."""
-        self.render_header("SYSTEM HEALTH CHECK", "DuckDB · Parquets · Ban List · Strategies")
+        self.render_header(
+            "SYSTEM HEALTH CHECK", "DuckDB · Parquets · Ban List · Strategies"
+        )
 
         table = Table(box=BoxStyles.MENU, show_header=False)
         table.add_column("Component", style="white", width=28)
@@ -648,7 +730,9 @@ class VisualUI:
     # Helpers
     # =========================================================================
 
-    def _score_to_stars(self, score: float | None, max_val: float = 10.0, n: int = 5) -> str:
+    def _score_to_stars(
+        self, score: float | None, max_val: float = 10.0, n: int = 5
+    ) -> str:
         """Convert a numeric score to a star rating string."""
         if score is None or (isinstance(score, float) and pd.isna(score)):
             return "☆" * n

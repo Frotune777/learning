@@ -143,10 +143,10 @@ def test_nse_charting(symbol: str = "TCS") -> None:
 
         except json.JSONDecodeError as e:
             print(f"\n  JSON decode error: {e}")
-            print(f"  Raw response (first 1000 chars):")
+            print("  Raw response (first 1000 chars):")
             print(resp3.text[:1000])
     else:
-        print(f"\n  Error response (first 500 chars):")
+        print("\n  Error response (first 500 chars):")
         print(resp3.text[:500])
 
 

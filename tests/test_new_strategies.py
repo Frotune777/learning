@@ -19,7 +19,6 @@ from src.engine.strategies import (
     calc_vcp,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -152,7 +151,12 @@ class TestCalcTTMSqueeze:
         df = pd.DataFrame({"High": highs, "Low": lows, "Close": closes})
         result = calc_ttm_squeeze(df)
         # With very low price std and larger ATR from H-L range, squeeze may be active
-        assert result["action"] in ("Squeeze Active (Bullish)", "Squeeze Active (Bearish)", "No Squeeze", "Insufficient Data")
+        assert result["action"] in (
+            "Squeeze Active (Bullish)",
+            "Squeeze Active (Bearish)",
+            "No Squeeze",
+            "Insufficient Data",
+        )
 
     def test_none_df(self) -> None:
         result = calc_ttm_squeeze(None)  # type: ignore[arg-type]
@@ -199,14 +203,21 @@ class TestSupertrend:
     def test_dual_supertrend_action_values(self) -> None:
         df = _make_ohlcv(60)
         result = calc_dual_supertrend(df)
-        assert result["action"] in ("Long Entry", "Close Long", "Hold", "Insufficient Data")
+        assert result["action"] in (
+            "Long Entry",
+            "Close Long",
+            "Hold",
+            "Insufficient Data",
+        )
 
     def test_dual_supertrend_long_entry_on_uptrend(self) -> None:
         """Force a flip: first half downtrend, second half strong uptrend."""
         n = 60
         # First 30 bars: declining prices (downtrend)
         # Last 30 bars: sharply rising (should trigger uptrend flip)
-        closes = np.concatenate([np.linspace(120.0, 80.0, 30), np.linspace(80.0, 150.0, 30)])
+        closes = np.concatenate(
+            [np.linspace(120.0, 80.0, 30), np.linspace(80.0, 150.0, 30)]
+        )
         df = pd.DataFrame(
             {
                 "High": closes + 5,
@@ -282,7 +293,9 @@ class TestCalcLorentzian:
         result = calc_lorentzian(None)  # type: ignore[arg-type]
         assert result["action"] == "No Signal"
 
-    def test_sklearn_fallback_without_advanced_ta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sklearn_fallback_without_advanced_ta(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Ensure sklearn KNN fallback works when advanced_ta is patched out."""
         import src.engine.strategies as strats
 

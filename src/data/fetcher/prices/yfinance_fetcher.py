@@ -13,8 +13,8 @@ Key Components:
 Classes:
 - YFinanceFetcher: Fetches OHLCV from Yahoo Finance for NSE symbols.
 
-Last Modified: 2026-05-27
-Modified By: Fortune
+Last Modified: 2026-06-17
+Modified By: Kimi
 
 Open Tasks:
 - [ ] [MEDIUM] Add proxy rotation support for rate-limit evasion
@@ -121,7 +121,7 @@ class YFinanceFetcher(AbstractPriceFetcher):
                 return pd.DataFrame()
 
             # Normalize index to tz-naive to match pipeline convention
-            if df.index.tz is not None:
+            if hasattr(df.index, "tz") and df.index.tz is not None:
                 df.index = df.index.tz_convert(None)
 
             # Keep only standard OHLCV columns
@@ -177,7 +177,7 @@ class YFinanceFetcher(AbstractPriceFetcher):
         Notes:
             yf.download() with group_by='ticker' returns:
                 Columns: MultiIndex([(AAPL, Open), (AAPL, High), ...])
-            We then swap to our convention: level 0 = symbol, level 1 = metric.
+            We normalize to our convention: level 0 = symbol, level 1 = metric.
         """
         interval = self.INTERVAL_MAP.get(timeframe, "1d")
         all_dfs: list[pd.DataFrame] = []
@@ -199,59 +199,77 @@ class YFinanceFetcher(AbstractPriceFetcher):
 
             try:
                 # === TRUE BULK: yf.download() hits Yahoo multi-ticker endpoint ===
+                download_kwargs: dict = {
+                    "tickers": chunk_str,
+                    "interval": interval,
+                    "group_by": "ticker",
+                    "auto_adjust": False,
+                    "progress": False,
+                    "threads": False,  # FIX: threads=True causes race conditions in yfinance 0.2.x
+                    "actions": False,  # FIX: exclude Dividends/Stock Splits columns
+                }
+
                 if from_date is not None and to_date is not None:
                     start = pd.to_datetime(from_date, unit="s")
                     end = pd.to_datetime(to_date, unit="s") + pd.Timedelta(days=1)
-                    df = yf.download(
-                        tickers=chunk_str,
-                        start=start.strftime("%Y-%m-%d"),
-                        end=end.strftime("%Y-%m-%d"),
-                        interval=interval,
-                        group_by="ticker",  # Critical: gives (ticker, metric) structure
-                        auto_adjust=False,  # Keep raw OHLCV
-                        progress=False,
-                        threads=True,  # Enable parallel sub-requests if needed
-                    )
+                    download_kwargs["start"] = start.strftime("%Y-%m-%d")
+                    download_kwargs["end"] = end.strftime("%Y-%m-%d")
                 else:
-                    df = yf.download(
-                        tickers=chunk_str,
-                        period=period,
-                        interval=interval,
-                        group_by="ticker",
-                        auto_adjust=False,
-                        progress=False,
-                        threads=True,
-                    )
+                    download_kwargs["period"] = period
+
+                df = yf.download(**download_kwargs)
 
                 if df.empty:
                     logger.warning("YFinance bulk returned empty for chunk %s", chunk)
                     continue
 
-                # yf.download(group_by='ticker') returns:
-                #   MultiIndex where level 0 = ticker, level 1 = metric
-                # This matches our pipeline convention directly!
+                # yfinance 0.2.66 returns MultiIndex with named levels ['Ticker', 'Price']
+                # where level 0 = ticker, level 1 = metric (Open, High, Low, Close, Adj Close, Volume)
                 if isinstance(df.columns, pd.MultiIndex):
-                    # Ensure we only keep OHLCV metrics
-                    mask = df.columns.get_level_values(1).isin(
-                        ["Open", "High", "Low", "Close", "Volume"]
-                    )
+                    # Extract level values regardless of level names
+                    tickers = df.columns.get_level_values(0)
+                    metrics = df.columns.get_level_values(1)
+
+                    # Keep only OHLCV metrics — drop Adj Close, Dividends, Splits, etc.
+                    ohlcv_metrics = {"Open", "High", "Low", "Close", "Volume"}
+                    mask = metrics.isin(ohlcv_metrics)
                     df = df.loc[:, mask]
+
+                    if df.empty:
+                        logger.warning(
+                            "YFinance bulk chunk %s: no OHLCV columns after filter",
+                            chunk,
+                        )
+                        continue
+
+                    # Rebuild MultiIndex with our convention: level 0 = symbol, level 1 = metric
+                    # This ensures consistent column names even if yfinance changes its level names
+                    new_cols = pd.MultiIndex.from_tuples(
+                        [(str(ticker), str(metric)) for ticker, metric in df.columns],
+                        names=["symbol", "metric"],
+                    )
+                    df.columns = new_cols
 
                     # Sort for consistency
                     df = df.sort_index(axis=1)
                 else:
                     # Single symbol fallback — wrap defensively
                     if len(chunk) == 1:
-                        df.columns = pd.MultiIndex.from_product([chunk, df.columns])
+                        df.columns = pd.MultiIndex.from_product(
+                            [chunk, df.columns],
+                            names=["symbol", "metric"],
+                        )
                     else:
                         logger.warning(
-                            "Unexpected flat columns from yf.download, skipping"
+                            "Unexpected flat columns from yf.download for multi-ticker chunk %s, skipping",
+                            chunk,
                         )
                         continue
 
                 # Normalize timezone to tz-naive
-                if df.index.tz is not None:
+                if hasattr(df.index, "tz") and df.index.tz is not None:
                     df.index = df.index.tz_convert(None)
+                df.index.name = "Date"
 
                 all_dfs.append(df)
                 logger.info(
@@ -278,8 +296,10 @@ class YFinanceFetcher(AbstractPriceFetcher):
                             to_date=to_date,
                         )
                         if not df_single.empty:
+                            # fetch() already returns flat OHLCV columns
                             df_single.columns = pd.MultiIndex.from_product(
-                                [[sym], df_single.columns]
+                                [[sym], df_single.columns],
+                                names=["symbol", "metric"],
                             )
                             all_dfs.append(df_single)
                     except Exception as exc2:
@@ -293,6 +313,6 @@ class YFinanceFetcher(AbstractPriceFetcher):
             return pd.DataFrame()
 
         combined = pd.concat(all_dfs, axis=1)
-        # Deduplicate columns in case of overlap between chunks
+        # Deduplicate columns in case of overlap between chunks (e.g. fallback re-fetched same symbol)
         combined = combined.loc[:, ~combined.columns.duplicated()]
         return combined.sort_index()

@@ -1,23 +1,53 @@
-import sys
+"""
+File: src/dashboard/app.py
+Purpose: Render the main landing page for the Sharegenius Quantitative Platform.
+
+Dependencies:
+    External:
+        - streamlit==1.40.0: Render interactive web application components
+        - pandas==2.2.3: Load and display data summaries
+    Internal:
+        - None
+
+Key Components:
+    Classes:
+        - None
+    Functions:
+        - None
+
+Last Modified: 2026-06-17
+Modified By: [Fortune]
+
+Open Tasks:
+    - [ ] [MEDIUM] Improve platform overview text content
+
+Related Files:
+    - src/dashboard/pages/01_daily_signals.py: Daily signals view
+    - src/dashboard/pages/02_portfolio.py: Portfolio manager view
+    - src/dashboard/pages/03_backtest_explorer.py: Strategy backtest explorer
+    - src/dashboard/pages/04_strategy_inspector.py: Single-stock inspector
+"""
+
 import os
+import sys
+
 # Force project root into sys.path to resolve ModuleNotFoundError
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.." if os.path.basename(os.path.dirname(__file__)) == "dashboard" else "../../.."))
+root_dir = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "../.."
+        if os.path.basename(os.path.dirname(__file__)) == "dashboard"
+        else "../../..",
+    )
+)
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-"""
-File: src/dashboard/app.py
-Purpose: Main landing page — Sharegenius Quantitative Platform.
-         Upgraded to screeni-py-level GUI with dark-mode metrics, system status,
-         live data cards, and premium layout.
-Last Modified: 2026-06-01
-"""
-
 import glob
-import os
-import streamlit as st
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
+import streamlit as st
 
 st.set_page_config(
     page_title="Sharegenius — NSE Quantitative Platform",
@@ -29,7 +59,8 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Custom CSS — dark-mode premium styling
 # ---------------------------------------------------------------------------
-st.markdown("""
+st.markdown(
+    """
 <style>
 /* Dark-mode card panels */
 .metric-card {
@@ -77,29 +108,38 @@ st.markdown("""
 .hero-title { font-size:1.8rem; font-weight:800; color:#f0f4ff; margin:0; }
 .hero-sub   { font-size:0.9rem; color:#888; margin:4px 0 0 0; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------------------
 # Hero Header
 # ---------------------------------------------------------------------------
-st.markdown(f"""
+st.markdown(
+    f"""
 <div class="hero-header">
   <p class="hero-title">📈 Sharegenius Quantitative Platform</p>
   <p class="hero-sub">NSE Equity Screener · 13-Strategy Engine · Consensus Scoring · Parquet Data Lake · {datetime.now().strftime('%A, %d %b %Y  %H:%M')}</p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------------------
 # System Status — data discovery
 # ---------------------------------------------------------------------------
-hist_dir     = "data/historical/1d"
+hist_dir = "data/historical/1d"
 processed_dir = "data/processed"
 
-parquets      = glob.glob(os.path.join(hist_dir, "*.parquet"))
-bhavs         = sorted(glob.glob(os.path.join(processed_dir, "top_250_*.csv")))
-analyzed      = sorted(glob.glob(os.path.join(processed_dir, "top_250_analyzed_*.csv")))
+parquets = glob.glob(os.path.join(hist_dir, "*.parquet"))
+bhavs = sorted(glob.glob(os.path.join(processed_dir, "top_250_*.csv")))
+analyzed = sorted(glob.glob(os.path.join(processed_dir, "top_250_analyzed_*.csv")))
 
-latest_bhav    = os.path.basename(bhavs[-1]).replace("top_250_","").replace(".csv","") if bhavs else "—"
+latest_bhav = (
+    os.path.basename(bhavs[-1]).replace("top_250_", "").replace(".csv", "")
+    if bhavs
+    else "—"
+)
 latest_analyzed = os.path.basename(analyzed[-1]) if analyzed else "—"
 
 st.session_state.setdefault("portfolio_cash", 500_000.0)
@@ -110,20 +150,27 @@ st.session_state.setdefault("portfolio_positions", {})
 # ---------------------------------------------------------------------------
 c1, c2, c3, c4, c5 = st.columns(5)
 
+
 def _card(col, icon, label, value, delta_html=""):
-    col.markdown(f"""
+    col.markdown(
+        f"""
     <div class="metric-card">
         <h3>{icon} {label}</h3>
         <div class="value">{value}</div>
         {f'<div class="delta">{delta_html}</div>' if delta_html else ''}
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
-_card(c1, "🗄", "Synced Symbols",   str(len(parquets)))
-_card(c2, "📅", "Latest Bhavcopy",  latest_bhav)
-_card(c3, "🔍", "Last Analysis",    latest_analyzed[:12] if latest_analyzed != "—" else "—")
-_card(c4, "💼", "Active Positions",  str(len(st.session_state["portfolio_positions"])))
-_card(c5, "💰", "Portfolio Cash",   f"₹{st.session_state['portfolio_cash']:,.0f}")
+
+_card(c1, "🗄", "Synced Symbols", str(len(parquets)))
+_card(c2, "📅", "Latest Bhavcopy", latest_bhav)
+_card(
+    c3, "🔍", "Last Analysis", latest_analyzed[:12] if latest_analyzed != "—" else "—"
+)
+_card(c4, "💼", "Active Positions", str(len(st.session_state["portfolio_positions"])))
+_card(c5, "💰", "Portfolio Cash", f"₹{st.session_state['portfolio_cash']:,.0f}")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -152,34 +199,73 @@ with left:
     if analyzed:
         st.subheader("📊 Latest Strategy Signal Summary")
         df = pd.read_csv(analyzed[-1])
-        strat_cols = [c for c in df.columns if c.startswith("STR_") and c.endswith("_ACTION")]
+        strat_cols = [
+            c for c in df.columns if c.startswith("STR_") and c.endswith("_ACTION")
+        ]
         if strat_cols:
             buy_counts = {}
             for col in strat_cols:
-                name = col.replace("STR_", "").replace("_ACTION", "").replace("_", " ").title()
-                buy_counts[name] = (df[col].isin([
-                    "Buy","Breakout Buy","Explosive Buy","Level 1 Buy","Level 2 Buy","Level 3 Buy",
-                    "150 DMA Breakout | CMP > 200 DMA","50 DMA Breakout | CMP > 200 DMA",
-                    "Super BO Buy","Buy on Support / Demand Level","Buy (55D Breakout)",
-                    "VCP Tightening","Squeeze Active (Bullish)","Long Entry","Lorentzian Buy",
-                ])).sum()
-            bar_df = pd.DataFrame.from_dict(buy_counts, orient="index", columns=["Buy Signals"])
+                name = (
+                    col.replace("STR_", "")
+                    .replace("_ACTION", "")
+                    .replace("_", " ")
+                    .title()
+                )
+                buy_counts[name] = (
+                    df[col].isin(
+                        [
+                            "Buy",
+                            "Breakout Buy",
+                            "Explosive Buy",
+                            "Level 1 Buy",
+                            "Level 2 Buy",
+                            "Level 3 Buy",
+                            "150 DMA Breakout | CMP > 200 DMA",
+                            "50 DMA Breakout | CMP > 200 DMA",
+                            "Super BO Buy",
+                            "Buy on Support / Demand Level",
+                            "Buy (55D Breakout)",
+                            "VCP Tightening",
+                            "Squeeze Active (Bullish)",
+                            "Long Entry",
+                            "Lorentzian Buy",
+                        ]
+                    )
+                ).sum()
+            bar_df = pd.DataFrame.from_dict(
+                buy_counts, orient="index", columns=["Buy Signals"]
+            )
             bar_df = bar_df.sort_values("Buy Signals", ascending=False)
             st.bar_chart(bar_df)
     else:
-        st.info("📂 No analyzed data found yet. Run `uv run main.py` → option **4** to screen stocks.")
+        st.info(
+            "📂 No analyzed data found yet. Run `uv run main.py` → option **4** to screen stocks."
+        )
 
 with right:
     st.subheader("🚦 System Status")
 
     def _status_row(label, ok, detail=""):
-        badge = '<span class="badge-ok">✅ OK</span>' if ok else '<span class="badge-err">❌ MISSING</span>'
-        st.markdown(f"**{label}** {badge}  \n<small style='color:#888'>{detail}</small>", unsafe_allow_html=True)
+        badge = (
+            '<span class="badge-ok">✅ OK</span>'
+            if ok
+            else '<span class="badge-err">❌ MISSING</span>'
+        )
+        st.markdown(
+            f"**{label}** {badge}  \n<small style='color:#888'>{detail}</small>",
+            unsafe_allow_html=True,
+        )
 
-    _status_row("Historical Parquets",   len(parquets) > 0, f"{len(parquets)} symbols cached")
-    _status_row("Bhavcopy CSVs",         len(bhavs) > 0,    f"{len(bhavs)} files found")
-    _status_row("Analyzed Output",       len(analyzed) > 0,  latest_analyzed)
-    _status_row("Portfolio State",       True, f"{len(st.session_state['portfolio_positions'])} positions")
+    _status_row(
+        "Historical Parquets", len(parquets) > 0, f"{len(parquets)} symbols cached"
+    )
+    _status_row("Bhavcopy CSVs", len(bhavs) > 0, f"{len(bhavs)} files found")
+    _status_row("Analyzed Output", len(analyzed) > 0, latest_analyzed)
+    _status_row(
+        "Portfolio State",
+        True,
+        f"{len(st.session_state['portfolio_positions'])} positions",
+    )
 
     st.markdown("---")
     st.subheader("⚡ Quick Start")
@@ -196,4 +282,6 @@ uv run streamlit run src/dashboard/app.py
 ```
     """)
 
-    st.warning("⚠️ **Simulation Only** — No real orders placed. Fyers used for data only.")
+    st.warning(
+        "⚠️ **Simulation Only** — No real orders placed. Fyers used for data only."
+    )

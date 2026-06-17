@@ -38,7 +38,7 @@ def debug_index_api(index_name: str = "NIFTY 50") -> None:
     time.sleep(0.5)
 
     # Step 2: Visit market data page (exact Referer from your trace)
-    print(f"\nStep 2: Visiting market data page...")
+    print("\nStep 2: Visiting market data page...")
     resp2 = session.get(
         "https://www.nseindia.com/market-data/live-equity-market?symbol=NIFTY%2050",
         headers={
@@ -91,14 +91,14 @@ def debug_index_api(index_name: str = "NIFTY 50") -> None:
     print(f"  Content-Encoding: {resp3.headers.get('content-encoding', 'none')}")
 
     # Inspect raw response
-    print(f"\n  Raw response (first 500 chars):")
+    print("\n  Raw response (first 500 chars):")
     print(resp3.text[:500])
 
     # Try to parse JSON
-    print(f"\n  Trying JSON parse...")
+    print("\n  Trying JSON parse...")
     try:
         data = resp3.json()
-        print(f"  JSON parsed successfully!")
+        print("  JSON parsed successfully!")
         print(f"  Type: {type(data).__name__}")
         if isinstance(data, dict):
             print(f"  Keys: {list(data.keys())}")
@@ -111,8 +111,8 @@ def debug_index_api(index_name: str = "NIFTY 50") -> None:
         return data
     except json.JSONDecodeError as e:
         print(f"  JSON ERROR: {e}")
-        print(f"  This means the response is NOT valid JSON.")
-        print(f"  It might be HTML, empty, or compressed incorrectly.")
+        print("  This means the response is NOT valid JSON.")
+        print("  It might be HTML, empty, or compressed incorrectly.")
         return None
 
 

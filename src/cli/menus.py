@@ -6,13 +6,12 @@ Last Modified: 2026-05-31
 
 import argparse
 import glob
-import logging
 import os
-import structlog
 from collections.abc import Callable
 from datetime import datetime
 
 import pandas as pd
+import structlog
 from tqdm import tqdm
 
 from src.cli.actions import (
@@ -25,7 +24,6 @@ from src.cli.formatters import (
     _display_csv,
     _header,
     _pause,
-    _print_banner,
     _rule,
     _subheader,
     bold,
@@ -40,8 +38,8 @@ from src.cli.formatters import (
     white,
     yellow,
 )
-from src.cli.visual import VisualUI
 from src.cli.reporter import ScreenerReporter
+from src.cli.visual import VisualUI
 from src.core.config import SCREENER_STRATEGIES, Config, UserPrefs
 from src.core.decorators import dry_run_capable
 from src.core.symbol_utils import (
@@ -250,11 +248,25 @@ def _print_main_menu() -> None:
     for section_name, items in MENU_SECTIONS.items():
         opts = []
         for num, label, _, hint in items:
-            opts.append({"id": num, "name": label, "emoji": "", "status": "Ready", "details": hint})
+            opts.append(
+                {
+                    "id": num,
+                    "name": label,
+                    "emoji": "",
+                    "status": "Ready",
+                    "details": hint,
+                }
+            )
         sections_rich[section_name] = opts
     # Append Exit
     sections_rich["EXIT"] = [
-        {"id": "0", "name": "Exit", "emoji": "❌", "status": "", "details": "Close application"}
+        {
+            "id": "0",
+            "name": "Exit",
+            "emoji": "❌",
+            "status": "",
+            "details": "Close application",
+        }
     ]
     _UI.render_menu("NSE DATA PIPELINE — MAIN MENU", sections_rich)
 
@@ -559,9 +571,13 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
 
     now = datetime.now()
     screener = StockScreener(processed_dir=hist_dir)
-    save_to_disk = _confirm("Automatically save all 5+ analyzed & filtered CSVs to disk?")
+    save_to_disk = _confirm(
+        "Automatically save all 5+ analyzed & filtered CSVs to disk?"
+    )
 
-    screener.screen_stocks(top_250_path=top_csv, date_obj=now, save_to_disk=save_to_disk)
+    screener.screen_stocks(
+        top_250_path=top_csv, date_obj=now, save_to_disk=save_to_disk
+    )
 
     ok("Screening complete")
     if save_to_disk:
@@ -688,7 +704,10 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
 
 def menu_data_quality(hist_dir: str, data_dir: str) -> None:
     """Scan all master symbols for data quality and provide automated healing."""
-    _header("Data Quality & Auto-Healer", "Scan for data gaps, low coverage, or missing parquets")
+    _header(
+        "Data Quality & Auto-Healer",
+        "Scan for data gaps, low coverage, or missing parquets",
+    )
 
     master_path = _find_latest_master(data_dir)
     if master_path is None:
@@ -704,23 +723,28 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
         _pause()
         return
 
-    print(f"\n  {dim('Scanning')} {bold(str(len(symbols)))} {dim('symbols in master Equity list...')}")
-    
+    print(
+        f"\n  {dim('Scanning')} {bold(str(len(symbols)))} {dim('symbols in master Equity list...')}"
+    )
+
     hs = HistoricalSync(data_dir=hist_dir)
     status_df = hs.status(symbols)
 
     total_symbols = len(status_df)
     missing = status_df[status_df["rows"] == 0]
-    low_coverage = status_df[(status_df["rows"] > 0) & (status_df["coverage_pct"] < 95.0)]
+    low_coverage = status_df[
+        (status_df["rows"] > 0) & (status_df["coverage_pct"] < 95.0)
+    ]
     healthy = status_df[(status_df["rows"] > 0) & (status_df["coverage_pct"] >= 95.0)]
 
     # Load failed symbols
     failed_symbols = hs._load_failed_symbols()
 
     # Display System Quality Audit Panel
+    from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
-    from rich.console import Console
+
     console = Console()
 
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -728,7 +752,10 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
     table.add_row(green("Healthy Data (>=95% Coverage):"), bold(str(len(healthy))))
     table.add_row(yellow("Low Coverage (<95% Coverage):"), bold(str(len(low_coverage))))
     table.add_row(red("Missing Parquet Cache:"), bold(str(len(missing))))
-    table.add_row(dim("Failed Sync Blacklist (failed_symbols.csv):"), bold(str(len(failed_symbols))))
+    table.add_row(
+        dim("Failed Sync Blacklist (failed_symbols.csv):"),
+        bold(str(len(failed_symbols))),
+    )
 
     panel = Panel(
         table,
@@ -751,19 +778,27 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
             preview.append(f"{r['symbol']} ({r['coverage_pct']:.1f}%)")
         print(f"    {dim(', '.join(preview))}{' ...' if len(low_coverage) > 5 else ''}")
 
-    to_heal = sorted(list(set(missing["symbol"].tolist()) | set(low_coverage["symbol"].tolist())))
+    to_heal = sorted(
+        list(set(missing["symbol"].tolist()) | set(low_coverage["symbol"].tolist()))
+    )
 
     if not to_heal:
         ok("All symbols have healthy historical Parquet data (>=95% coverage)!")
         _pause()
         return
 
-    print(f"\n  {bold(yellow(f'Total Unhealthy / Missing symbols to heal: {len(to_heal)}'))}")
+    print(
+        f"\n  {bold(yellow(f'Total Unhealthy / Missing symbols to heal: {len(to_heal)}'))}"
+    )
 
     # Give interactive options
     print(f"\n  {dim('Interactive Healer Menu:')}")
-    print(f"    {bold('H')}. Auto-Heal Data Gaps (targeted overwrite sync of {len(to_heal)} symbols)")
-    print(f"    {bold('F')}. Clear Failed Sync Blacklist ({len(failed_symbols)} symbols)")
+    print(
+        f"    {bold('H')}. Auto-Heal Data Gaps (targeted overwrite sync of {len(to_heal)} symbols)"
+    )
+    print(
+        f"    {bold('F')}. Clear Failed Sync Blacklist ({len(failed_symbols)} symbols)"
+    )
     print(f"    {bold('Q')}. Quit to Main Menu")
 
     choice = input(f"\n  {dim('>')} ").strip().upper()
@@ -773,7 +808,7 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
             warn("Cancelled.")
             _pause()
             return
-        
+
         ok("Initializing Auto-Healer pipeline...")
         # Targeted Sync with resume=False to force refreshing/backfilling the parquets
         hs.sync(to_heal, resume=False)
@@ -1871,7 +1906,9 @@ def menu_strategy_inspector(hist_dir: str) -> None:
     latest = analyzed_files[0]
     df = pd.read_csv(latest)
     df = _REPORTER._ensure_consensus(df)
-    print(f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}")  # noqa: E501
+    print(
+        f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}"
+    )
     print()
 
     symbol = input(f"  {dim('Enter NSE Symbol')} (e.g. TCS): ").strip().upper()
@@ -1888,7 +1925,7 @@ def menu_strategy_inspector(hist_dir: str) -> None:
         row = row_match.iloc[0]
         narrative = _REPORTER.generate_narrative(row)
         print()
-        print(f"  {cyan('▸')} {bold('AI Narrative:')}")  # noqa: E501
+        print(f"  {cyan('▸')} {bold('AI Narrative:')}")
         print(f"  {dim(narrative)}")
 
     _pause()
@@ -1913,7 +1950,9 @@ def menu_consensus_leaderboard(hist_dir: str) -> None:
 
     latest = analyzed_files[0]
     df = pd.read_csv(latest)
-    print(f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}")
+    print(
+        f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}"
+    )
 
     top_str = input(f"  {dim('How many top stocks to show')} [20]: ").strip()
     top_n = int(top_str) if top_str.isdigit() else 20

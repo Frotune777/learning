@@ -30,8 +30,12 @@ except ImportError:
     _HAS_ATA = False
 
 try:
-    from sklearn.neighbors import KNeighborsClassifier as _KNN  # type: ignore[import-untyped]
-    from sklearn.preprocessing import MinMaxScaler as _Scaler  # type: ignore[import-untyped]
+    from sklearn.neighbors import (
+        KNeighborsClassifier as _KNN,  # type: ignore[import-untyped]
+    )
+    from sklearn.preprocessing import (
+        MinMaxScaler as _Scaler,  # type: ignore[import-untyped]
+    )
 
     _HAS_SKLEARN = True
 except ImportError:
@@ -443,9 +447,7 @@ def calc_vcp(
             return {"action": "No VCP", "reason": "Could not compute contraction legs"}
 
         # VCP: each leg should be smaller than the previous (10% buffer allowed)
-        is_tightening = all(
-            legs[i + 1] <= legs[i] * 1.1 for i in range(len(legs) - 1)
-        )
+        is_tightening = all(legs[i + 1] <= legs[i] * 1.1 for i in range(len(legs) - 1))
 
         legs_str = ", ".join(f"{leg:.1f}%" for leg in legs)
         if is_tightening and legs[-1] < 10.0:
@@ -652,8 +654,10 @@ def calc_dual_supertrend(
         {'action': 'Hold', 'buy_dir': 1.0, 'sell_dir': 1.0}
     """
     min_bars = max(buy_atr, sell_atr) + 2
-    if df is None or len(df) < min_bars or not all(
-        c in df.columns for c in ("High", "Low", "Close")
+    if (
+        df is None
+        or len(df) < min_bars
+        or not all(c in df.columns for c in ("High", "Low", "Close"))
     ):
         return {"action": "Insufficient Data", "buy_dir": np.nan, "sell_dir": np.nan}
 
@@ -782,7 +786,7 @@ def calc_lorentzian(df: pd.DataFrame) -> dict[str, Any]:
     # --- Strategy A: advanced_ta LorentzianClassification ---
     if _HAS_ATA:
         try:
-            import talib as talib_  # noqa: PLC0415  (local import inside guard)
+            import talib as talib_  # (local import inside guard)
 
             data = df.copy().rename(
                 columns={
@@ -889,4 +893,3 @@ def calc_lorentzian(df: pd.DataFrame) -> dict[str, Any]:
     except Exception as exc:
         LOGGER.warning("Lorentzian sklearn fallback error: %s", exc)
         return {"action": "No Signal", "confidence": "Error"}
-

@@ -229,9 +229,9 @@ def cmd_screen(args: argparse.Namespace) -> None:
     top_csv: str = csv_files[0]
     LOGGER.info("Using Bhavcopy: %s", top_csv)
 
-    screener = StockScreener(processed_dir=args.hist_dir)
+    screener = StockScreener(processed_dir=processed_dir, hist_dir=args.hist_dir)
     screener.screen_stocks(top_250_path=top_csv, date_obj=datetime.now())
-    print(f"\n✔  Screening complete. Results saved to: {args.hist_dir}")
+    print(f"\n✔  Screening complete. Results saved to: {processed_dir}")
 
 
 def cmd_backtest(args: argparse.Namespace) -> None:

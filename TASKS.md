@@ -329,4 +329,45 @@ Description:
 - Add Data Quality status indicator card inside Streamlit Single-Stock Strategy Inspector page.
 - Execute full 187/187 test suite validation check cleanly.
 
+---
+
+### Task 5.4: Quantitative Data Quality and Indicator Audit
+**Status**: Complete
+**Priority**: HIGH
+**Assigned**: LLM
+**Estimated**: 3 hours
+**Actual**: 2.5 hours
+
+**Description**:
+Audit the integrity, completeness, and consistency of the historical price datasets and calculated indicators. Validate indicator math against standard formulas, detect anomalies, profile distributions, and output a detailed audit report.
+
+**Files Affected**:
+- `scratch/data_quality_audit.py`: Verify Parquet files, validate indicators against Pandas math, profile signals.
+- `scratch/detailed_audit.py`: Extract specific tickers and dates for nulls, extreme returns, and date ranges.
+- `tests/test_screener.py`: Fix cache directory resolution in yfinance fetcher tests.
+
+**Implementation Checklist**:
+- [x] Create comprehensive data quality audit script
+- [x] Validate TA-Lib math against standard Pandas math
+- [x] Profile signal distributions and trend status
+- [x] Resolve test failure regression checks in `tests/test_screener.py`
+- [x] Write detailed audit report to `analysis_results.md`
+- [x] Ruff checks pass cleanly
+
+**Dependencies**:
+- Blocked by: None
+- Blocking: None
+
+**Technical Notes**:
+Identified data gaps, corporate action adjustments (VEDL demerger), and stock-split tracking (LICI split of May 29, 2026) causing mathematical/data misalignment. Validated that TA-Lib SMA matches Pandas rolling mean exactly, and RSI/ATR align after warm-up periods.
+
+**Questions**:
+None.
+
+**Completion Criteria**:
+- [x] Verification scripts execute cleanly
+- [x] 187/187 tests pass successfully
+- [x] Audit report generated with DQS score
+
+
 

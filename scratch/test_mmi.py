@@ -1,6 +1,8 @@
-import requests
 import json
+
+import requests
 from bs4 import BeautifulSoup
+
 
 def main():
     headers = {
@@ -11,7 +13,7 @@ def main():
         print(f"Fetching {url}...")
         r = requests.get(url, headers=headers, timeout=10)
         print(f"Status Code: {r.status_code}")
-        
+
         soup = BeautifulSoup(r.text, "html.parser")
         script = soup.find("script", id="__NEXT_DATA__")
         if not script:
@@ -19,22 +21,22 @@ def main():
             # Print a snippet of HTML to debug
             print(r.text[:500])
             return
-            
+
         print("Parsing __NEXT_DATA__ script...")
         data = json.loads(script.string)
-        
+
         # Dump keys to see the structure
         print("Root keys:", list(data.keys()))
-        
+
         # Let's inspect props and search recursively for the MMI score
         props = data.get("props", {})
         page_props = props.get("pageProps", {})
         print("Page props keys:", list(page_props.keys()))
-        
+
         # Often the score is under pageProps['mmiInfo'] or similar
         mmi_info = page_props.get("mmiInfo", {})
         print("mmiInfo:", mmi_info)
-        
+
         # Let's search recursively for keys containing "score" or "mmi"
         def recursive_search(obj, path=""):
             results = []

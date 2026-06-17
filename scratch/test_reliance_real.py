@@ -23,7 +23,7 @@ params = {
     "timeInterval": "1",
 }
 
-print(f"Requesting RELIANCE using token '2885' from 2025-01-01...")
+print("Requesting RELIANCE using token '2885' from 2025-01-01...")
 try:
     resp = requests.get(url, params=params, headers=headers, timeout=15)
     print("Status code:", resp.status_code)

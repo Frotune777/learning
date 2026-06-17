@@ -90,17 +90,17 @@ def add_consensus_score(
     strategy_weights = {
         "STR_NIFTY_SHOP_ACTION": 1.0,
         "STR_BUY_LOW_ACTION": 1.0,
-        "STR_TURTLE_ACTION": 2.0,      # High weight (55D breakout)
-        "STR_RDX_ACTION": 2.0,         # High weight (Explosive momentum)
-        "STR_100SMA_ACTION": 1.0,      # Standard
-        "STR_ETF_SHOP_ACTION": 1.0,    # Standard
-        "STR_SUPER_BO_ACTION": 1.5,    # High-Medium
-        "STR_DMA_REV_ACTION": 1.5,     # High-Medium
-        "STR_DMA_NOSL_ACTION": 1.5,    # High-Medium
-        "STR_VCP_ACTION": 2.0,          # High weight (Minervini VCP)
-        "STR_TTM_ACTION": 2.0,          # High weight (TTM Squeeze coiled spring)
-        "STR_SUPERTREND_ACTION": 1.5,   # High-Medium Supertrend
-        "STR_LORENTZIAN_ACTION": 2.0,   # High weight ML
+        "STR_TURTLE_ACTION": 2.0,  # High weight (55D breakout)
+        "STR_RDX_ACTION": 2.0,  # High weight (Explosive momentum)
+        "STR_100SMA_ACTION": 1.0,  # Standard
+        "STR_ETF_SHOP_ACTION": 1.0,  # Standard
+        "STR_SUPER_BO_ACTION": 1.5,  # High-Medium
+        "STR_DMA_REV_ACTION": 1.5,  # High-Medium
+        "STR_DMA_NOSL_ACTION": 1.5,  # High-Medium
+        "STR_VCP_ACTION": 2.0,  # High weight (Minervini VCP)
+        "STR_TTM_ACTION": 2.0,  # High weight (TTM Squeeze coiled spring)
+        "STR_SUPERTREND_ACTION": 1.5,  # High-Medium Supertrend
+        "STR_LORENTZIAN_ACTION": 2.0,  # High weight ML
     }
     total_weight = sum(strategy_weights.values())
 
@@ -142,7 +142,7 @@ def add_consensus_score(
         cmp = row.get("CMP")
         dma_50 = row.get("DMA_50")
         dma_200 = row.get("DMA_200")
-        
+
         market_state = "SIDEWAYS"
         if pd.notna(cmp) and pd.notna(cmp) and cmp > 0:
             if pd.notna(dma_200) and dma_200 > 0:
@@ -159,12 +159,12 @@ def add_consensus_score(
                     market_state = "BULL RUN" if cmp > dma_200 else "BEAR TERRITORY"
             elif pd.notna(dma_50) and dma_50 > 0:
                 market_state = "BULL RUN" if cmp > dma_50 else "BEAR TERRITORY"
-        
+
         market_states.append(market_state)
 
         # 3. Dynamic Portfolio Action & Confidence
         net_score = weighted_bull - weighted_bear
-        
+
         if net_score >= 3.5:
             action = "STRONG BUY"
             conf = min(100.0, 50.0 + (net_score * 8.0))
@@ -180,7 +180,7 @@ def add_consensus_score(
         else:
             action = "NEUTRAL / SIDEWAYS"
             conf = 50.0
-            
+
         portfolio_actions.append(action)
         confidence_pcts.append(round(conf, 1))
 
@@ -217,5 +217,5 @@ def add_consensus_score(
     df["MARKET_STATE"] = market_states
     df["PORTFOLIO_ACTION"] = portfolio_actions
     df["CONFIDENCE_PCT"] = confidence_pcts
-    
+
     return df

@@ -129,7 +129,16 @@ class TestParseBhavcopyOhlcv:
             processed_dir=str(tmp_path),  # type: ignore[arg-type]
         )
         df = dl.parse_bhavcopy_ohlcv(sample_zip, datetime(2026, 5, 29))
-        expected_cols = {"Symbol", "Date", "Open", "High", "Low", "Close", "Volume", "Turnover"}
+        expected_cols = {
+            "Symbol",
+            "Date",
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume",
+            "Turnover",
+        }
         assert set(df.columns) == expected_cols
 
     def test_date_column_matches_trade_date(
