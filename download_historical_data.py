@@ -4,8 +4,6 @@ Historical Data Download Manager
 Download and manage historical data for all stocks
 """
 
-import os
-import sys
 from datetime import datetime
 
 from src.data.DataRepository import DataRepository

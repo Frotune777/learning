@@ -25,7 +25,6 @@ Open Tasks:
 - [ ] [MEDIUM] Implement complex market structure mapping (internal vs swing)
 """
 
-from typing import Dict, Tuple
 
 import pandas as pd
 

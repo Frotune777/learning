@@ -1,6 +1,6 @@
 # Project Continuation State
 
-**Last updated:** 2026-10-15 (after Unit 11)
+**Last updated:** 2026-10-15 (after Unit 12)
 **Repo root:** /mnt/Data/Python Project/learning
 **Canonical package:** `src/`
 
@@ -32,40 +32,33 @@
 | 8 | `10427fb` | Fix fo_ban parser bug + document main.py flag ordering + regression test |
 | 9 | `e5588c0` | Fix 2 NameErrors in menus.py + clean .gitignore + correct stale PROJECT_MAP note |
 | 10 | `da1b0d5` | Ruff UP+I modernization — 85 files, 2933-line diff, 0 imports deleted |
-| 11 | (see git log HEAD) | Fix src.ui ↔ src.data circular import; add cold-start regression test (16 tests); encode Rule 11 |
+| 11 | `77bfe06` | Fix src.ui ↔ src.data circular import; add cold-start regression test (16 tests); encode Rule 11 |
+| 12 | (see git log HEAD) | Harden 15 shims with __all__; F401 cleanup (120 findings → 0); UP038+UP031 fixes (10 manual) |
 
 ## Current Status
 
-- **Completed:** Units 1–11
-- **Current unit:** 11 — commit pending (Stage B)
-- **Next unit:** 12 — Targeted F401 (unused imports) cleanup with per-file review
-- **Project health:** ✅ 222/222 tests pass · ✅ 0 F821 · ✅ 0 warnings · ✅ 0 circular imports · ⚠️ ~62 F401 + ~57 residual UP findings deferred to Unit 12
+- **Completed:** Units 1–12
+- **Current unit:** 12 — commit pending (Stage B)
+- **Next unit:** 13 — Real pipeline smoke test (build-master + sync-history on real NSE data, sandboxed)
+- **Project health:** ✅ 222/222 tests pass · ✅ 0 F401 · ✅ 0 UP findings · ✅ 0 F821 · ✅ 0 warnings · ✅ 15 shims hardened with __all__ · ⚠️ E501 line-length (341) intentionally left as-is
 
-## Next Unit Plan (Unit 12 Preview)
+## Next Unit Plan (Unit 13 Preview)
 
-**Goal:** Careful F401 (unused imports) cleanup with manual review.
-
-**Why not bulk apply:**
-- ~62 F401 findings across the codebase
-- Some may be intentional re-exports (especially in `__init__.py` files or
-  shim files that re-export one name)
-- Ruff respects `__all__`, but shims without `__all__` need manual review
+**Goal:** First end-to-end run against **real** NSE data (Rule 11 compliance — no magic numbers).
 
 **Scope:**
-- Stage A: preview every F401 finding, grouped by file, showing the exact
-  import Ruff wants to remove
-- Flag any that look like intentional re-exports
-- Stage B: apply only the safe removals; add noqa comments where preservation
-  is intentional
+- Sandbox at `/tmp/learning_unit13_sandbox/`
+- `python main.py --data-dir /tmp/learning_unit13_sandbox build-master --delay 0.5`
+  (real NSE equity master fetch, ~30-60s)
+- `python main.py --data-dir ... --hist-dir /tmp/learning_unit13_sandbox/hist sync-history --limit 3 --delay 0.5`
+  (real OHLCV fetch for 3 symbols)
+- `python main.py --data-dir ... screen` (uses the freshly downloaded data)
+- Verify: parquet files created, screener output valid, no runtime errors
+- If Fyers token present, additionally test a live quote
+- **No dummy data.** All results come from NSE network + real Parquet files.
 
-**Also in Unit 12:**
-- Look at residual UP findings (~57) that need manual fixes:
-  UP035 (deprecated imports), UP038 (isinstance tuples), UP031 (%-format)
-- Decide: fix, suppress with # noqa, or leave as-is
-
-**Then Unit 13:**
-- Real pipeline smoke test (build-master + sync-history on a small sandbox
-  universe against live NSE data)
+**Then Unit 14 (optional):**
+- Port/revive pieces of archived `fyers/` if any specific functionality is needed (order routing, HSM streaming) — currently archived, not required.
 
 ## Key Decisions Log
 
@@ -106,6 +99,11 @@
 - **Unit 11:** Fix = move 3 top-level imports (`download_historical_data as dhd`, `repair_data as rd`, `from src.ui.StockUniverseSelector import StockUniverseSelector`) from module top into the methods that use them. Zero logic changes.
 - **Unit 11:** Added `tests/test_no_circular_imports.py` — 16 parametrized tests that each spawn a fresh Python subprocess and verify a specific import works from a cold start. This catches cycles that pytest's forgiving import order hides.
 - **Unit 11:** Encoded **Rule 11** in Working Conventions: tests must use real data sources (network, Parquet, captured fixtures). No fabricated dummy numbers.
+- **Unit 12:** Confirmed shims would have been wiped by F401 (Ruff proposed removing 16 imports across 15 one-line files). Fixed by hardening each shim with an explicit `__all__` declaration. This is now the standard pattern for all shim files.
+- **Unit 12:** Applied `ruff check --select F401 --fix` — 120 findings resolved (10 test, 5 root scripts, 89 src, 0 __init__, 0 shim post-hardening).
+- **Unit 12:** UP035 (47 findings) auto-resolved as a side effect of F401 — they were all on unused typing imports left over from Unit 10's UP006/007 modernization.
+- **Unit 12:** Fixed UP038 (isinstance tuple → `|` syntax, 5 instances) and UP031 (% format → f-string, 5 instances). No remaining UP findings.
+- **Unit 12:** Shims now have `__all__` = same pattern as `__init__.py` files. Future ruff runs will never strip them.
 
 ## Archive Layout
 
@@ -123,7 +121,7 @@ test_fyers.py
 .env copy.example
 legacy_shims/ (Momentum.py, Trend.py)
 legacy_tests/ (empty — reserved for future)
-audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt, pytest_unit7_postfix.txt, pyproject_before_unit7.toml, pytest_unit8_postfix.txt, pytest_unit9_postfix.txt, pytest_unit10_postfix.txt, pytest_unit11_postfix.txt)
+audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt, pytest_unit7_postfix.txt, pyproject_before_unit7.toml, pytest_unit8_postfix.txt, pytest_unit9_postfix.txt, pytest_unit10_postfix.txt, pytest_unit11_postfix.txt, pytest_unit12_postfix.txt)
 exports/ (Exported_Grouped_Strategies*.csv)
 debug/ (nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt)
 fix_scripts/ (fix_unit1.py)
@@ -152,8 +150,10 @@ See `docs/session/RESUME_PROMPT.md` — paste its contents at the start of any n
 - [x] Unit 10 — Ruff UP+I modernization applied across src/ + tests/ + root scripts
 - [x] Unit 11 — Circular import `src.ui` ↔ `src.data` fixed (regression test added)
 - [x] Unit 11 — 16 cold-start import tests added (test count 206 → 222)
-- [ ] Unit 12 — F401 unused-import review (~62 findings)
-- [ ] Unit 12 — Residual UP modernization: UP035, UP038, UP031
-- [ ] Unit 13 — Real pipeline smoke test
-- [ ] Unit 14 — Revive parts of `_archive/legacy_root/fyers/` if needed
+- [x] Unit 12 — F401 unused imports cleanup (120 findings → 0)
+- [x] Unit 12 — 15 shims hardened with `__all__`
+- [x] Unit 12 — UP038 + UP031 residual fixes (10 manual)
+- [x] Unit 12 — UP035 auto-resolved via F401
+- [ ] Unit 13 — Real pipeline smoke test (`build-master` + `sync-history` + `screen`)
+- [ ] Unit 14 (optional) — Revive parts of `_archive/legacy_root/fyers/` if needed
 - [ ] `.gitignore` has duplicated `.env` / `.env.*` / `data/**` entries (cosmetic)

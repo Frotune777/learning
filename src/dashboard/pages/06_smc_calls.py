@@ -12,7 +12,6 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.engine.smc import calculate_smc
-from src.engine.smc_decision import generate_smc_call
 from src.storage.smc_db import SMCDatabase
 
 try:

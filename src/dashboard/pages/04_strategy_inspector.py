@@ -221,9 +221,9 @@ with tab_lead:
             )
             .applymap(
                 lambda v: "background-color:#00c27c20;color:#00c27c;font-weight:700"
-                if isinstance(v, (int, float)) and v >= 4
+                if isinstance(v, int | float) and v >= 4
                 else "color:#7c83fd;font-weight:600"
-                if isinstance(v, (int, float)) and v > 0
+                if isinstance(v, int | float) and v > 0
                 else "color:#888",
                 subset=["CONSENSUS_SCORE"] if "CONSENSUS_SCORE" in disp.columns else [],
             )

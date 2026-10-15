@@ -4,12 +4,10 @@ Purpose: Calculates the Moving Average Slope angle and trend strength for a give
 Last Modified: 2026-05-27
 """
 
-from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from sklearn.linear_model import LinearRegression
 
 

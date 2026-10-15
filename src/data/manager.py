@@ -32,7 +32,7 @@ Open Tasks:
 """
 
 from collections.abc import Callable
-from typing import Any, List, Optional
+from typing import Any
 
 import pandas as pd
 from rich import box

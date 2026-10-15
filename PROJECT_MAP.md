@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 11)_
+_Last updated on 2026-10-15 (Unit 12)_
 
 ## Canonical package: `src/`
 
@@ -48,8 +48,9 @@ _Last updated on 2026-10-15 (Unit 11)_
   * `mypy` excludes `_archive` and `src/dashboard` (dynamic Streamlit imports)
   * `pytest.norecursedirs` excludes `_archive`, `data`, `.venv`
   * `pytest.filterwarnings` silences 2 third-party warnings (advanced_ta, sklearn)
-  * Ruff UP+I rules applied (Unit 10) — 0 remaining findings in this category
-  * Remaining ruff debt: E501 (line length), F401 (unused imports), W*, RUF* — F401 handled in Unit 12
+  * Ruff UP+I rules applied (Unit 10) & UP residual fixes (Unit 12) — 0 remaining UP findings
+  * Ruff F401 cleanup applied (Unit 12) — 0 remaining F401 findings
+  * Remaining ruff debt: E501 (line length), W* (whitespace), etc.
 - `pyproject.toml` baseline snapshot: `_archive/audits/pyproject_before_unit7.toml`
 
 ## Import Hygiene
@@ -59,6 +60,9 @@ _Last updated on 2026-10-15 (Unit 11)_
   `check_data_sources.py`, `nse_data_fetcher.py`, `interactive_scanner.py`) are
   **never** imported at module top-level from inside `src/`. Any reference to them
   from `src/` must be a function-local import.
+- All shim files (`src/data/DataRepository.py`, `src/ui/VisualUI.py`, etc.)
+  declare their public API with `__all__ = [...]`. This prevents F401 and
+  future linters from stripping the re-export line.
 - Regression test: `tests/test_no_circular_imports.py` spawns fresh subprocesses
   for 16 import statements to verify cold-start behavior.
 
@@ -78,6 +82,7 @@ _Last updated on 2026-10-15 (Unit 11)_
 - `_archive/audits/pytest_unit9_postfix.txt`  — post-Unit-9 test baseline (206 tests)
 - `_archive/audits/pytest_unit10_postfix.txt` — pytest baseline after Unit 10 UP+I changes
 - `_archive/audits/pytest_unit11_postfix.txt` — pytest baseline after Unit 11 (222 tests)
+- `_archive/audits/pytest_unit12_postfix.txt` — pytest baseline after Unit 12 (222 tests, 0 F401, 0 UP)
 - `_archive/audits/pyproject_before_unit7.toml` — pre-Unit-7 config snapshot
 - `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
 - `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
@@ -103,7 +108,10 @@ _Last updated on 2026-10-15 (Unit 11)_
 - [x] Unit 10 — Ruff UP+I modernization applied
 - [x] Unit 11 — Circular import src.ui ↔ src.data fixed (regression test added)
 - [x] Unit 11 — Cold-start import tests added (16 new tests, total 222)
-- [ ] Unit 12 — F401 unused-import review
+- [x] Unit 12 — F401 cleanup complete (0 remaining)
+- [x] Unit 12 — Shims protected with __all__ (15 files)
+- [x] Unit 12 — Residual UP038 + UP031 fixes applied
+- [ ] Unit 13 — Real pipeline smoke test
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
 
 ## Credentials policy

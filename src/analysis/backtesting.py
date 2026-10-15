@@ -10,7 +10,6 @@ import sys
 if os.path.join(os.getcwd(), "src") not in sys.path:
     sys.path.append(os.path.join(os.getcwd(), "src"))
 
-from typing import Dict, List
 
 import numpy as np
 import pandas as pd

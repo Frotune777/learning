@@ -12,7 +12,6 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.engine.lux_ifvg_sweeps import calculate_sweeps_ifvgs
-from src.engine.lux_model_2022 import calculate_model_2022
 from src.engine.lux_nwe import calculate_nwe
 from src.engine.lux_savgol import calculate_savgol
 from src.engine.lux_volume_profile import calculate_volume_profile

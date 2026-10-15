@@ -5,8 +5,6 @@ Shows exactly what's being fixed with ETAs
 """
 
 import argparse
-import os
-import sys
 
 from tqdm import tqdm
 

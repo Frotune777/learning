@@ -55,9 +55,7 @@ from src.cli.formatters import (
     err,
     green,
     ok,
-    red,
     tip,
-    warn,
 )
 from src.core.config import Config
 from src.core.symbol_utils import (

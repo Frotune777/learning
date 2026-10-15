@@ -6,7 +6,6 @@ Purpose: GUI for Fyers authentication, token generation, live API testing, and s
 from __future__ import annotations
 
 import os
-import sys
 from datetime import datetime
 
 import pandas as pd

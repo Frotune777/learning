@@ -24,7 +24,6 @@ from typing import Any
 import pandas as pd
 
 from src.data.fetcher.prices.base import AbstractPriceFetcher
-from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
 from src.nse_bhavcopy.ta_indicators import add_ta_indicators
 from src.storage.sync_registry import SyncRegistry, _last_trading_day
 

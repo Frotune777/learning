@@ -39,7 +39,7 @@ import io
 import os
 import random
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import pandas as pd
 import requests

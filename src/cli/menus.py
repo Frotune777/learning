@@ -2339,7 +2339,6 @@ def menu_query_engine(hist_dir: str, data_dir: str) -> None:
 
 
 def menu_train_ml(hist_dir: str, data_dir: str) -> None:
-    import os
 
     from src.engine.orchestrator import ScanOrchestrator
     orchestrator = ScanOrchestrator()
@@ -2348,7 +2347,6 @@ def menu_train_ml(hist_dir: str, data_dir: str) -> None:
 
 
 def menu_run_optimizer(hist_dir: str, data_dir: str) -> None:
-    import os
 
     from src.engine.orchestrator import ScanOrchestrator
     orchestrator = ScanOrchestrator()

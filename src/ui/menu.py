@@ -2,7 +2,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, List
+from typing import Any
 
 from rich import box
 from rich.console import Console

@@ -1,7 +1,6 @@
 import logging
 from collections import defaultdict
 
-import numpy as np
 import pandas as pd
 
 from src.core.signal import Signal

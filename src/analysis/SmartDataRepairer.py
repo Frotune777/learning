@@ -4,11 +4,9 @@ Smart Data Repairer
 Repair data with partial fetches and audit logging
 """
 
-import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List
 
 import pandas as pd
 

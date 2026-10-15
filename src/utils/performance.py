@@ -4,7 +4,7 @@ import datetime
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class PerformanceTracker:

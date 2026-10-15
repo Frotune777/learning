@@ -6,9 +6,8 @@ Verifies pivot detection, BOS/CHoCH, Order Blocks, FVGs, and Premium/Discount zo
 import numpy as np
 import pandas as pd
 import polars as pl
-import pytest
 
-from src.engine.smc import BEARISH, BULLISH, calculate_smc
+from src.engine.smc import BULLISH, calculate_smc
 
 
 def test_smc_output_structure():

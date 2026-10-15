@@ -7,7 +7,6 @@ Accounts for market holidays and weekends
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -97,7 +96,7 @@ class TAValidator:
                 full_val = full[key]
 
                 # Skip non-numeric values
-                if not isinstance(inc_val, (int, float, np.number)):
+                if not isinstance(inc_val, int | float | np.number):
                     continue
 
                 result["fields_checked"] += 1

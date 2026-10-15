@@ -4,9 +4,7 @@ Purpose: Unit tests for the ScoringEngine multi-factor scorer.
 Last Modified: 2026-06-01
 """
 
-import numpy as np
 import pandas as pd
-import pytest
 
 from src.scoring.scoring_engine import ScoringEngine
 

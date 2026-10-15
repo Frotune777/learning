@@ -27,7 +27,7 @@ Open Tasks:
 - [ ] [MEDIUM] Add comprehensive unit tests for all patterns
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -291,12 +291,12 @@ class Screener:
 
         if pct_change > 0.2:
             pct_change_str = (
-                colorText.GREEN + (" (%.1f%%)" % pct_change) + colorText.END
+                colorText.GREEN + f" ({pct_change:.1f}%)" + colorText.END
             )
         elif pct_change < -0.2:
-            pct_change_str = colorText.FAIL + (" (%.1f%%)" % pct_change) + colorText.END
+            pct_change_str = colorText.FAIL + f" ({pct_change:.1f}%)" + colorText.END
         else:
-            pct_change_str = colorText.WARN + (" (%.1f%%)" % pct_change) + colorText.END
+            pct_change_str = colorText.WARN + f" ({pct_change:.1f}%)" + colorText.END
 
         verifyStageTwo = True
         if self.configManager.stageTwo and len(data) > 250:
@@ -307,11 +307,11 @@ class Screener:
 
         if ltp >= minLTP and ltp <= maxLTP and verifyStageTwo:
             screenDict["LTP"] = (
-                colorText.GREEN + ("%.2f" % ltp) + pct_change_str + colorText.END
+                colorText.GREEN + f"{ltp:.2f}" + pct_change_str + colorText.END
             )
             return True
         screenDict["LTP"] = (
-            colorText.FAIL + ("%.2f" % ltp) + pct_change_str + colorText.END
+            colorText.FAIL + f"{ltp:.2f}" + pct_change_str + colorText.END
         )
         return False
 

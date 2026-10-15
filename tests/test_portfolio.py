@@ -4,10 +4,8 @@ Purpose: Unit tests for simulated Portfolio and PortfolioEngine constraints.
 Last Modified: 2026-06-01
 """
 
-import pandas as pd
-import pytest
 
-from src.portfolio.portfolio_engine import Portfolio, PortfolioEngine
+from src.portfolio.portfolio_engine import Portfolio
 
 
 def test_portfolio_initialisation() -> None:

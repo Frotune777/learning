@@ -7,14 +7,13 @@ setup review, and trade validation.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from src.core.config import SCREENER_STRATEGIES, Config
+from src.core.config import Config
 from src.engine.lux_bos_pullback import calculate_valid_bos_pullback
 from src.engine.lux_ifvg_sweeps import calculate_sweeps_ifvgs
 from src.engine.lux_nwe import calculate_nwe

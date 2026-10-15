@@ -32,7 +32,7 @@ Related Files:
 
 from collections.abc import Generator
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 from rich import box

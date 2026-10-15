@@ -19,7 +19,6 @@ import pandas as pd
 import streamlit as st
 
 from src.scanners.unified_scanner import (
-    SCANNER_GROUPS,
     compile_signals_to_dataframe,
     run_unified_scanner,
 )

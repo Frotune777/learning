@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src.nse_bhavcopy.backtester import NSEEventBacktester, VectorBTBacktester
+from src.nse_bhavcopy.backtester import NSEEventBacktester
 from src.nse_bhavcopy.ta_indicators import add_ta_indicators
 
 

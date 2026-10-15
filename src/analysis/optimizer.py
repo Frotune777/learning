@@ -5,7 +5,6 @@ Optimizes technical indicator parameters using Backtesting.py
 
 import json
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -160,9 +159,9 @@ class StrategyOptimizer:
             # Convert numpy types to python native types for JSON serialization
             clean_params = {}
             for k, v in params.items():
-                if isinstance(v, (np.integer, np.int64, np.int32)):
+                if isinstance(v, np.integer | np.int64 | np.int32):
                     clean_params[k] = int(v)
-                elif isinstance(v, (np.floating, np.float64, np.float32)):
+                elif isinstance(v, np.floating | np.float64 | np.float32):
                     clean_params[k] = float(v)
                 else:
                     clean_params[k] = v

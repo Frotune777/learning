@@ -1,5 +1,4 @@
 import pandas as pd
-import pytest
 
 from src.engine.smc import calculate_smc
 from src.engine.smc_decision import TradingCall, generate_smc_call
