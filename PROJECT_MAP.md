@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 10)_
+_Last updated on 2026-10-15 (Unit 11)_
 
 ## Canonical package: `src/`
 
@@ -49,8 +49,18 @@ _Last updated on 2026-10-15 (Unit 10)_
   * `pytest.norecursedirs` excludes `_archive`, `data`, `.venv`
   * `pytest.filterwarnings` silences 2 third-party warnings (advanced_ta, sklearn)
   * Ruff UP+I rules applied (Unit 10) — 0 remaining findings in this category
-  * Remaining ruff debt: E501 (line length), F401 (unused imports), W*, RUF* — F401 handled in Unit 11
+  * Remaining ruff debt: E501 (line length), F401 (unused imports), W*, RUF* — F401 handled in Unit 12
 - `pyproject.toml` baseline snapshot: `_archive/audits/pyproject_before_unit7.toml`
+
+## Import Hygiene
+
+- No circular imports between `src/` subpackages (verified Unit 11).
+- Root-level scripts (`main.py`, `download_historical_data.py`, `repair_data.py`,
+  `check_data_sources.py`, `nse_data_fetcher.py`, `interactive_scanner.py`) are
+  **never** imported at module top-level from inside `src/`. Any reference to them
+  from `src/` must be a function-local import.
+- Regression test: `tests/test_no_circular_imports.py` spawns fresh subprocesses
+  for 16 import statements to verify cold-start behavior.
 
 ## Archived (do NOT delete — reference only)
 - `_archive/merge_this/`                 — old Screeni-py copy (imports `screeni.*`)
@@ -67,6 +77,7 @@ _Last updated on 2026-10-15 (Unit 10)_
 - `_archive/audits/pytest_unit8_postfix.txt`  — pytest baseline after Unit 8 fixes (206 tests)
 - `_archive/audits/pytest_unit9_postfix.txt`  — post-Unit-9 test baseline (206 tests)
 - `_archive/audits/pytest_unit10_postfix.txt` — pytest baseline after Unit 10 UP+I changes
+- `_archive/audits/pytest_unit11_postfix.txt` — pytest baseline after Unit 11 (222 tests)
 - `_archive/audits/pyproject_before_unit7.toml` — pre-Unit-7 config snapshot
 - `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
 - `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
@@ -90,7 +101,9 @@ _Last updated on 2026-10-15 (Unit 10)_
 - [x] Unit 9 — `src/cli/menus.py` NameErrors fixed (LOGGER + Path)
 - [x] Unit 9 — `.gitignore` cleaned (deduped, broken line repaired)
 - [x] Unit 10 — Ruff UP+I modernization applied
-- [ ] Unit 11 — Targeted F401 review (~62 findings)
+- [x] Unit 11 — Circular import src.ui ↔ src.data fixed (regression test added)
+- [x] Unit 11 — Cold-start import tests added (16 new tests, total 222)
+- [ ] Unit 12 — F401 unused-import review
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
 
 ## Credentials policy

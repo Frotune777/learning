@@ -39,14 +39,9 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-import download_historical_data as dhd
-
-# Centralized imports for testability
-import repair_data as rd
 from src.data.DataHealthCheck import DataHealthCheck
 from src.data.DataIndexManager import DataIndexManager
 from src.data.HolidayFetcher import HolidayFetcher
-from src.ui.StockUniverseSelector import StockUniverseSelector
 
 console = Console()
 
@@ -166,6 +161,8 @@ class DataManagementService:
         universe = input("\nSelect universe (default: 1): ").strip() or "1"
         dry_run = input("\nDry run mode? (y/n, default: n): ").strip().lower() == "y"
 
+        import repair_data as rd
+
         rd.repair_data(
             universe=universe, timeframe="1d", dry_run=dry_run, interactive=True
         )
@@ -221,6 +218,8 @@ class DataManagementService:
             "\nSelect universe filter for reprocessing:\n  1 > Process ALL missing stocks\n  2 > Process only Nifty 50 missing stocks"
         )
         if (input("\nSelect (default: 1): ").strip() or "1") == "2":
+            from src.ui.StockUniverseSelector import StockUniverseSelector
+
             selector = StockUniverseSelector()
             nifty50 = set(selector.get_stocks("1"))
             stocks_to_scan = [s for s in stocks_to_scan if s in nifty50]
@@ -269,6 +268,8 @@ class DataManagementService:
             .lower()
             == "y"
         )
+        import download_historical_data as dhd
+
         dhd.download_historical_data(
             universe=universe, period=period, timeframes=["1d"], force=force
         )
