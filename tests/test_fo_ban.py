@@ -123,3 +123,34 @@ def test_is_banned_checks() -> None:
     assert manager.is_banned("zeel", ban_list)
     assert manager.is_banned("ZEEL.NS", ban_list)
     assert not manager.is_banned("INFY", ban_list)
+
+
+def test_fo_ban_parses_new_nse_format() -> None:
+    """
+    Verify parser handles the 2026+ NSE format, which prefixes each
+    symbol with a numeric row index (e.g. "1,AMBUJACEM").
+
+    Regression test for Unit 8 bug where the parser picked up the
+    row index instead of the ticker symbol.
+    """
+    csv_content = (
+        "Securities in Ban For Trade Date 15-OCT-2026:\n"
+        "1,AMBUJACEM\n"
+        "2,KAYNES\n"
+        "3,SAIL\n"
+    )
+    manager = FOBanManager(cache_dir="data")
+    symbols = manager._parse_csv_content(csv_content)
+
+    # Actual tickers must be present
+    assert "AMBUJACEM" in symbols
+    assert "KAYNES" in symbols
+    assert "SAIL" in symbols
+
+    # Row indices must NOT be present
+    assert "1" not in symbols
+    assert "2" not in symbols
+    assert "3" not in symbols
+
+    # Exactly 3 symbols parsed
+    assert len(symbols) == 3

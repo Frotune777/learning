@@ -41,7 +41,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nse-pipeline",
         description="NSE Data Pipeline: build master → sync history → screen stocks",
-        epilog="Use 'menu' command for interactive mode (default).",
+        epilog=(
+            "Use 'menu' command for interactive mode (default).\n"
+            "Global flags (--data-dir, --hist-dir, --dry-run) must appear BEFORE\n"
+            "the subcommand. Example:\n"
+            "  python main.py --data-dir /tmp/foo fo-ban\n"
+            "  python main.py --data-dir /tmp/foo smc-calls"
+        ),
     )
     parser.add_argument(
         "--data-dir",

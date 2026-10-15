@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 7)_
+_Last updated on 2026-10-15 (Unit 8)_
 
 ## Canonical package: `src/`
 
@@ -62,6 +62,7 @@ _Last updated on 2026-10-15 (Unit 7)_
 - `_archive/audits/pytest_unit5_baseline.txt` — full pytest -v output of the 205/205 pass baseline
 - `_archive/audits/pytest_unit6_postfix.txt`  — pytest baseline after Unit 6 fixes
 - `_archive/audits/pytest_unit7_postfix.txt`  — post-Unit-7 test baseline
+- `_archive/audits/pytest_unit8_postfix.txt`  — pytest baseline after Unit 8 fixes (206 tests)
 - `_archive/audits/pyproject_before_unit7.toml` — pre-Unit-7 config snapshot
 - `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
 - `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
@@ -78,7 +79,10 @@ _Last updated on 2026-10-15 (Unit 7)_
 - [x] Unit 6 — `src/ml/selector.py` cleanup
 - [x] Unit 6 — Parallel test fork() warnings eliminated
 - [x] Unit 7 — `pyproject.toml`: remove stale `scratch`/`fyers` excludes
-- [ ] Unit 8 — Duplicate validator methods in `src/engine/screener.py`
+- [x] Unit 8 — `fo_ban.py` parser bug fixed (regression test added)
+- [x] Unit 8 — `main.py` epilog documents global flag ordering
+- [x] Unit 8 — All 13 CLI subcommands validated end-to-end (0 failures)
+- [ ] Unit 9 — Decide final cleanup track (ruff format vs pipeline smoke test vs docs)
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
 
 ## Credentials policy

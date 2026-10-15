@@ -139,22 +139,32 @@ class FOBanManager:
         for row in reader:
             if not row:
                 continue
-            # Typical format has symbol as the second column or matching pattern
-            # Let's search for columns that look like valid symbols
+
+            # Skip the header row emitted by NSE's 2026+ format
+            # ("Securities in Ban For Trade Date DD-MMM-YYYY:")
+            # and the legacy header ("SYMBOL", "SECURITY NAME")
+            first_cell = row[0].strip() if row else ""
+            if not first_cell:
+                continue
+            if "Securities in Ban" in first_cell or first_cell.upper() == "SYMBOL":
+                continue
+
+            # Find the symbol: first cell that is alphanumeric, not purely
+            # numeric (skip row index in the "1,SYMBOL" format), and not a
+            # known header keyword.
             for col in row:
                 val = col.strip().upper()
-                # NSE symbols contain alphanumeric characters and
-                # are typically 3-10 chars.
-                # We skip headers like 'SYMBOL', 'SECURITY NAME'
-                if (
-                    val
-                    and val not in ("SYMBOL", "SECURITY NAME", "SERIES", "DATE")
-                    and val.isalnum()
-                ):
-                    # Check if this row looks like F&O ban format row
-                    # Usually, the symbol is one of the fields in a valid line
+                if not val:
+                    continue
+                if val.isdigit():
+                    # Skip the numeric row-index column used by NSE since 2026
+                    continue
+                if val in ("SYMBOL", "SECURITY NAME", "SERIES", "DATE"):
+                    continue
+                if val.isalnum():
                     symbols.append(val)
                     break
+
         return list(set(symbols))
 
     def is_banned(self, symbol: str, ban_list: list[str]) -> bool:
