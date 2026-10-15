@@ -13,31 +13,35 @@ import sys
 if os.path.join(os.getcwd(), "src") not in sys.path:
     sys.path.append(os.path.join(os.getcwd(), "src"))
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
 from src.analysis.MultiTimeframeBacktest import MultiTimeframeBacktest
-# from src.scanners.AdvancedStrategies import (
-#     RSIMeanReversionStrategy,
-#     SuperTrendOBVStrategy,
-#     TrendFollowingStrategy,
-# )
 
 
 class AutoStrategySelector:
     """
-    Automatically selects best strategy for a stock
+    Automatically selects the best strategy for a stock.
+
+    Note:
+        `self.strategies` is an empty registry by default. Populate it with
+        `{display_name: StrategyClass}` entries (StrategyClass must inherit
+        from backtesting.Strategy) before calling `select_best_strategy()`
+        or `compare_all_strategies()`.
+
+        `suggest_strategy_by_market_condition()` works without any registered
+        strategies — it derives its recommendation from price action alone.
     """
 
     def __init__(self):
         self.backtester = MultiTimeframeBacktest()
 
-        # Available strategies
-        self.strategies = {
-            # "TrendFollowing": TrendFollowingStrategy,
-            # "SuperTrendOBV": SuperTrendOBVStrategy,
-            # "RSIMeanReversion": RSIMeanReversionStrategy,
-        }
+        # Strategy registry — populate before calling select_best_strategy()
+        # or compare_all_strategies(). Keys are display names, values are
+        # classes that inherit from backtesting.Strategy.
+        self.strategies: dict[str, Any] = {}
 
     def select_best_strategy(
         self,

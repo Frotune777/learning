@@ -1522,6 +1522,8 @@ class Screener:
         self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
     ) -> bool:
         try:
+            patterns_found: list[str] = []
+
             # 1. Existing pandas_ta based strategy
             pattern_pta = self.strategies["candle_patterns"].analyze(data)
 

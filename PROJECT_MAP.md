@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 5)_
+_Last updated on 2026-10-15 (Unit 6)_
 
 ## Canonical package: `src/`
 
@@ -51,6 +51,7 @@ _Last updated on 2026-10-15 (Unit 5)_
 - `_archive/legacy_tests/`               — old test scripts
 - `_archive/audits/`                     — project_audit.txt, project_backup.txt, project_bundle.txt
 - `_archive/audits/pytest_unit5_baseline.txt` — full pytest -v output of the 205/205 pass baseline
+- `_archive/audits/pytest_unit6_postfix.txt`  — pytest baseline after Unit 6 fixes
 - `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
 - `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
 - `_archive/fix_scripts/`                — fix_unit1.py (one-time migration helper)
@@ -61,10 +62,10 @@ _Last updated on 2026-10-15 (Unit 5)_
 - [x] Unit 4 — `src/scanners/__init__.py` — BreakoutStrategy shadow removed
 - [x] Unit 4 — Case-duplicate files `Momentum.py` / `Trend.py` archived
 - [x] Unit 5 — Full pytest baseline: 205/205 PASSED, 0 errors, 19 warnings (2 ours)
-- [ ] Unit 6 — `tests/test_fyers_fetcher.py:114` — `datetime.utcnow()` deprecated
-- [ ] Unit 6 — `tests/engine/test_parallel_engine.py` — `fork()` on multithreaded process
-- [ ] Unit 6 — `src/engine/screener.py::validateCandlePatterns` — `patterns_found` undefined
-- [ ] Unit 6 — `src/ml/selector.py` — strategies commented out
+- [x] Unit 6 — `datetime.utcnow()` removed from src + tests
+- [x] Unit 6 — `src/engine/screener.py::validateCandlePatterns` bug fixed
+- [x] Unit 6 — `src/ml/selector.py` cleanup
+- [x] Unit 6 — Parallel test fork() warnings eliminated
 - [ ] Unit 7 — `pyproject.toml`: remove stale `scratch`/`fyers` excludes
 - [ ] Unit 8 — Duplicate validator methods in `src/engine/screener.py`
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed

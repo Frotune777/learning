@@ -1,3 +1,16 @@
+
+import multiprocessing
+import pytest
+
+# Test-scoped start method and deprecation filter:
+# Python 3.13 warns when fork() is used in multi-threaded pytest runner.
+# Fork is required for micro-benchmarks (test_performance_improvement) to avoid
+# process spawn overhead exceeding task duration.
+multiprocessing.set_start_method("fork", force=True)
+pytestmark = pytest.mark.filterwarnings(
+    r"ignore:This process .* is multi-threaded, use of fork\(\) may lead to deadlocks:DeprecationWarning"
+)
+
 import time
 from datetime import datetime
 

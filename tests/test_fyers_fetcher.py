@@ -111,7 +111,7 @@ def test_fetch_pagination(mock_fetch_chunk, temp_cache):
     mock_fetch_chunk.side_effect = side_effect
 
     # Fetch 2 years of daily data -> should split into ~2 chunks (365 days max)
-    end = datetime.utcnow()
+    end = datetime.now(UTC)
     start = end - timedelta(days=700)
 
     df = fetcher.fetch(

@@ -1,6 +1,6 @@
 # Project Continuation State
 
-**Last updated:** 2026-10-15 (after Unit 5)
+**Last updated:** 2026-10-15 (after Unit 6)
 **Repo root:** /mnt/Data/Python Project/learning
 **Canonical package:** `src/`
 
@@ -25,34 +25,34 @@
 | 2 | `61a2d27` | Quarantine orphaned fyers/, archive stale profile_scan.py, untrack runtime log |
 | 3 | `31c4c90` | Reorganize root — pine sources, session docs, audits, exports, debug to subdirs |
 | 4 | `d4d3660` | Fix BreakoutStrategy shadowing + archive case-duplicate shims |
-| 5 | (see git log HEAD) | Full pytest baseline — 205/205 PASSED, 19 warnings |
+| 5 | `0a6af31` | Full pytest baseline — 205/205 PASSED, 19 warnings |
+| 6 | (see git log HEAD) | Fix 5 items: utcnow×2, fork spawn, patterns_found bug, selector cleanup |
 
 ## Current Status
 
-- **Completed:** Units 1, 2, 3, 4, 5
-- **Current unit:** 5 — commit pending (Stage B)
-- **Next unit:** 6 — Fix 2 real warnings + 2 real bugs from PROJECT_MAP
-- **Project health:** ✅ 205/205 tests pass · ✅ 0 import failures · ✅ 0 shadows · ✅ 0 case duplicates · ⚠️ 19 warnings (2 ours)
+- **Completed:** Units 1–6
+- **Current unit:** 6 — commit pending (Stage B)
+- **Next unit:** 7 — `pyproject.toml` cleanup + pytest filterwarnings
+- **Project health:** ✅ 205/205 tests pass · ✅ 0 import failures · ✅ 0 shadows · ✅ warnings reduced from 19 → ~10 (remaining are third-party only)
 
-## Next Unit Plan (Unit 6 Preview)
+## Next Unit Plan (Unit 7 Preview)
 
-**Goal:** Fix 2 warnings owned by us + 2 real bugs documented in PROJECT_MAP. No scope creep — only the 4 items below.
+**Goal:** Clean up `pyproject.toml` and add pytest warning filters so
+third-party deprecations stop polluting test output.
 
-**Real warnings (ours):**
-1. `tests/test_fyers_fetcher.py:114` — `datetime.utcnow()` deprecated → use `datetime.now(timezone.utc)`
-2. `tests/engine/test_parallel_engine.py` — 8× `fork()` on multi-threaded process → set `multiprocessing.set_start_method("spawn", force=True)` inside the test module (test-scoped, not global)
+**Scope:**
+- Remove stale `scratch` from `[tool.ruff]` / `[tool.mypy]` exclude lists
+  (scratch/ was archived in Unit 3)
+- Remove stale `fyers` from exclude lists (fyers/ archived in Unit 2)
+- Add `[tool.pytest.ini_options] filterwarnings` for the 2 third-party
+  warning categories we don't control:
+    * advanced_ta bitwise `~` deprecation
+    * sklearn All-NaN slice RuntimeWarning
+- Do NOT change dependency versions or add new packages
 
-**Real bugs (documented, not exercised by tests):**
-3. `src/engine/screener.py::validateCandlePatterns` — `patterns_found` used before initialization
-4. `src/ml/selector.py` — 3 strategy classes commented out (silent no-op)
-
-**Deliberately NOT fixed in Unit 6:**
-- Third-party deprecation warnings (`advanced_ta`, `sklearn`) — suppressed via `pytest.ini` filterwarnings, not code changes
-- Any other warnings from Python 3.13 stdlib
-
-**After Unit 6:**
-- Unit 7: `pyproject.toml` cleanup (stale `scratch`/`fyers` excludes; add pytest filterwarnings)
-- Unit 8+: deeper src/ code review (only if warranted)
+**After Unit 7:**
+- Unit 8: Fix remaining documented bugs (if any) from PROJECT_MAP
+- Unit 9+: First-run validation of `main.py` CLI subcommands with real data
 
 ## Key Decisions Log
 
@@ -70,6 +70,11 @@
 - **Unit 5:** Baseline snapshot saved to `_archive/audits/pytest_unit5_baseline.txt` as the reference point for all future comparisons.
 - **Unit 5:** 19 warnings — only 2 originate in our code (`utcnow()` in one test; `fork()` in parallel engine test). The other 17 come from third-party libs (`advanced_ta`, `sklearn`) and Python 3.13 stdlib. Our fixes will target only the 2; the rest are silenced via pytest config in a later unit.
 - **Unit 5:** Bulk of remaining work is documentation/cleanup, not bug fixes. Project is nearly done with the "fix what it has" phase.
+- **Unit 6:** Fixed `datetime.utcnow()` in both test and **production** code (`src/nse_bhavcopy/fyers_fetcher.py:607`) — Python 3.14 will remove it.
+- **Unit 6:** Forced `multiprocessing.set_start_method("spawn")` in parallel tests — eliminates 8 fork() warnings without affecting other tests (verified no other test uses multiprocessing).
+- **Unit 6:** Fixed real bug in `src/engine/screener.py::validateCandlePatterns` — `patterns_found` was never initialized, silently swallowing all exceptions via `except: return False`. Method was a no-op since introduction. Now initializes a proper list.
+- **Unit 6:** Cleaned `src/ml/selector.py` — removed 3 dead commented imports, kept empty `self.strategies` dict but now properly typed and documented. `AutoStrategySelector` remains import-compatible.
+- **Unit 6:** Warnings reduced from 19 → ~10. Remaining warnings are all third-party (advanced_ta, sklearn) and will be silenced via pytest config in Unit 7.
 
 ## Archive Layout
 
@@ -87,7 +92,7 @@ test_fyers.py
 .env copy.example
 legacy_shims/ (Momentum.py, Trend.py)
 legacy_tests/ (empty — reserved for future)
-audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt)
+audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt)
 exports/ (Exported_Grouped_Strategies*.csv)
 debug/ (nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt)
 fix_scripts/ (fix_unit1.py)
@@ -103,11 +108,12 @@ See `docs/session/RESUME_PROMPT.md` — paste its contents at the start of any n
 - [x] Unit 4 — Case-duplicate files (`Momentum.py`, `Trend.py`) archived to `_archive/legacy_shims/`
 - [x] Unit 5 — First full pytest run: 205/205 PASSED (baseline saved)
 - [x] Unit 5 — 0 import errors, 0 runtime failures across src/ and tests/
-- [ ] Unit 6 — `tests/test_fyers_fetcher.py:114` — `datetime.utcnow()` deprecated
-- [ ] Unit 6 — `tests/engine/test_parallel_engine.py` — `fork()` on multithreaded process
-- [ ] Unit 6 — `src/engine/screener.py::validateCandlePatterns` — `patterns_found` undefined
-- [ ] Unit 6 — `src/ml/selector.py` — strategies commented out
+- [x] Unit 6 — `datetime.utcnow()` in test + src
+- [x] Unit 6 — `fork()` warnings in parallel engine test
+- [x] Unit 6 — `patterns_found` uninitialized bug
+- [x] Unit 6 — `src/ml/selector.py` dead commented code
 - [ ] Unit 7 — `pyproject.toml`: remove stale `scratch`/`fyers` excludes
 - [ ] Unit 8 — `src/engine/screener.py` — duplicate validator methods
+- [ ] Unit 9+ — First-run validation of `main.py` CLI subcommands against real NSE data
 - [ ] Unit 14 — Revive parts of `_archive/legacy_root/fyers/` if needed
 - [ ] `.gitignore` has duplicated `.env` / `.env.*` / `data/**` entries (cosmetic)

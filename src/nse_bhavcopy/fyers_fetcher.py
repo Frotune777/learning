@@ -604,7 +604,7 @@ class FyersFetcher(AbstractPriceFetcher):
         if to_date:
             end_dt = datetime.fromtimestamp(to_date, tz=UTC).replace(tzinfo=None)
         else:
-            end_dt = datetime.utcnow()
+            end_dt = datetime.now(UTC)
 
         if from_date:
             start_dt = datetime.fromtimestamp(from_date, tz=UTC).replace(tzinfo=None)
