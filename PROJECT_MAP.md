@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 2)_
+_Last updated on 2026-10-15 (Unit 3)_
 
 ## Canonical package: `src/`
 
@@ -11,6 +11,14 @@ _Last updated on 2026-10-15 (Unit 2)_
 - `download_historical_data.py` — bulk download (⚠ broken imports — Unit 2)
 - `repair_data.py` — data repair (⚠ broken imports — Unit 2)
 - `nse_data_fetcher.py` — NSE insider/bulk/block deals (standalone)
+
+## Documentation & sources
+- `docs/pine_sources/`          — 12 LuxAlgo Pine Script v6 sources (upstream reference for src/engine/lux_*.py)
+- `docs/session/`               — historical session notes (SESSION.md, TASKS.md, DECISION.md, MASTER_CONTEXT.md, STRATEGY.md, PROJECT_STRUCTURE.md)
+- `docs/session/CONTINUATION.md` — master resume state (read first in any new session)
+- `docs/session/RESUME_PROMPT.md` — copy-paste prompt for new chat sessions
+- `docs/*.md`                   — architecture_review.md, screener_analysis_logic.md, strategies.md
+- `CHANGELOG.md`, `INSTALLATION.md`, `README.md`, `YFINANCE_FIX_GUIDE.md`, `PROJECT_MAP.md` — kept at root
 
 ## Packages under `src/`
 - `src/core/`         — Config, UserPrefs, Signal, decorators, symbol_utils, consensus_engine, data_sources
@@ -40,14 +48,19 @@ _Last updated on 2026-10-15 (Unit 2)_
 - `_archive/legacy_root/fyers/`          — orphaned OpenAlgo broker extract
 - `_archive/legacy_root/profile_scan.py` — stale cProfile helper
 - `_archive/legacy_tests/`               — old test scripts
+- `_archive/audits/`                     — project_audit.txt, project_backup.txt, project_bundle.txt
+- `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
+- `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
+- `_archive/fix_scripts/`                — fix_unit1.py (one-time migration helper)
 
 ## Known Issues (fix order)
 - [x] Unit 2 — Root scripts import legacy paths (resolved: shims work)
-- [ ] Unit 3  — `src/scanners/__init__.py` — `BreakoutStrategy` imported twice (shadowing)
+- [x] Unit 3 — Root clutter: moved pine sources → docs/, session docs → docs/session/, audits/exports/debug → _archive/
+- [ ] Unit 4  — `src/scanners/__init__.py` — `BreakoutStrategy` imported twice (shadowing)
 - [ ] Unit 8  — `src/engine/screener.py::validateCandlePatterns` — `patterns_found` undefined
 - [ ] Unit 9  — `src/ml/selector.py` — strategies commented out
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
-- [ ] Unit 3  — Case-duplicate files: `Momentum.py` / `momentum.py`, `Trend.py` / `trend.py`
+- [ ] Unit 4  — Case-duplicate files: `Momentum.py` / `momentum.py`, `Trend.py` / `trend.py`
 - [ ] Unit 8  — Duplicate validator methods in `src/engine/screener.py`
 
 ## Credentials policy

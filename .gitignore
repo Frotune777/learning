@@ -46,3 +46,9 @@ __pycache__/
 
 # Added by Unit 2
 logs/*.log
+
+# Added by Unit 3
+*.prof
+.agents/
+.antigravitycli/
+.aider.tags.cache.v4/
