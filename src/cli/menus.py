@@ -9,6 +9,7 @@ import glob
 import os
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import structlog
@@ -934,7 +935,7 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
                         df_fixed.to_parquet(p)
                         fixed_count += 1
             except Exception as e:
-                LOGGER.warning("Failed TA repair for %s: %s", sym, e)
+                logger.warning("Failed TA repair for %s: %s", sym, e)
         ok(f"Quick-Repaired {fixed_count} symbols! All TA indicators are now non-NaN.")
         _pause()
     elif choice == "R":

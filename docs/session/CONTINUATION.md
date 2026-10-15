@@ -1,6 +1,6 @@
 # Project Continuation State
 
-**Last updated:** 2026-10-15 (after Unit 8)
+**Last updated:** 2026-10-15 (after Unit 9)
 **Repo root:** /mnt/Data/Python Project/learning
 **Canonical package:** `src/`
 
@@ -28,37 +28,32 @@
 | 5 | `0a6af31` | Full pytest baseline — 205/205 PASSED, 19 warnings |
 | 6 | `259ca8a` | Fix 5 items: utcnow×2, fork spawn, patterns_found bug, selector cleanup |
 | 7 | `c2ff56d` | pyproject.toml cleanup — remove scratch/fyers, exclude _archive, silence 2 third-party warnings |
-| 8 | (see git log HEAD) | Fix fo_ban parser bug + document main.py flag ordering + regression test |
+| 8 | `10427fb` | Fix fo_ban parser bug + document main.py flag ordering + regression test |
+| 9 | (see git log HEAD) | Fix 2 NameErrors in menus.py + clean .gitignore + correct stale PROJECT_MAP note |
 
 ## Current Status
 
-- **Completed:** Units 1–8
-- **Current unit:** 8 — commit pending (Stage B)
-- **Next unit:** 9 — Opportunistic cleanup (ruff lint polish + any remaining PROJECT_MAP items)
-- **Project health:** ✅ 206/206 tests pass (incl. new regression test) · ✅ 0 import failures · ✅ 0 shadows · ✅ 0 warnings · ✅ All 13 CLI subcommands operational
+- **Completed:** Units 1–9
+- **Current unit:** 9 — commit pending (Stage B)
+- **Next unit:** 10 — Selective ruff modernization (UP/I/W/RUF100 only — no E501 churn)
+- **Project health:** ✅ 206/206 tests pass · ✅ 0 F821 NameErrors · ✅ 0 warnings · ✅ 0 import failures · ✅ `.gitignore` clean · ⚠️ ~1,122 ruff lint findings (deferred to Unit 10)
 
-## Next Unit Plan (Unit 9 Preview)
+## Next Unit Plan (Unit 10 Preview)
 
-**Goal:** Decide the final scope. Three candidate tracks:
+**Goal:** Apply selective ruff auto-fixes that are safe and low-churn.
+Explicitly EXCLUDE `E501` (line-length) to avoid 341-line diff noise.
 
-**Track A — Ruff/format polish:**
-- Run `ruff check --fix` on src/ + tests/ (auto-fix safe issues)
-- Manual review of the remaining ruff warnings
-- Small, safe, incremental
+**Scope:**
+- `uv run ruff check --select UP,I,W,RUF100 --fix src/ tests/ main.py ...`
+- Manually review remaining auto-fixable findings
+- Add a subset of higher-value rules to `pyproject.toml` (e.g. `B` bugbear
+  for mutable defaults and loop binding leaks — catches real bugs)
+- Do NOT enable E501 rule to prevent churn
 
-**Track B — Real pipeline smoke test:**
-- `python main.py --data-dir /tmp/sandbox build-master --delay 0.1`
-- `python main.py --data-dir /tmp/sandbox sync-history --limit 5 --delay 0.1`
-- `python main.py --data-dir /tmp/sandbox screen`
-- End-to-end validation of the actual NSE data pipeline
-
-**Track C — Documentation refresh:**
-- Update README.md with current setup steps
-- Review docs/session/ files for stale content
-- No code changes
-
-**Decision:** Stage A of Unit 9 will inventory the state of each track, then
-we pick one based on user preference.
+**After Unit 10:**
+- Unit 11: Real pipeline smoke test (`build-master` + `sync-history` on 5
+  symbols against NSE)
+- Unit 12+: Opportunistic cleanup
 
 ## Key Decisions Log
 
@@ -88,6 +83,10 @@ we pick one based on user preference.
 - **Unit 8:** Fixed real bug in `src/scrapers/fo_ban.py` — parser was matching numeric row-index column ("1", "2", "3") instead of the ticker column. Added regression test `test_fo_ban_parses_new_nse_format`. Test count now 206.
 - **Unit 8:** Documented argparse flag ordering in `main.py` epilog (global flags before subcommand). Not refactoring — argparse behavior is standard and correct.
 - **Unit 8:** NSE's F&O ban list format changed to `N,SYMBOL` — parser now skips numeric cells.
+- **Unit 9:** Found and fixed 2 real `F821` (undefined-name) bugs in `src/cli/menus.py` — `LOGGER` at line 937 and `Path` at line 2460. Both would have caused `NameError` at runtime on menu actions `data_quality` and `llm_dossier`.
+- **Unit 9:** Verified the "duplicate validator methods" note in PROJECT_MAP.md was stale — 0 duplicate method definitions exist in `screener.py`. Corrected the note.
+- **Unit 9:** Rewrote `.gitignore` from scratch to remove duplicates and fix the `.aider*#...` missing-newline bug.
+- **Unit 9:** Deferred ruff modernization (1,122 findings, 672 auto-fixable) to Unit 10 for controlled, selective fixes — bulk `--fix` was too invasive for one commit.
 
 ## Archive Layout
 
@@ -105,7 +104,7 @@ test_fyers.py
 .env copy.example
 legacy_shims/ (Momentum.py, Trend.py)
 legacy_tests/ (empty — reserved for future)
-audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt, pytest_unit7_postfix.txt, pyproject_before_unit7.toml, pytest_unit8_postfix.txt)
+audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt, pytest_unit7_postfix.txt, pyproject_before_unit7.toml, pytest_unit8_postfix.txt, pytest_unit9_postfix.txt)
 exports/ (Exported_Grouped_Strategies*.csv)
 debug/ (nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt)
 fix_scripts/ (fix_unit1.py)
@@ -128,6 +127,9 @@ See `docs/session/RESUME_PROMPT.md` — paste its contents at the start of any n
 - [x] Unit 7 — `pyproject.toml`: stale excludes removed, `_archive` excluded, warning filters added
 - [x] Unit 8 — `src/scrapers/fo_ban.py` parser picked row index instead of symbol (fixed + regression test added)
 - [x] Unit 8 — `main.py` flag ordering undocumented (fixed: epilog hint added)
-- [ ] Unit 9 — Final cleanup track decision pending
+- [x] Unit 9 — `src/cli/menus.py` NameErrors fixed (LOGGER + Path)
+- [x] Unit 9 — `.gitignore` cleaned (deduped, formatting bug repaired)
+- [x] Unit 9 — PROJECT_MAP.md stale "duplicate validator methods" note corrected
+- [ ] Unit 10 — Selective ruff modernization (~1,122 findings)
 - [ ] Unit 14 — Revive parts of `_archive/legacy_root/fyers/` if needed
 - [ ] `.gitignore` has duplicated `.env` / `.env.*` / `data/**` entries (cosmetic)

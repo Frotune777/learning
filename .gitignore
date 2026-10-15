@@ -1,54 +1,64 @@
-# Ignore ALL data recursively
-data/**
-
-# Only allow .gitkeep files in specific subdirs
-!data/**/.gitkeep
-
-# Aider files
-.aider*# Byte-compiled / optimized / DLL files
+# ==============================================================================
+# Python bytecode / build artifacts
+# ==============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
+build/
+dist/
+*.egg-info/
 
+# ==============================================================================
+# Virtual environments
+# ==============================================================================
+.venv/
+venv/
+env/
+ENV/
+
+# ==============================================================================
+# Local market data (large, regenerable)
+# ==============================================================================
+data/**
+!data/**/.gitkeep
+
+# ==============================================================================
+# Secrets and credentials
+# ==============================================================================
+.env
+.env.*
+!.env.example
+data/cache/fyers_token.txt
+*.sqlite
+
+# ==============================================================================
 # Caches and runtime metadata
-.ipynb_checkpoints
+# ==============================================================================
+.ipynb_checkpoints/
 .pytest_cache/
 .coverage
 .mypy_cache/
 .ruff_cache/
+*.prof
 
-# Environments
-.venv/
-env/
-venv/
-ENV/
-
-# Local downloaded market data (ignore large binary/csv downloads)
-# Ignore ALL data recursively
-data/**
-
-# Only allow .gitkeep files in specific subdirs
-!data/**/.gitkeep
-
-# Aider files
-.aider*
-
-.env
-.env.*
-
-# Added by fix_unit_1.py
-.env
-.env.*
-data/cache/fyers_token.txt
-*.sqlite
-__pycache__/
-.venv/
-
-# Added by Unit 2
+# ==============================================================================
+# Logs
+# ==============================================================================
 logs/*.log
 
-# Added by Unit 3
-*.prof
+# ==============================================================================
+# IDE / agent configuration (regenerable, machine-specific)
+# ==============================================================================
 .agents/
 .antigravitycli/
 .aider.tags.cache.v4/
+.aider*
+.idea/
+.vscode/
+
+# ==============================================================================
+# OS noise
+# ==============================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
