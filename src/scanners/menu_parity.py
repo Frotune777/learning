@@ -102,7 +102,7 @@ class SuperTrendStrategy(BaseStrategy):
         self.description = "SuperTrend Bullish Strategy"
 
     def analyze(self, df: pd.DataFrame) -> bool:
-        from src.analysis.indicators.Trend import TrendIndicators
+        from src.analysis.indicators.trend import TrendIndicators
 
         st_df = TrendIndicators.supertrend(df)
 

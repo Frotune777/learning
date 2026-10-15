@@ -17,7 +17,6 @@ from .oscillator import MACDStrategy
 from .oscillator import CCIStrategy
 from .oscillator import StochasticStrategy
 from .screenipy import ConsolidationStrategy
-from .screenipy import BreakoutStrategy
 from .screenipy import RSIStrategy
 from .screenipy import MomentumStrategy
 from .ttm_squeeze import TTMSqueezeStrategy
@@ -26,4 +25,4 @@ from .trend import MeanReversionStrategy
 from .trend import TrendlineStrategy
 from .vcp import VCPStrategy
 
-__all__ = ['BaseStrategy', 'BreakoutStrategy', 'CandlePatternsStrategy', 'InsideBarStrategy', 'IPOBaseStrategy', 'DualSuperTrend', 'LorentzianClassifierStrategy', 'LorentzianStrategy', 'IchimokuStrategy', 'NR4Strategy', 'HighLow52WeekStrategy', 'NextDayBullishStrategy', 'SuperTrendStrategy', 'ATRCrossStrategy', 'HighMomentumStrategy', 'MACDStrategy', 'CCIStrategy', 'StochasticStrategy', 'ConsolidationStrategy', 'BreakoutStrategy', 'RSIStrategy', 'MomentumStrategy', 'TTMSqueezeStrategy', 'TrendLinearRegressionStrategy', 'MeanReversionStrategy', 'TrendlineStrategy', 'VCPStrategy']
+__all__ = ['BaseStrategy', 'BreakoutStrategy', 'CandlePatternsStrategy', 'InsideBarStrategy', 'IPOBaseStrategy', 'DualSuperTrend', 'LorentzianClassifierStrategy', 'LorentzianStrategy', 'IchimokuStrategy', 'NR4Strategy', 'HighLow52WeekStrategy', 'NextDayBullishStrategy', 'SuperTrendStrategy', 'ATRCrossStrategy', 'HighMomentumStrategy', 'MACDStrategy', 'CCIStrategy', 'StochasticStrategy', 'ConsolidationStrategy', 'RSIStrategy', 'MomentumStrategy', 'TTMSqueezeStrategy', 'TrendLinearRegressionStrategy', 'MeanReversionStrategy', 'TrendlineStrategy', 'VCPStrategy']

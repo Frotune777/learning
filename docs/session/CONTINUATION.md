@@ -1,6 +1,6 @@
 # Project Continuation State
 
-**Last updated:** 2026-10-15 (after Unit 3)
+**Last updated:** 2026-10-15 (after Unit 4)
 **Repo root:** /mnt/Data/Python Project/learning
 **Canonical package:** `src/`
 
@@ -23,33 +23,28 @@
 |------|--------|-------------|
 | 1 | `fa81afb` | Archive duplicates, harden .env/.gitignore, add PROJECT_MAP |
 | 2 | `61a2d27` | Quarantine orphaned fyers/, archive stale profile_scan.py, untrack runtime log |
-| 3 | (pending) | Reorganize root — pine sources, session docs, audits, exports, debug to subdirs |
+| 3 | `31c4c90` | Reorganize root — pine sources, session docs, audits, exports, debug to subdirs |
+| 4 | (see git log HEAD) | Fix BreakoutStrategy shadowing + archive case-duplicate shims |
 
 ## Current Status
 
-- **Completed:** Units 1, 2, 3 (pending commit)
-- **Current unit:** 3 — Stage C commit pending
-- **Next unit:** 4 — `src/__init__.py` audit (discovery only, no edits)
-- **Project health:** ✅ `src/` imports cleanly · ✅ 205 tests collected · ✅ 0 project-wide import errors (excluding `_archive/`)
+- **Completed:** Units 1, 2, 3, 4
+- **Current unit:** 4 — commit pending (Stage B2)
+- **Next unit:** 5 — Full `pytest tests/ -v` run + triage
+- **Project health:** ✅ `src/` imports cleanly · ✅ 205 tests collected · ✅ 0 project-wide import errors · ✅ 0 shadowed re-exports · ✅ 0 case-duplicate modules
 
-## Next Unit Plan (Unit 4 Preview)
+## Next Unit Plan (Unit 5 Preview)
 
-**Goal:** Audit every `__init__.py` in `src/` for shadowed re-exports, circular imports, missing `__all__` declarations.
+**Goal:** Run the full pytest suite for the first time (`pytest tests/ -v`) and produce a pass/fail/skip triage inventory. NO fixes in Unit 5 — just a report.
 
 **Scope:**
-- READ-ONLY discovery (Stage A)
-- No code edits in Unit 4
-- Deliverable: an inventory of shadowed names / circular risks
+- Execute full suite with verbose output captured to `_archive/audits/pytest_unit5_baseline.txt`
+- Produce: totals, top 10 failure groups, top 10 slowest tests
+- Decide fix priority for Unit 6+
 
-**Known targets (from bundle):**
-- `src/scanners/__init__.py` — `BreakoutStrategy` imported twice
-- `src/analysis/indicators/__init__.py` — dual casing (`Momentum.py` vs `momentum.py`)
-- `src/engine/__init__.py` — may re-export old scanner aliases
-
-**After Unit 4:**
-- Unit 5: First full `pytest tests/ -v` run (run, don't fix)
-- Unit 6: `pyproject.toml` cleanup (stale `scratch`/`fyers` excludes)
-- Unit 7+: Layer-by-layer fix pass (only if real bugs surface)
+**After Unit 5:**
+- Unit 6: Fix highest-impact test failures (or runtime warnings)
+- Unit 7: `pyproject.toml` cleanup (stale `scratch`/`fyers` excludes)
 
 ## Key Decisions Log
 
@@ -60,6 +55,9 @@
 - **`.agents/` and `.antigravitycli/` kept tracked** — IDE config, needed by agent.
 - **`fix_unit1.py` archived** — one-time migration helper, no longer needed.
 - **Pine files moved to `docs/pine_sources/`** — upstream reference for `src/engine/lux_*.py` ports.
+- **Unit 4:** Removed dead `BreakoutStrategy` shadow in `src/scanners/__init__.py`. The `.screenipy.BreakoutStrategy` class stays in its module but is no longer package-re-exported (zero callers). `.breakout.BreakoutStrategy` remains the canonical one used by `src/engine/screener.py`.
+- **Unit 4:** Redirected `src/scanners/menu_parity.py` to import `TrendIndicators` from `.trend` (lowercase). Archived both `Momentum.py` and `Trend.py` PascalCase shims to `_archive/legacy_shims/`.
+- **Unit 4:** `CONTINUATION.md` uses `(see git log HEAD)` for the current commit hash — avoids chicken-and-egg between writing the file and committing it.
 
 ## Archive Layout
 
@@ -75,6 +73,7 @@ check_yfinance_fixed.py
 screener_v2.py
 test_fyers.py
 .env copy.example
+legacy_shims/ (Momentum.py, Trend.py)
 legacy_tests/ (empty — reserved for future)
 audits/ (project_audit.txt, project_backup.txt, project_bundle.txt)
 exports/ (Exported_Grouped_Strategies*.csv)
@@ -88,12 +87,12 @@ See `docs/session/RESUME_PROMPT.md` — paste its contents at the start of any n
 
 ## Known Issues (open)
 
-- [ ] Unit 4 — Audit `__init__.py` files for shadowed imports
+- [x] Unit 4 — Audit `__init__.py` files for shadowed imports (fixed: BreakoutStrategy dedup)
+- [x] Unit 4 — Case-duplicate files (`Momentum.py`, `Trend.py`) archived to `_archive/legacy_shims/`
 - [ ] Unit 5 — Run full pytest, triage failures
 - [ ] Unit 6 — Clean stale `scratch`/`fyers` excludes in `pyproject.toml`
 - [ ] Unit 14 — Revive parts of `_archive/legacy_root/fyers/` (optional)
 - [ ] `src/engine/screener.py::validateCandlePatterns` — `patterns_found` undefined (bug)
 - [ ] `src/ml/selector.py` — strategies commented out (dead code)
-- [ ] Case-duplicate files in `src/analysis/indicators/` (`Momentum.py` vs `momentum.py`)
 - [ ] Duplicate validator methods in `src/engine/screener.py`
 - [ ] `.gitignore` has duplicated `.env` / `.env.*` / `data/**` entries (cosmetic)
