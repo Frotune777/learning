@@ -3,15 +3,16 @@ File: screeni/utils/bus.py
 Purpose: Event bus and database for emitting and storing signals
 """
 
+import json
 import logging
 import queue
+import sqlite3
 import threading
 import uuid
-import json
-import sqlite3
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ class SignalDatabase:
         
         self.conn.commit()
     
-    def save_signal(self, signal_data: Dict[str, Any]) -> str:
+    def save_signal(self, signal_data: dict[str, Any]) -> str:
         """Store a new signal with complete metadata."""
         signal_id = signal_data.get('id', str(uuid.uuid4()))
         
@@ -128,7 +129,7 @@ class SignalDatabase:
         self.conn.commit()
         return signal_id
     
-    def save_trade(self, trade_data: Dict[str, Any]) -> str:
+    def save_trade(self, trade_data: dict[str, Any]) -> str:
         """Link an executed trade record to an existing signal."""
         trade_id = trade_data.get('id', str(uuid.uuid4()))
         
@@ -149,7 +150,7 @@ class SignalDatabase:
         self.conn.commit()
         return trade_id
     
-    def update_trade_outcome(self, trade_id: str, outcome_data: Dict[str, Any]) -> None:
+    def update_trade_outcome(self, trade_id: str, outcome_data: dict[str, Any]) -> None:
         """Update trade with exit info and calculate realized P&L."""
         cursor = self.conn.cursor()
         cursor.execute('''
@@ -166,7 +167,7 @@ class SignalDatabase:
         ))
         self.conn.commit()
     
-    def save_pattern(self, pattern_data: Dict[str, Any]) -> str:
+    def save_pattern(self, pattern_data: dict[str, Any]) -> str:
         """Store individual pattern occurrence from a signal."""
         pattern_id = str(uuid.uuid4())
         
@@ -228,7 +229,7 @@ class SignalBus:
         self._initialized = True
         self._db = SignalDatabase()
     
-    def emit(self, event_type: str, data: Dict[str, Any]) -> None:
+    def emit(self, event_type: str, data: dict[str, Any]) -> None:
         """Emit an event to the bus queue for async processing."""
         event = {
             "id": str(uuid.uuid4()),
@@ -239,7 +240,7 @@ class SignalBus:
         self._queue.put(event)
         self._stats["events_queued"] += 1
     
-    def register_listener(self, callback: Callable[[str, Dict[str, Any]], None]) -> None:
+    def register_listener(self, callback: Callable[[str, dict[str, Any]], None]) -> None:
         """Register a listener for all events passing through the bus."""
         self._listeners.append(callback)
     
@@ -258,7 +259,7 @@ class SignalBus:
             except queue.Empty:
                 continue
     
-    def _process_event(self, event: Dict[str, Any]):
+    def _process_event(self, event: dict[str, Any]):
         """Process a single event by saving to DB and notifying listeners."""
         # Save to database based on event type
         if event["type"] == "signal_generated":
@@ -280,7 +281,7 @@ class SignalBus:
         self._running = False
         self._worker_thread.join(timeout=5)
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get aggregated statistics about bus performance and state."""
         return {
             **self._stats,
@@ -296,10 +297,10 @@ class SignalEmitter:
         """Initialize the emitter by acquiring the SignalBus singleton."""
         self._bus = SignalBus()
     
-    def emit_signal(self, signal_data: Dict[str, Any]) -> None:
+    def emit_signal(self, signal_data: dict[str, Any]) -> None:
         """Emit a signal to the analytics system with metadata injection."""
         self._bus.emit("signal_generated", signal_data)
     
-    def emit_trade(self, trade_data: Dict[str, Any]) -> None:
+    def emit_trade(self, trade_data: dict[str, Any]) -> None:
         """Emit a trade execution event for tracking and performance analysis."""
         self._bus.emit("trade_executed", trade_data)

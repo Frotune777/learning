@@ -10,8 +10,8 @@ import sys
 sys.path.append(os.path.join(os.getcwd(), "src"))
 
 
-from src.utils.config import ConfigManager
 from src.data.Fetcher import Fetcher
+from src.utils.config import ConfigManager
 
 
 class StockUniverseSelector:

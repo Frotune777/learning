@@ -272,7 +272,7 @@ class FeatureEngineer:
 
     def select_features(
         self, features: pd.DataFrame, target: pd.Series, top_n: int = 20
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Select top N most important features
 

@@ -1,7 +1,8 @@
-from collections import defaultdict
 import logging
-import pandas as pd
+from collections import defaultdict
+
 import numpy as np
+import pandas as pd
 
 from src.core.signal import Signal
 
@@ -39,8 +40,9 @@ def get_consensus_recommendation(score: float) -> str:
 
 
 def _get_symbol_sector_map() -> dict[str, str]:
-    from src.core.symbol_utils import find_latest_master
     import os
+
+    from src.core.symbol_utils import find_latest_master
     
     master_path = find_latest_master("data")
     if not master_path or not os.path.exists(master_path):

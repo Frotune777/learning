@@ -30,8 +30,9 @@ Related Files:
 - src/classes/EnhancedBacktestValidator.py: Uses results tables
 """
 
+from collections.abc import Generator
 from datetime import datetime
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, List
 
 import pandas as pd
 from rich import box
@@ -254,7 +255,7 @@ class VisualUI:
     # =========================================================================
 
     def render_menu(
-        self, title: str, sections: Dict[str, List[Dict[str, Any]]]
+        self, title: str, sections: dict[str, list[dict[str, Any]]]
     ) -> None:
         """
         Format 2: Categorized Menu with Simple Borders (├──┤)
@@ -390,7 +391,7 @@ class VisualUI:
     def render_progress(
         self,
         task_name: str,
-        phases: List[Dict[str, Any]],
+        phases: list[dict[str, Any]],
         total_progress: float,
         eta_seconds: int = 150,
     ) -> None:
@@ -452,7 +453,7 @@ class VisualUI:
     # Format 4: Results Table
     # =========================================================================
 
-    def render_results_table(self, results: List[Dict[str, Any]]) -> None:
+    def render_results_table(self, results: list[dict[str, Any]]) -> None:
         """
         Format 4: Results Table with Rounded Borders (╭──╮)
 
@@ -470,7 +471,7 @@ class VisualUI:
         table = self._create_results_table(results)
         self.console.print(table)
 
-    def _create_results_table(self, results: List[Dict[str, Any]]) -> Table:
+    def _create_results_table(self, results: list[dict[str, Any]]) -> Table:
         """
         Create results table without printing (for Live updates)
 
@@ -581,7 +582,7 @@ class VisualUI:
     # Format 5: Detailed Stock View
     # =========================================================================
 
-    def render_detailed_view(self, symbol: str, data: Dict[str, Any]) -> None:
+    def render_detailed_view(self, symbol: str, data: dict[str, Any]) -> None:
         """
         Format 5: Detailed Stock View with Multiple Panels
 
@@ -943,7 +944,7 @@ class VisualUI:
     # =========================================================================
 
     def render_data_health(
-        self, metrics: Dict[str, Any], gaps: List[Dict[str, Any]]
+        self, metrics: dict[str, Any], gaps: list[dict[str, Any]]
     ) -> None:
         """
         Format 6: Data Health Dashboard
@@ -1139,7 +1140,7 @@ class VisualUI:
     # Format 8: System Health Check
     # =========================================================================
 
-    def render_system_check(self, components: List[Dict[str, Any]]) -> None:
+    def render_system_check(self, components: list[dict[str, Any]]) -> None:
         """
         Format 8: System Health Check Dashboard
 
@@ -1218,7 +1219,7 @@ class VisualUI:
     # =========================================================================
 
     def render_help(
-        self, shortcuts: List[Dict[str, str]], categories: Dict[str, List[str]]
+        self, shortcuts: list[dict[str, str]], categories: dict[str, list[str]]
     ) -> None:
         """
         Format 9: Help/Information Panel
@@ -1279,7 +1280,7 @@ class VisualUI:
     # =========================================================================
 
     def render_export_preview(
-        self, path: str, stats: Dict[str, Any], sample: pd.DataFrame
+        self, path: str, stats: dict[str, Any], sample: pd.DataFrame
     ) -> None:
         """
         Format 10: Export Results Preview
@@ -1340,7 +1341,7 @@ class VisualUI:
     # =========================================================================
 
     def render_config_wizard(
-        self, step: int, total_steps: int, current_config: Dict[str, Any]
+        self, step: int, total_steps: int, current_config: dict[str, Any]
     ) -> None:
         """
         Configuration wizard step header
@@ -1386,7 +1387,7 @@ class VisualUI:
     # =========================================================================
 
     def live_table(
-        self, data_generator: Generator[List[Dict[str, Any]], None, None]
+        self, data_generator: Generator[list[dict[str, Any]], None, None]
     ) -> None:
         """
         Display live-updating table for real-time data
@@ -1403,7 +1404,7 @@ class VisualUI:
     # User Input Handling
     # =========================================================================
 
-    def get_user_choice(self, prompt: str, valid_options: List[str] = None) -> str:
+    def get_user_choice(self, prompt: str, valid_options: list[str] = None) -> str:
         """
         Get validated user input with proper formatting
 

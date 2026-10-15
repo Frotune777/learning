@@ -50,16 +50,16 @@ class PaperTrading(SignalEmitter):
         """
         SignalEmitter.__init__(self)
         self.capital = initial_capital
-        self.positions: Dict[str, Dict[str, Any]] = {}
-        self.trades: List[Dict[str, Any]] = []
+        self.positions: dict[str, dict[str, Any]] = {}
+        self.trades: list[dict[str, Any]] = []
 
     def buy(
         self,
         symbol: str,
         price: float,
-        shares: Optional[int] = None,
-        value: Optional[float] = None,
-    ) -> Tuple[bool, str]:
+        shares: int | None = None,
+        value: float | None = None,
+    ) -> tuple[bool, str]:
         """
         Execute a hypothetical buy order.
 
@@ -122,8 +122,8 @@ class PaperTrading(SignalEmitter):
         return True, f"✅ Bought {shares} shares of {symbol} at ₹{price:,.2f}"
 
     def sell(
-        self, symbol: str, price: float, shares: Optional[int] = None
-    ) -> Tuple[bool, str]:
+        self, symbol: str, price: float, shares: int | None = None
+    ) -> tuple[bool, str]:
         """
         Execute a hypothetical sell order.
 
@@ -170,7 +170,7 @@ class PaperTrading(SignalEmitter):
             f"✅ Sold {shares} shares of {symbol} at ₹{price:,.2f}. P&L: ₹{pnl:,.2f}",
         )
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """
         Get current portfolio summary.
 

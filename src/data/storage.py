@@ -84,10 +84,10 @@ class PersistenceService:
 
     @staticmethod
     def save_results(
-        results: Union[List[Dict[str, Any]], pd.DataFrame],
+        results: list[dict[str, Any]] | pd.DataFrame,
         scan_name: str = "Stock Scan",
-        formats: Optional[List[str]] = None,
-    ) -> Dict[str, str]:
+        formats: list[str] | None = None,
+    ) -> dict[str, str]:
         """
         Orchestrate the saving of scan results across multiple formats.
 
@@ -165,7 +165,7 @@ class PersistenceService:
         return export_paths
 
     @staticmethod
-    def save_results_json(df: pd.DataFrame, scan_name: str) -> Optional[str]:
+    def save_results_json(df: pd.DataFrame, scan_name: str) -> str | None:
         """
         Export scan results specifically to a JSON format with structured metadata.
 
@@ -239,7 +239,7 @@ class PersistenceService:
         return text
 
     @staticmethod
-    def _save_to_parquet(df: pd.DataFrame, scan_name: str) -> Optional[str]:
+    def _save_to_parquet(df: pd.DataFrame, scan_name: str) -> str | None:
         """
         Export scan results to a timestamped Parquet file for analytics.
 
@@ -272,7 +272,7 @@ class PersistenceService:
             return None
 
     @staticmethod
-    def _save_to_csv(df: pd.DataFrame, scan_name: str) -> Optional[str]:
+    def _save_to_csv(df: pd.DataFrame, scan_name: str) -> str | None:
         """
         Low-level handler for CSV serialization.
 

@@ -32,12 +32,12 @@ except Exception:
     pass
 
 from src.dashboard.theme import CSS_THEME, NAV_STYLES
-from src.dashboard.views.smc_view import render_smc_view
-from src.dashboard.views.screener_view import render_screener_view
-from src.dashboard.views.portfolio_view import render_portfolio_view
 from src.dashboard.views.backtest_view import render_backtest_view
-from src.dashboard.views.quantitative_view import render_quantitative_view
 from src.dashboard.views.fyers_view import render_fyers_view
+from src.dashboard.views.portfolio_view import render_portfolio_view
+from src.dashboard.views.quantitative_view import render_quantitative_view
+from src.dashboard.views.screener_view import render_screener_view
+from src.dashboard.views.smc_view import render_smc_view
 
 # 1. Inject Premium Theme CSS
 st.markdown(CSS_THEME, unsafe_allow_html=True)

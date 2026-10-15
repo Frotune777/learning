@@ -179,7 +179,7 @@ class MLModelTrainer:
 
     def _prepare_sequences(
         self, X: pd.DataFrame, y: pd.Series, window_size: int = 20
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Prepare sequence data for recurrent neural networks (LSTM).
 
@@ -206,7 +206,7 @@ class MLModelTrainer:
 
         return np.array(X_seq), np.array(y_seq)
 
-    def _train_lstm(self, X: pd.DataFrame, y: pd.Series) -> Optional[Any]:
+    def _train_lstm(self, X: pd.DataFrame, y: pd.Series) -> Any | None:
         """
         Build and train a basic LSTM model using Keras.
 
@@ -247,7 +247,7 @@ class MLModelTrainer:
 
     def explain_prediction(
         self, model: Any, X_instance: pd.DataFrame
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Explain a single prediction using SHAP TreeExplainer.
 
@@ -295,7 +295,7 @@ class MLModelTrainer:
 
     def evaluate_model(
         self, model: Any, features: pd.DataFrame, target: pd.Series
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Evaluate model performance using standard metrics.
 
@@ -345,7 +345,7 @@ class MLModelTrainer:
             joblib.dump(model, path)
         print(f"  💾 Model saved: {path}")
 
-    def load_model(self, name: str) -> Optional[Any]:
+    def load_model(self, name: str) -> Any | None:
         """
         Load a model from disk if it exists.
 
@@ -368,7 +368,7 @@ class MLModelTrainer:
 
     def detect_drift(
         self, reference_data: pd.DataFrame, current_data: pd.DataFrame
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Detect distribution drift using Kolmogorov-Smirnov test.
 
@@ -413,7 +413,7 @@ class MLModelTrainer:
         features: pd.DataFrame,
         target: pd.Series,
         model_type: str = "random_forest",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Perform Time-Series Nested Cross-Validation.
 

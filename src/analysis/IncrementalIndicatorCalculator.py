@@ -46,7 +46,7 @@ class IncrementalIndicatorCalculator:
 
     def get_indicators(
         self, symbol: str, data: pd.DataFrame, force_refresh: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get indicators with incremental calculation
 
@@ -94,7 +94,7 @@ class IncrementalIndicatorCalculator:
 
         return indicators
 
-    def _load_cache(self, cache_file: Path) -> Optional[Dict]:
+    def _load_cache(self, cache_file: Path) -> dict | None:
         """Load cache with version validation"""
         try:
             with open(cache_file, "rb") as f:
@@ -127,7 +127,7 @@ class IncrementalIndicatorCalculator:
             logger.error(f"Error loading cache: {e}")
             return None
 
-    def _save_cache(self, cache_file: Path, indicators: Dict, last_date: pd.Timestamp):
+    def _save_cache(self, cache_file: Path, indicators: dict, last_date: pd.Timestamp):
         """Save cache with version info"""
         cache_data = {
             "version": self.CACHE_VERSION,
@@ -162,7 +162,7 @@ class IncrementalIndicatorCalculator:
         schema_str = json.dumps(schema, sort_keys=True)
         return hashlib.md5(schema_str.encode()).hexdigest()
 
-    def _validate_cache_integrity(self, cached: Dict) -> bool:
+    def _validate_cache_integrity(self, cached: dict) -> bool:
         """Validate cache data integrity"""
         required_keys = ["version", "last_date", "indicators", "state"]
 
@@ -184,7 +184,7 @@ class IncrementalIndicatorCalculator:
 
         return True
 
-    def _extract_state(self, indicators: Dict) -> Dict:
+    def _extract_state(self, indicators: dict) -> dict:
         """Extract state needed for incremental updates"""
         return {
             "supertrend": indicators["supertrend"],
@@ -195,7 +195,7 @@ class IncrementalIndicatorCalculator:
             "vwap": indicators["vwap"],
         }
 
-    def _calculate_full(self, data: pd.DataFrame) -> Dict[str, Any]:
+    def _calculate_full(self, data: pd.DataFrame) -> dict[str, Any]:
         """Full calculation of all indicators"""
         indicators = {}
 
@@ -220,8 +220,8 @@ class IncrementalIndicatorCalculator:
         return indicators
 
     def _update_incremental(
-        self, prev_state: Dict, new_data: pd.DataFrame
-    ) -> Dict[str, Any]:
+        self, prev_state: dict, new_data: pd.DataFrame
+    ) -> dict[str, Any]:
         """Update indicators incrementally (O(1) per bar)"""
         indicators = prev_state.copy()
 
@@ -252,7 +252,7 @@ class IncrementalIndicatorCalculator:
 
     # ===== Full Calculation Methods =====
 
-    def _calculate_supertrend_full(self, data: pd.DataFrame) -> Dict:
+    def _calculate_supertrend_full(self, data: pd.DataFrame) -> dict:
         """Calculate SuperTrend from scratch"""
         period = 14
         multiplier = 2.0
@@ -290,7 +290,7 @@ class IncrementalIndicatorCalculator:
             "prev_close": data["Close"].iloc[-1],
         }
 
-    def _calculate_obv_full(self, data: pd.DataFrame) -> Dict:
+    def _calculate_obv_full(self, data: pd.DataFrame) -> dict:
         """Calculate OBV from scratch"""
         obv = pd.Series(index=data.index, dtype=float)
         obv.iloc[0] = data["Volume"].iloc[0]
@@ -305,7 +305,7 @@ class IncrementalIndicatorCalculator:
 
         return {"value": obv.iloc[-1], "prev_close": data["Close"].iloc[-1]}
 
-    def _calculate_rsi_full(self, data: pd.DataFrame) -> Dict:
+    def _calculate_rsi_full(self, data: pd.DataFrame) -> dict:
         """Calculate RSI from scratch"""
         period = 14
 
@@ -323,7 +323,7 @@ class IncrementalIndicatorCalculator:
             "prev_close": data["Close"].iloc[-1],
         }
 
-    def _calculate_macd_full(self, data: pd.DataFrame) -> Dict:
+    def _calculate_macd_full(self, data: pd.DataFrame) -> dict:
         """Calculate MACD from scratch"""
         fast_ema = data["Close"].ewm(span=12, adjust=False).mean()
         slow_ema = data["Close"].ewm(span=26, adjust=False).mean()
@@ -340,7 +340,7 @@ class IncrementalIndicatorCalculator:
             "histogram": histogram.iloc[-1],
         }
 
-    def _calculate_bollinger_full(self, data: pd.DataFrame) -> Dict:
+    def _calculate_bollinger_full(self, data: pd.DataFrame) -> dict:
         """Calculate Bollinger Bands from scratch"""
         period = 20
         std_mult = 2.0
@@ -363,7 +363,7 @@ class IncrementalIndicatorCalculator:
             "period": period,
         }
 
-    def _calculate_vwap_full(self, data: pd.DataFrame) -> Dict:
+    def _calculate_vwap_full(self, data: pd.DataFrame) -> dict:
         """Calculate VWAP from scratch"""
         typical_price = (data["High"] + data["Low"] + data["Close"]) / 3
         tp_volume = typical_price * data["Volume"]
@@ -377,7 +377,7 @@ class IncrementalIndicatorCalculator:
 
     # ===== Incremental Update Methods =====
 
-    def _update_supertrend(self, prev_st: Dict, new_bar: pd.Series) -> Dict:
+    def _update_supertrend(self, prev_st: dict, new_bar: pd.Series) -> dict:
         """Update SuperTrend incrementally (O(1))"""
         # Calculate True Range
         tr = max(
@@ -412,7 +412,7 @@ class IncrementalIndicatorCalculator:
             "prev_close": new_bar["Close"],
         }
 
-    def _update_obv(self, prev_obv: Dict, new_bar: pd.Series) -> Dict:
+    def _update_obv(self, prev_obv: dict, new_bar: pd.Series) -> dict:
         """Update OBV incrementally (O(1))"""
         if new_bar["Close"] > prev_obv["prev_close"]:
             obv = prev_obv["value"] + new_bar["Volume"]
@@ -423,7 +423,7 @@ class IncrementalIndicatorCalculator:
 
         return {"value": obv, "prev_close": new_bar["Close"]}
 
-    def _update_rsi(self, prev_rsi: Dict, new_bar: pd.Series) -> Dict:
+    def _update_rsi(self, prev_rsi: dict, new_bar: pd.Series) -> dict:
         """Update RSI incrementally (O(1))"""
         delta = new_bar["Close"] - prev_rsi["prev_close"]
 
@@ -446,7 +446,7 @@ class IncrementalIndicatorCalculator:
             "prev_close": new_bar["Close"],
         }
 
-    def _update_macd(self, prev_macd: Dict, new_bar: pd.Series) -> Dict:
+    def _update_macd(self, prev_macd: dict, new_bar: pd.Series) -> dict:
         """Update MACD incrementally (O(1))"""
         fast_alpha = 2 / (12 + 1)
         slow_alpha = 2 / (26 + 1)
@@ -479,7 +479,7 @@ class IncrementalIndicatorCalculator:
             "histogram": histogram,
         }
 
-    def _update_bollinger(self, prev_bb: Dict, new_bar: pd.Series) -> Dict:
+    def _update_bollinger(self, prev_bb: dict, new_bar: pd.Series) -> dict:
         """Update Bollinger Bands incrementally with exact rolling window (O(1))"""
         period = prev_bb.get("period", 20)
 
@@ -510,7 +510,7 @@ class IncrementalIndicatorCalculator:
             "period": period,
         }
 
-    def _update_vwap(self, prev_vwap: Dict, new_bar: pd.Series) -> Dict:
+    def _update_vwap(self, prev_vwap: dict, new_bar: pd.Series) -> dict:
         """Update VWAP incrementally (O(1))"""
         typical_price = (new_bar["High"] + new_bar["Low"] + new_bar["Close"]) / 3
 

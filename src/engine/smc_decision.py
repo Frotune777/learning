@@ -4,10 +4,14 @@ Purpose: Translates raw SMC structures into actionable Trading Calls with strict
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
+
 import pandas as pd
-from src.engine.smc import SMCResult, BULLISH, BEARISH
+
+from src.engine.smc import BEARISH, BULLISH, SMCResult
+
 
 @dataclass
 class TradingCall:

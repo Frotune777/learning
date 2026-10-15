@@ -19,7 +19,7 @@ class LorentzianClassifierStrategy(BaseStrategy):
     Uses the advanced-ta library for distance-based trend classification.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         super().__init__(config)
         self.description = "Lorentzian Classification (PKScreener Port)"
         self.lookback_limit = 2000

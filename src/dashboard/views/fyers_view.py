@@ -4,11 +4,14 @@ Purpose: Data Sources Configuration, Switching, and Live Broker Gateway.
 """
 
 from __future__ import annotations
+
 import os
-import requests
+
 import pandas as pd
+import requests
 import streamlit as st
-from src.core.data_sources import DataSourceManager, DATA_SOURCES
+
+from src.core.data_sources import DATA_SOURCES, DataSourceManager
 from src.nse_bhavcopy.fyers_fetcher import FyersFetcher, exchange_auth_code
 
 

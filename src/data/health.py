@@ -31,7 +31,7 @@ class DataHealthCheck:
         try:
             config_path = Path("config/holidays.json")
             if config_path.exists():
-                with open(config_path, "r") as f:
+                with open(config_path) as f:
                     config = json.load(f)
                     holidays = config.get("holidays_2026", [])
                     return [pd.to_datetime(d) for d in holidays]

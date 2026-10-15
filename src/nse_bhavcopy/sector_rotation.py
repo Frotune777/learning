@@ -4,11 +4,12 @@ Purpose: Calculates JdK RS-Ratio and Momentum to identify sector rotation trends
 Last Modified: 2026-05-27
 """
 
+import os
 from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
-import os
+
 
 def fetch_data(
     symbols: list[str], period_days: int, hist_dir: str = "data/historical/1d"

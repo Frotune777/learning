@@ -112,18 +112,18 @@ class Fetcher:
             "Nifty Midcap 150": "Nifty Midcap 150",
         }
         self.indices_urls = {}  # URLs are handled dynamically or not used directly in this refactor
-        self.token_cache: Dict[str, str] = {}
+        self.token_cache: dict[str, str] = {}
 
     def _get_request(
         self,
         url: str,
-        params: Optional[Dict] = None,
-        json_payload: Optional[Dict] = None,
+        params: dict | None = None,
+        json_payload: dict | None = None,
         method: str = "GET",
         timeout: int = 30,
         retries: int = 3,
-        proxyServer: Optional[str] = None,
-    ) -> Optional[requests.Response]:
+        proxyServer: str | None = None,
+    ) -> requests.Response | None:
         """
         Centralized request handler with retries, headers, and timeout.
 
@@ -267,7 +267,7 @@ class Fetcher:
             return self._fetch_from_nse(symbol, timeframe, period)
         return self._fetch_from_yfinance(symbol, timeframe, period)
 
-    def _get_token(self, symbol: str) -> Optional[str]:
+    def _get_token(self, symbol: str) -> str | None:
         """Resolve NSE instrument token."""
         if symbol in self.token_cache:
             return self.token_cache[symbol]
@@ -287,7 +287,7 @@ class Fetcher:
 
         target_symbol = symbol.replace("-EQ", "")
         try:
-            with open(self.INSTRUMENTS_FILE, "r", encoding="utf-8") as f:
+            with open(self.INSTRUMENTS_FILE, encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     if (
@@ -390,7 +390,7 @@ class Fetcher:
         except Exception:
             return pd.DataFrame()
 
-    def getAllNiftyIndices(self) -> Dict[str, str]:
+    def getAllNiftyIndices(self) -> dict[str, str]:
         """
         Retrieve all supported Nifty indices and their descriptions.
 
@@ -401,7 +401,7 @@ class Fetcher:
 
     def _getBacktestDate(
         self, backtest: datetime.date
-    ) -> List[Optional[datetime.date]]:
+    ) -> list[datetime.date | None]:
         """
         Calculate start and end dates for a backtest window.
 
@@ -440,7 +440,7 @@ class Fetcher:
 
     def _getDatesForBacktestReport(
         self, backtest: datetime.date
-    ) -> Dict[str, Optional[Union[datetime.date, float]]]:
+    ) -> dict[str, datetime.date | float | None]:
         """
         Identify benchmark dates for post-signal performance tracking.
 
@@ -496,8 +496,8 @@ class Fetcher:
         return dateDict
 
     def fetchCodes(
-        self, tickerOption: int, proxyServer: Optional[str] = None
-    ) -> List[str]:
+        self, tickerOption: int, proxyServer: str | None = None
+    ) -> list[str]:
         """
         Fetch stock symbols from external NSE CSV sources.
 
@@ -589,8 +589,8 @@ class Fetcher:
         return listStockCodes
 
     def fetchStockCodes(
-        self, tickerOption: int, proxyServer: Optional[str] = None
-    ) -> List[str]:
+        self, tickerOption: int, proxyServer: str | None = None
+    ) -> list[str]:
         """
         Fetch stock symbols with integrated CLI messaging and configuration.
 
@@ -658,10 +658,10 @@ class Fetcher:
         stockCode: str,
         period: str = "1y",
         duration: str = "1d",
-        proxyServer: Optional[str] = None,
-        backtestDate: Optional[datetime.date] = None,
-        tickerOption: Optional[int] = None,
-    ) -> Tuple[Optional[pd.DataFrame], Optional[Dict[str, Any]]]:
+        proxyServer: str | None = None,
+        backtestDate: datetime.date | None = None,
+        tickerOption: int | None = None,
+    ) -> tuple[pd.DataFrame | None, dict[str, Any] | None]:
         """
         Retrieve historical price data (Legacy CLI Method).
         Wrapper around `fetch_data` to maintain CLI compatibility.
@@ -743,7 +743,7 @@ class Fetcher:
 
         return data, dateDict
 
-    def fetchLatestNiftyDaily(self, proxyServer: Optional[str] = None) -> pd.DataFrame:
+    def fetchLatestNiftyDaily(self, proxyServer: str | None = None) -> pd.DataFrame:
         """
         Fetch most recent daily data for Nifty 50, Gold, and Crude oil.
 
@@ -773,7 +773,7 @@ class Fetcher:
         return pd.concat([data, gold, crude], axis=1)
 
     def fetchNiftyData(
-        self, period: str = "1y", proxyServer: Optional[str] = None
+        self, period: str = "1y", proxyServer: str | None = None
     ) -> pd.DataFrame:
         """
         Fetch historical daily data for the Nifty 50 index.
@@ -799,8 +799,8 @@ class Fetcher:
         return self.makeDataBackwardCompatible(data)
 
     def fetchFiveEmaData(
-        self, proxyServer: Optional[str] = None
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        self, proxyServer: str | None = None
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Retrieve 5m and 15m data for Nifty and Bank Nifty (5-EMA strategy).
 
@@ -829,7 +829,7 @@ class Fetcher:
             d("^NSEBANK", "5m"),
         )
 
-    def fetchWatchlist(self) -> Optional[List[str]]:
+    def fetchWatchlist(self) -> list[str] | None:
         """
         Load stock symbols from the local 'watchlist.xlsx' file.
 
@@ -861,7 +861,7 @@ class Fetcher:
         return []
 
     def makeDataBackwardCompatible(
-        self, data: pd.DataFrame, column_prefix: Optional[str] = None
+        self, data: pd.DataFrame, column_prefix: str | None = None
     ) -> pd.DataFrame:
         """
         Standardize yfinance v3+ MultiIndex columns for internal consistency.

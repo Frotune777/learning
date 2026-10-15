@@ -31,7 +31,8 @@ Open Tasks:
 - [ ] [MEDIUM] Implement background auto-indexing [4h]
 """
 
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any, List, Optional
 
 import pandas as pd
 from rich import box
@@ -85,7 +86,7 @@ class DataManagementService:
         Internal: DataHealthCheck, DataIndexManager, HolidayFetcher, StockUniverseSelector
     """
 
-    def __init__(self, menu_service: Optional[Any] = None) -> None:
+    def __init__(self, menu_service: Any | None = None) -> None:
         """
         Initialize the service with UI dependencies.
 
@@ -191,7 +192,7 @@ class DataManagementService:
 
         raw_files = list(checker.DATA_DIR.glob("*.parquet"))
         all_raw_stocks = [f.stem for f in raw_files]
-        stocks_to_scan: List[str] = []
+        stocks_to_scan: list[str] = []
 
         if checker.RESULTS_FILE.exists():
             try:

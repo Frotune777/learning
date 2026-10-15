@@ -51,6 +51,7 @@ def calculate_ma_slope(
 
 import os
 
+
 def analyze_stock_ma_slope(
     ticker_symbol: str,
     ma_window: int = 20,

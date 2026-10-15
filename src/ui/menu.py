@@ -1,15 +1,16 @@
 import asyncio
 import os
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, List
+from typing import Any, List
 
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from src.utils.config import ConfigManager
 from src.ui.telegram import TelegramService
 from src.ui.VisualUI import VisualUI
+from src.utils.config import ConfigManager
 
 console = Console()
 
@@ -185,7 +186,7 @@ class MenuService:
         """Display a simple message."""
         self.console.print(f"[{style}]{message}[/{style}]")
 
-    def display_table(self, title: str, columns: List[str], rows: List[List[Any]]):
+    def display_table(self, title: str, columns: list[str], rows: list[list[Any]]):
         """Display a generic table."""
         table = Table(title=title, box=box.SIMPLE)
         for col in columns:

@@ -2,8 +2,8 @@
 Enhanced Backtest Validator with Auto-Strategy Selection
 """
 
-from src.ml.selector import AutoStrategySelector
 from src.analysis.backtesting import MultiTimeframeBacktest
+from src.ml.selector import AutoStrategySelector
 
 
 class EnhancedBacktestValidator:

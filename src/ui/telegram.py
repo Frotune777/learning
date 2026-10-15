@@ -1,9 +1,10 @@
 """Telegram notification service for Screeni-py."""
 
+import logging
+
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class TelegramService:
                     caption=caption
                 )
             return True
-        except (TelegramError, IOError) as e:
+        except (OSError, TelegramError) as e:
             logger.error(f"Failed to send document: {e}")
             return False
     
@@ -66,6 +67,6 @@ class TelegramService:
                     caption=caption
                 )
             return True
-        except (TelegramError, IOError) as e:
+        except (OSError, TelegramError) as e:
             logger.error(f"Failed to send photo: {e}")
             return False

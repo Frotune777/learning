@@ -4,9 +4,12 @@ Purpose: Local SQLite CRUD interface for active trading calls.
 """
 
 from __future__ import annotations
+
 import sqlite3
 from typing import Any
+
 from src.engine.smc_decision import TradingCall
+
 
 class SMCDatabase:
     def __init__(self, db_path: str = "data/smc_calls.sqlite"):

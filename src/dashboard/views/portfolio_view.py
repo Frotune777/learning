@@ -4,8 +4,10 @@ Purpose: Simulated Portfolio manager, exposure gauges & position sizing calculat
 """
 
 from __future__ import annotations
-import streamlit as st
+
 import pandas as pd
+import streamlit as st
+
 from src.portfolio.portfolio_engine import Portfolio
 
 

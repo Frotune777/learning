@@ -32,11 +32,11 @@ class MultiTimeframeBacktest:
         self,
         symbol: str,
         strategy_class: type,
-        timeframes: List[str] = ["5m", "15m", "1h", "1d"],
+        timeframes: list[str] = ["5m", "15m", "1h", "1d"],
         period: str = "3mo",
         cash: float = 100000,
         commission: float = 0.001,
-    ) -> Dict:
+    ) -> dict:
         """
         Run backtest across multiple timeframes
 
@@ -94,7 +94,7 @@ class MultiTimeframeBacktest:
 
         return results
 
-    def _calculate_advanced_stats(self, stats) -> Dict:
+    def _calculate_advanced_stats(self, stats) -> dict:
         """Calculate VaR, p-value, and Information Ratio from backtest stats"""
         adv = {}
         try:
@@ -153,7 +153,7 @@ class MultiTimeframeBacktest:
         test_period: int = 30,  # days
         step: int = 30,  # days
         total_period: str = "1y",
-    ) -> Dict:
+    ) -> dict:
         """
         Walk-forward optimization
         Train on one period, test on next period, roll forward
@@ -288,7 +288,7 @@ class MultiTimeframeBacktest:
         period: str = "1y",
         simulations: int = 100,
         cash: float = 100000,
-    ) -> Dict:
+    ) -> dict:
         """
         Monte Carlo simulation for risk assessment
         Randomly shuffle trade order to assess strategy robustness

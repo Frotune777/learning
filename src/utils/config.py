@@ -19,7 +19,7 @@ class ConfigManager:
         self.preset_dir.mkdir(parents=True, exist_ok=True)
         self.config = self._load_default_config()
         
-    def _load_default_config(self) -> Dict[str, Any]:
+    def _load_default_config(self) -> dict[str, Any]:
         """Load default configuration values."""
         return {
             'period': '1y',
@@ -40,7 +40,7 @@ class ConfigManager:
         from src.ui.color import colorText
         return colorText
     
-    def save_preset(self, name: str, config: Dict[str, Any]) -> None:
+    def save_preset(self, name: str, config: dict[str, Any]) -> None:
         """Save a named preset configuration."""
         preset_file = self.preset_dir / f"{name}.json"
         with open(preset_file, 'w') as f:
@@ -50,7 +50,7 @@ class ConfigManager:
         color = self._get_color_text()
         print(f"{color.GREEN}✅ Preset '{name}' saved{color.RESET}")
     
-    def load_preset(self, name: str) -> Dict[str, Any]:
+    def load_preset(self, name: str) -> dict[str, Any]:
         """Load a named preset configuration."""
         preset_file = self.preset_dir / f"{name}.json"
         if not preset_file.exists():
@@ -58,10 +58,10 @@ class ConfigManager:
             print(f"{color.RED}❌ Preset '{name}' not found{color.RESET}")
             return self.config
         
-        with open(preset_file, 'r') as f:
+        with open(preset_file) as f:
             return json.load(f)
     
-    def list_presets(self) -> List[str]:
+    def list_presets(self) -> list[str]:
         """List all available preset names."""
         return [f.stem for f in self.preset_dir.glob("*.json")]
     
@@ -73,7 +73,7 @@ class ConfigManager:
             color = self._get_color_text()
             print(f"{color.YELLOW}🗑️  Preset '{name}' deleted{color.RESET}")
     
-    def deleteStockData(self, exclude_file: Optional[str] = None) -> None:
+    def deleteStockData(self, exclude_file: str | None = None) -> None:
         """Delete cached pkl files in the current directory."""
         for f in glob.glob("*.pkl"):
             if exclude_file and exclude_file in f:

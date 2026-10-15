@@ -35,8 +35,8 @@ class TAValidator:
         self.nse_holidays = self._load_nse_holidays()
 
     def validate_indicators(
-        self, symbol: str, incremental: Dict, full: Dict, verbose: bool = True
-    ) -> Dict:
+        self, symbol: str, incremental: dict, full: dict, verbose: bool = True
+    ) -> dict:
         """
         Validate incremental indicators against full calculation
 
@@ -78,8 +78,8 @@ class TAValidator:
         return report
 
     def _validate_indicator_detailed(
-        self, name: str, incremental: Dict, full: Dict, verbose: bool
-    ) -> Dict:
+        self, name: str, incremental: dict, full: dict, verbose: bool
+    ) -> dict:
         """Validate single indicator with detailed comparison"""
         result = {
             "name": name,
@@ -132,7 +132,7 @@ class TAValidator:
 
         return result
 
-    def print_validation_report(self, report: Dict):
+    def print_validation_report(self, report: dict):
         """Print detailed validation report"""
         print("\n" + "=" * 80)
         print(f"VALIDATION REPORT: {report['symbol']}")
@@ -179,7 +179,7 @@ class TAValidator:
 
         print("\n" + "=" * 80)
 
-    def _load_nse_holidays(self) -> List[datetime]:
+    def _load_nse_holidays(self) -> list[datetime]:
         """Load NSE holiday calendar from config/holidays.json"""
         import json
         from pathlib import Path
@@ -190,7 +190,7 @@ class TAValidator:
             config_path = Path("config/holidays.json")
 
             if config_path.exists():
-                with open(config_path, "r") as f:
+                with open(config_path) as f:
                     config = json.load(f)
                     holidays = config.get("holidays_2026", [])
                     return [pd.to_datetime(d) for d in holidays]
@@ -251,7 +251,7 @@ class TAValidator:
 
         return count
 
-    def find_real_gaps(self, dates: pd.DatetimeIndex) -> List[Dict]:
+    def find_real_gaps(self, dates: pd.DatetimeIndex) -> list[dict]:
         """
         Find real data gaps (excluding weekends/holidays)
 
@@ -293,7 +293,7 @@ class EnhancedDataHealthMonitor:
         self.validator = TAValidator()
         logger.info("Initialized EnhancedDataHealthMonitor with holiday awareness")
 
-    def check_data_with_holidays(self, symbol: str, timeframe: str = "1d") -> Dict:
+    def check_data_with_holidays(self, symbol: str, timeframe: str = "1d") -> dict:
         """Check data health accounting for holidays"""
         from src.data.DataRepository import DataRepository
 
@@ -347,7 +347,7 @@ class EnhancedDataHealthMonitor:
             "expected_days_lag": expected_days,
         }
 
-    def validate_ta_calculation(self, symbol: str) -> Dict:
+    def validate_ta_calculation(self, symbol: str) -> dict:
         """Validate TA calculations for a symbol"""
         from src.analysis.IncrementalIndicatorCalculator import (
             IncrementalIndicatorCalculator,

@@ -9,7 +9,7 @@ class BaseStrategy(ABC):
     Abstract Base Class for all screening strategies.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         self.config = config or {}
         self.description = "Base Strategy"
         self.reason = ""

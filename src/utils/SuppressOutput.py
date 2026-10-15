@@ -1,6 +1,7 @@
 import os
 import sys
 
+
 class SuppressOutput:
     def __init__(self, suppress_stdout=False, suppress_stderr=False):
         self.suppress_stdout = suppress_stdout

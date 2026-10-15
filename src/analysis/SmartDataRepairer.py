@@ -12,9 +12,9 @@ from typing import Dict, List
 
 import pandas as pd
 
+from src.analysis.TAValidator import TAValidator
 from src.data.DataRepository import DataRepository
 from src.data.Fetcher import Fetcher
-from src.analysis.TAValidator import TAValidator
 
 # Setup logging
 os.makedirs("logs", exist_ok=True)
@@ -44,7 +44,7 @@ class SmartDataRepairer:
         self.validator = TAValidator()
         logger.info("Initialized SmartDataRepairer")
 
-    def repair_gaps(self, symbol: str, gaps: List[Dict], timeframe: str = "1d") -> Dict:
+    def repair_gaps(self, symbol: str, gaps: list[dict], timeframe: str = "1d") -> dict:
         """
         Repair gaps with partial fetches
 
@@ -217,7 +217,7 @@ class SmartDataRepairer:
         # All days are non-trading days (holidays/weekends)
         return True
 
-    def repair_duplicates(self, symbol: str, timeframe: str = "1d") -> Dict:
+    def repair_duplicates(self, symbol: str, timeframe: str = "1d") -> dict:
         """Remove duplicate timestamps"""
         repo = DataRepository(timeframe=timeframe)
         data = repo.load_data(symbol)
@@ -244,7 +244,7 @@ class SmartDataRepairer:
 
         return report
 
-    def repair_ordering(self, symbol: str, timeframe: str = "1d") -> Dict:
+    def repair_ordering(self, symbol: str, timeframe: str = "1d") -> dict:
         """Fix out-of-order timestamps"""
         repo = DataRepository(timeframe=timeframe)
         data = repo.load_data(symbol)
@@ -266,8 +266,8 @@ class SmartDataRepairer:
         return report
 
     def repair_all(
-        self, symbol: str, health_status: Dict, timeframe: str = "1d"
-    ) -> Dict:
+        self, symbol: str, health_status: dict, timeframe: str = "1d"
+    ) -> dict:
         """Repair all issues for a symbol"""
         logger.info(f"\n{'=' * 80}")
         logger.info(f"REPAIRING: {symbol}")

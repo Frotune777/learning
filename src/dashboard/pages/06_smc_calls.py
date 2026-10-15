@@ -4,14 +4,16 @@ Purpose: Interactive SMC Analysis, Trading Decision Workspace, and CRUD UI.
 """
 
 from __future__ import annotations
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
+
 from pathlib import Path
 
-from src.storage.smc_db import SMCDatabase
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
 from src.engine.smc import calculate_smc
 from src.engine.smc_decision import generate_smc_call
+from src.storage.smc_db import SMCDatabase
 
 try:
     st.set_page_config(page_title="SMC Decision Hub", layout="wide")

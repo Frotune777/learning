@@ -4,10 +4,11 @@ Purpose: Calculates and displays a correlation matrix for selected market instru
 Last Modified: 2026-05-27
 """
 
+import os
 from typing import Any
 
 import pandas as pd
-import os
+
 
 def run_correlation_cli(
     tickers: list[str] | None = None, period: str = "1y", hist_dir: str = "data/historical/1d"

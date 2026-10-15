@@ -1,5 +1,6 @@
 
 import multiprocessing
+
 import pytest
 
 # Test-scoped start method and deprecation filter:

@@ -134,10 +134,10 @@ class Screener:
 
     def monitorFiveEma(
         self,
-        proxyServer: Optional[str],
+        proxyServer: str | None,
         fetcher: Any,
         result_df: pd.DataFrame,
-        last_signal: Dict[str, Any],
+        last_signal: dict[str, Any],
     ) -> pd.DataFrame:
         """
         Monitor stocks for 5-EMA reversal signals.
@@ -165,8 +165,8 @@ class Screener:
         return result_df
 
     def getNiftyPrediction(
-        self, data: pd.DataFrame, proxyServer: Optional[str] = None
-    ) -> Optional[Tuple[Any, str, float, pd.DataFrame]]:
+        self, data: pd.DataFrame, proxyServer: str | None = None
+    ) -> tuple[Any, str, float, pd.DataFrame] | None:
         """
         Run the Nifty gap prediction model.
 
@@ -200,8 +200,8 @@ class Screener:
 
     # Preprocess the acquired data
     def preprocessData(
-        self, data: pd.DataFrame, daysToLookback: Optional[int] = None
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        self, data: pd.DataFrame, daysToLookback: int | None = None
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Preprocesses raw stock data by calculating technical indicators and handling legacy column names.
 
@@ -247,10 +247,10 @@ class Screener:
     def validateLTP(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
-        minLTP: Optional[float] = None,
-        maxLTP: Optional[float] = None,
+        screenDict: dict,
+        saveDict: dict,
+        minLTP: float | None = None,
+        maxLTP: float | None = None,
     ) -> bool:
         """
         Validates if the Last Traded Price (LTP) is within the specified range.
@@ -319,8 +319,8 @@ class Screener:
     def validateConsolidation(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         percentage: float = 10,
     ) -> float:
         """
@@ -386,7 +386,7 @@ class Screener:
 
     # Validate Moving averages
     def validateMovingAverages(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict, maRange: float = 2.5
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict, maRange: float = 2.5
     ) -> int:
         """
         Validates moving average signals (SMA).
@@ -428,8 +428,8 @@ class Screener:
     def validateVolume(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         volumeRatio: float = 2.5,
     ) -> bool:
         """
@@ -469,7 +469,7 @@ class Screener:
 
     # Find Breakout
     def findBreakout(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict, daysToLookback: int
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict, daysToLookback: int
     ) -> bool:
         """
         Identifies if the stock has broken out of a recent high.
@@ -521,8 +521,8 @@ class Screener:
     def validateRSI(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         minRSI: int,
         maxRSI: int,
     ) -> bool:
@@ -569,9 +569,9 @@ class Screener:
     def findTrend(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
-        daysToLookback: Optional[int] = None,
+        screenDict: dict,
+        saveDict: dict,
+        daysToLookback: int | None = None,
         stockName: str = "",
     ) -> str:
         """
@@ -645,7 +645,7 @@ class Screener:
             return "Unknown"
 
     def validateMorningStar(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Morning Star candle pattern.
@@ -675,7 +675,7 @@ class Screener:
         return False
 
     def validateMomentum(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates if the stock has strong momentum.
@@ -702,8 +702,8 @@ class Screener:
     def validateInsideBar(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         chartPattern: int = 1,
         daysToLookback: int = 5,
     ) -> bool:
@@ -737,8 +737,8 @@ class Screener:
         self,
         stock: str,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         percentage: float = 0.3,
     ) -> bool:
         """
@@ -770,9 +770,9 @@ class Screener:
     def validateVCP(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
-        stockName: Optional[str] = None,
+        screenDict: dict,
+        saveDict: dict,
+        stockName: str | None = None,
         window: int = 3,
         percentageFromTop: int = 3,
     ) -> bool:
@@ -802,8 +802,8 @@ class Screener:
     def validateMeanReversion(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         maLength: int,
         percentage: float = 0.015,
     ) -> bool:
@@ -839,8 +839,8 @@ class Screener:
     def findTrendlines(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         percentage: float = 0.05,
     ) -> bool:
         """
@@ -865,7 +865,7 @@ class Screener:
         return False
 
     def validateGamma(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Gamma setup.
@@ -895,7 +895,7 @@ class Screener:
         return False
 
     def validateMACD(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates MACD crossover or bullish signal.
@@ -925,7 +925,7 @@ class Screener:
         return False
 
     def validateLC_HC(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Checks for Lower Circuit or Higher Circuit.
@@ -954,7 +954,7 @@ class Screener:
             pass
         return False
 
-    def validateCCI(self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict) -> bool:
+    def validateCCI(self, data: pd.DataFrame, screenDict: dict, saveDict: dict) -> bool:
         """
         Validates Standard Commodity Channel Index (CCI) for buy signals.
 
@@ -983,7 +983,7 @@ class Screener:
         return False
 
     def validateIchimoku(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Ichimoku Cloud breakout (TK Crossover above Kumo).
@@ -1015,7 +1015,7 @@ class Screener:
             pass
         return False
 
-    def validateNR4(self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict) -> bool:
+    def validateNR4(self, data: pd.DataFrame, screenDict: dict, saveDict: dict) -> bool:
         """
         Checks for Narrow Range 4 (NR4) day.
 
@@ -1044,7 +1044,7 @@ class Screener:
         return False
 
     def validate52WeekHighLow(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict, high: bool = True
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict, high: bool = True
     ) -> bool:
         """
         Validates if the stock is near 52-week high or low.
@@ -1088,7 +1088,7 @@ class Screener:
         return False
 
     def validateNextDayBullish(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Checks for patterns indicating bullishness for the next day.
@@ -1118,7 +1118,7 @@ class Screener:
         return False
 
     def validateSuperTrend(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates SuperTrend indicator signals.
@@ -1148,7 +1148,7 @@ class Screener:
         return False
 
     def validateGoldenCrossover(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Golden Crossover (SMA50 crosses above SMA200).
@@ -1181,7 +1181,7 @@ class Screener:
         return False
 
     def validateATRCross(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates ATR Cross (Volatility Breakout).
@@ -1211,7 +1211,7 @@ class Screener:
         return False
 
     def validateHighMomentum(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Checks for High Momentum stocks.
@@ -1241,7 +1241,7 @@ class Screener:
         return False
 
     def validateStochastic(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Stochastic Oscillator signals.
@@ -1271,7 +1271,7 @@ class Screener:
         return False
 
     def validateVolumeGainers(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Identifies stock with high volume gains.
@@ -1306,7 +1306,7 @@ class Screener:
         return False
 
     def validatePriceMomentum(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Checks if the stock has gained at least 2% in the last 3 days.
@@ -1342,7 +1342,7 @@ class Screener:
         return False
 
     def validateIntradayBreakout(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Intraday Breakout strategy (N-minute Price & Volume).
@@ -1379,7 +1379,7 @@ class Screener:
         return False
 
     def validateRSIandMACD(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates confluence of Bullish RSI and MACD.
@@ -1438,7 +1438,7 @@ class Screener:
     # Stubs or Deprecated
 
     def validateNarrowRange(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict, nr: int = 4
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict, nr: int = 4
     ) -> bool:
         try:
             if len(data) < nr:
@@ -1469,7 +1469,7 @@ class Screener:
             return False
 
     def validateVolumeSpreadAnalysis(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         # Placeholder for VSA - Return False to prevent crash
         return False
@@ -1477,20 +1477,20 @@ class Screener:
     def findReversalMA(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         maLength: int,
         percentage: float = 0.015,
     ) -> bool:
         return False
 
     def findRSICrossingMA(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict, maLength: int = 9
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict, maLength: int = 9
     ) -> bool:
         return False
 
     def validateLorentzian(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict, lookFor: int = 1
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict, lookFor: int = 1
     ) -> bool:
         is_lc = self.strategies["lorentzian"].analyze(data)
         if is_lc:
@@ -1519,7 +1519,7 @@ class Screener:
         return False
 
     def validateCandlePatterns(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         try:
             patterns_found: list[str] = []
@@ -1583,7 +1583,7 @@ class Screener:
             # Log the error but don't crash the screener
             print(f"Error adding vector for {stock}: {e}")
 
-    def validateATR(self, data: pd.DataFrame, saveDict: Dict) -> None:
+    def validateATR(self, data: pd.DataFrame, saveDict: dict) -> None:
         """Calculate comprehensive risk management levels"""
         if "ATR" not in data.columns:
             return
@@ -1655,7 +1655,7 @@ class Screener:
                 pass
 
     def validateVWAP(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         if "VWAP" in data.columns:
             vwap = data["VWAP"].iloc[-1]
@@ -1680,7 +1680,7 @@ class Screener:
         return False
 
     def validateRelativeStrength(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> None:
         # Placeholder logic for RS Rating until Nifty index comparison is robust
         # Use RSI as proxy or just return 'Fair'
@@ -1699,7 +1699,7 @@ class Screener:
             screenDict["RS_Rating"] = ()
 
     def validateRegime(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> str:
         try:
             if "SMA_200" in data.columns:
@@ -1737,7 +1737,7 @@ class Screener:
             )
             return "Unknown"
 
-    def validateScoring(self, screenDict: Dict, saveDict: Dict) -> None:
+    def validateScoring(self, screenDict: dict, saveDict: dict) -> None:
         # Simple Summation Score
         score = 0
         # Simple Summation Score
@@ -1775,8 +1775,8 @@ class Screener:
     def findDemandSupplyZones(
         self,
         data: pd.DataFrame,
-        screenDict: Dict,
-        saveDict: Dict,
+        screenDict: dict,
+        saveDict: dict,
         threshold_percent: float = 2,
     ) -> bool:
         """
@@ -2003,7 +2003,7 @@ class Screener:
 
     # Validate Trendline Support (Linear Regression)
     def validateTrendlineSupport(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Trendline Support using Linear Regression.
@@ -2026,7 +2026,7 @@ class Screener:
 
     # Validate TTM Squeeze
     def validateTTMSqueeze(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates TTM Squeeze indicator.
@@ -2046,7 +2046,7 @@ class Screener:
         return False
 
     def validateConfluence(
-        self, data: pd.DataFrame, screenDict: Dict, saveDict: Dict
+        self, data: pd.DataFrame, screenDict: dict, saveDict: dict
     ) -> bool:
         """
         Validates Confluence of multiple indicators.

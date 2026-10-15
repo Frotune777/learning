@@ -1,5 +1,5 @@
 from .engineer import FeatureEngineer
-from .trainer import MLModelTrainer
 from .selector import AutoStrategySelector
+from .trainer import MLModelTrainer
 
 __all__ = ['FeatureEngineer', 'MLModelTrainer', 'AutoStrategySelector']

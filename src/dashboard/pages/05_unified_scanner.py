@@ -13,11 +13,16 @@ root_dir = os.path.abspath(
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-import streamlit as st
-import pandas as pd
 from datetime import datetime
 
-from src.scanners.unified_scanner import run_unified_scanner, compile_signals_to_dataframe, SCANNER_GROUPS
+import pandas as pd
+import streamlit as st
+
+from src.scanners.unified_scanner import (
+    SCANNER_GROUPS,
+    compile_signals_to_dataframe,
+    run_unified_scanner,
+)
 
 try:
     st.set_page_config(page_title="Unified Grouped Scanner", page_icon="📈", layout="wide")

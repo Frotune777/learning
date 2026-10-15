@@ -142,19 +142,19 @@ class StrategyOptimizer:
             with open(self.PARAMS_FILE, "w") as f:
                 json.dump({}, f)
 
-    def get_params(self, symbol: str) -> Dict:
+    def get_params(self, symbol: str) -> dict:
         """Get optimized params for a stock"""
         try:
-            with open(self.PARAMS_FILE, "r") as f:
+            with open(self.PARAMS_FILE) as f:
                 data = json.load(f)
                 return data.get(symbol, {})
         except Exception:
             return {}
 
-    def save_params(self, symbol: str, params: Dict):
+    def save_params(self, symbol: str, params: dict):
         """Save optimized params"""
         try:
-            with open(self.PARAMS_FILE, "r") as f:
+            with open(self.PARAMS_FILE) as f:
                 data = json.load(f)
 
             # Convert numpy types to python native types for JSON serialization
@@ -176,7 +176,7 @@ class StrategyOptimizer:
         except Exception as e:
             print(f"❌ Failed to save params: {e}")
 
-    def optimize(self, data: pd.DataFrame, symbol: str) -> Dict:
+    def optimize(self, data: pd.DataFrame, symbol: str) -> dict:
         """
         Run backtesting.py optimization
 

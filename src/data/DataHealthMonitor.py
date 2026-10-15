@@ -36,7 +36,7 @@ class DataHealthMonitor:
         self.config = self._load_config(config_file)
         logger.info("Initialized DataHealthMonitor")
 
-    def _load_config(self, config_file: str) -> Dict:
+    def _load_config(self, config_file: str) -> dict:
         """Load configuration with defaults"""
         default_config = {
             "gap_tolerance": {"1d": 3, "1h": 5, "15m": 10},
@@ -47,7 +47,7 @@ class DataHealthMonitor:
         config_path = Path(config_file)
         if config_path.exists():
             try:
-                with open(config_path, "r") as f:
+                with open(config_path) as f:
                     user_config = json.load(f)
                     default_config.update(user_config)
                 logger.info(f"Loaded config from {config_file}")
@@ -56,7 +56,7 @@ class DataHealthMonitor:
 
         return default_config
 
-    def generate_report(self, symbols: List[str], timeframe: str = "1d") -> Dict:
+    def generate_report(self, symbols: list[str], timeframe: str = "1d") -> dict:
         """Generate comprehensive data health report"""
         import os
         import sys
@@ -93,7 +93,7 @@ class DataHealthMonitor:
 
         return report
 
-    def _check_ohlcv(self, symbol: str, timeframe: str, repo) -> Dict:
+    def _check_ohlcv(self, symbol: str, timeframe: str, repo) -> dict:
         """Enhanced OHLCV check with configurable tolerance"""
         data = repo.load_data(symbol)
 
@@ -164,7 +164,7 @@ class DataHealthMonitor:
         else:
             return int((now - last_date).total_seconds())
 
-    def _find_gaps(self, dates: pd.DatetimeIndex, timeframe: str) -> List[Dict]:
+    def _find_gaps(self, dates: pd.DatetimeIndex, timeframe: str) -> list[dict]:
         """Find gaps with configurable tolerance"""
         tolerance = self.config["gap_tolerance"].get(timeframe, 3)
         gaps = []

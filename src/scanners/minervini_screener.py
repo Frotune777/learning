@@ -4,9 +4,9 @@ Purpose: Screens stocks against Mark Minervini's Trend Template using yfinance d
 Last Modified: 2026-05-27
 """
 
+import os
 from datetime import date, timedelta
 from typing import Any
-import os
 
 import pandas as pd
 

@@ -38,15 +38,15 @@ sys.path.append(os.path.join(os.getcwd(), "src"))
 
 from rich.console import Console  # noqa: E402
 
-from src.utils.config import ConfigManager  # noqa: E402
-from src.data.manager import DataIndexManager  # noqa: E402
 from src.data.DataManagementService import DataManagementService  # noqa: E402
+from src.data.manager import DataIndexManager  # noqa: E402
 from src.data.PaperTrading import PaperTrading  # noqa: E402
 from src.data.PersistenceService import PersistenceService  # noqa: E402
 from src.engine.orchestrator import ScanOrchestrator  # noqa: E402
 from src.ui.MenuService import MenuService  # noqa: E402
 from src.ui.ReportingService import ReportingService  # noqa: E402
 from src.ui.VisualUI import VisualUI  # noqa: E402
+from src.utils.config import ConfigManager  # noqa: E402
 from src.utils.error_handling import safe_execution  # noqa: E402
 
 console = Console()

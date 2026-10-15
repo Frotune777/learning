@@ -1,6 +1,6 @@
+from .bus import SignalBus, SignalDatabase, SignalEmitter
 from .config import ConfigManager
 from .errors import ErrorManager, safe_execution
-from .bus import SignalBus, SignalDatabase, SignalEmitter
 from .performance import PerformanceTracker
 
 __all__ = [

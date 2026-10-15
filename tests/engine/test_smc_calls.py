@@ -1,8 +1,10 @@
-import pytest
 import pandas as pd
+import pytest
+
 from src.engine.smc import calculate_smc
-from src.engine.smc_decision import generate_smc_call, TradingCall
+from src.engine.smc_decision import TradingCall, generate_smc_call
 from src.storage.smc_db import SMCDatabase
+
 
 def test_full_smc_call_pipeline(tmp_path):
     db_file = str(tmp_path / "test_calls.sqlite")

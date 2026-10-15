@@ -201,7 +201,7 @@ class SMCPatterns:
         return signals
 
     @staticmethod
-    def analyze_smc(data: pd.DataFrame) -> Dict:
+    def analyze_smc(data: pd.DataFrame) -> dict:
         """Complete SMC analysis"""
         result = {
             "BOS": SMCPatterns.detect_bos(data),
@@ -237,7 +237,7 @@ class WilliamsFractals:
     """
 
     @staticmethod
-    def detect_fractals(data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
+    def detect_fractals(data: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
         """Detect Williams Fractals - Vectorized"""
         high = data["High"]
         low = data["Low"]
@@ -266,7 +266,7 @@ class WilliamsFractals:
         return f_highs, f_lows
 
     @staticmethod
-    def analyze_fractals(data: pd.DataFrame) -> Dict:
+    def analyze_fractals(data: pd.DataFrame) -> dict:
         """Complete fractal analysis"""
         highs, lows = WilliamsFractals.detect_fractals(data)
         r_highs = highs.dropna().tail(3)

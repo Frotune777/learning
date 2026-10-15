@@ -8,6 +8,7 @@ import glob
 import logging
 import os
 from datetime import datetime
+
 import pandas as pd
 
 from src.core.signal import Signal

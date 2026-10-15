@@ -65,7 +65,7 @@ class AnalyticsService:
             return df
 
     def calculate_technical_indicators(
-        self, df: pd.DataFrame, config: Dict[str, Any] = None
+        self, df: pd.DataFrame, config: dict[str, Any] = None
     ) -> pd.DataFrame:
         """
         Apply a suite of technical indicators to the DataFrame.

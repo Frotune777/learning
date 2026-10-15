@@ -12,7 +12,7 @@ class TTMSqueezeStrategy(BaseStrategy):
     which often precede explosive moves.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         super().__init__(config)
         self.description = "TTM Squeeze"
         self.period = 20

@@ -1,15 +1,16 @@
 import unittest
-from unittest.mock import patch, MagicMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 
 from src.core.signal import Signal
 from src.scanners.unified_scanner import (
-    run_unified_scanner,
-    get_group_for_strategy,
-    get_display_name_for_strategy,
-    compile_signals_to_dataframe,
     SCANNER_GROUPS,
+    compile_signals_to_dataframe,
+    get_display_name_for_strategy,
+    get_group_for_strategy,
+    run_unified_scanner,
 )
 
 

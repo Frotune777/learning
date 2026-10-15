@@ -326,7 +326,7 @@ def cmd_fyers_token(args: argparse.Namespace) -> None:
     """
     Exchange a Fyers auth code for an access token and cache it locally.
     """
-    from src.nse_bhavcopy.fyers_fetcher import exchange_auth_code, FyersFetcher
+    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher, exchange_auth_code
 
     api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
     api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")

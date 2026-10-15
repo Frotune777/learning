@@ -48,24 +48,21 @@ from src.analysis.indicators.momentum import MomentumIndicators  # noqa: E402
 from src.analysis.indicators.trend import TrendIndicators  # noqa: E402
 from src.analysis.indicators.volatility import VolatilityIndicators  # noqa: E402
 from src.analysis.indicators.volume import VolumeIndicators  # noqa: E402
-
-
+from src.analysis.optimizer import StrategyOptimizer  # noqa: E402
 
 # noqa: E402
 from src.analysis.patterns import SMCPatterns  # noqa: E402
-
-from src.analysis.optimizer import StrategyOptimizer  # noqa: E402
 from src.analysis.validator import SymbolValidator  # noqa: E402
 from src.data.fetchers import Fetcher  # noqa: E402
+from src.engine.screener import Screener  # noqa: E402
 
 # noqa: E402
 from src.ml.engineer import FeatureEngineer  # noqa: E402
 from src.ml.trainer import MLModelTrainer  # noqa: E402
-from src.engine.screener import Screener  # noqa: E402
 
 # Global persistent cache (survives across scans)
-_GLOBAL_CACHE: Dict[str, pd.DataFrame] = {}
-_CACHE_EXPIRY: Dict[str, datetime] = {}
+_GLOBAL_CACHE: dict[str, pd.DataFrame] = {}
+_CACHE_EXPIRY: dict[str, datetime] = {}
 _CACHE_TTL = 3600  # 1 hour TTL
 
 
@@ -99,13 +96,13 @@ class UltraOptimizedMultiTimeframeScanner:
     def scan_stock(
         self,
         symbol: str,
-        timeframes: List[str] = ["1d", "1h"],
+        timeframes: list[str] = ["1d", "1h"],
         include_ml: bool = True,
         include_backtest: bool = False,
         silent: bool = False,
-        shared_cache: Optional[Dict] = None,
-        scan_criteria: Optional[Dict] = None,
-    ) -> Optional[Dict]:
+        shared_cache: dict | None = None,
+        scan_criteria: dict | None = None,
+    ) -> dict | None:
         """
         Scan single stock with optimized data fetching
 
@@ -278,15 +275,15 @@ class UltraOptimizedMultiTimeframeScanner:
 
     def scan_multiple_stocks(
         self,
-        symbols: List[str],
-        timeframes: List[str] = ["1d", "1h"],
+        symbols: list[str],
+        timeframes: list[str] = ["1d", "1h"],
         min_score: int = 3,
         include_ml: bool = True,
         include_backtest: bool = False,
         parallel: bool = True,
-        num_workers: Optional[int] = None,
+        num_workers: int | None = None,
         show_progress: bool = True,
-        scan_criteria: Optional[Dict] = None,
+        scan_criteria: dict | None = None,
     ) -> pd.DataFrame:
         """
         Scan multiple stocks with ultra-optimization
@@ -354,9 +351,9 @@ class UltraOptimizedMultiTimeframeScanner:
         timeframes,
         include_ml,
         include_backtest,
-        num_workers: Optional[int],
+        num_workers: int | None,
         show_progress: bool,
-        scan_criteria: Optional[Dict] = None,
+        scan_criteria: dict | None = None,
     ):
         """
         Parallel scanning with global cache (Priority 3)
@@ -468,11 +465,11 @@ class UltraOptimizedMultiTimeframeScanner:
     def _scan_stock_worker(
         self,
         symbol: str,
-        timeframes: List[str],
+        timeframes: list[str],
         include_ml: bool,
         include_backtest: bool,
-        scan_criteria: Optional[Dict] = None,
-    ) -> Optional[Dict]:
+        scan_criteria: dict | None = None,
+    ) -> dict | None:
         """Worker function - uses global cache, with error handling"""
         try:
             scanner = UltraOptimizedMultiTimeframeScanner()
@@ -755,7 +752,7 @@ class UltraOptimizedMultiTimeframeScanner:
         }
 
     def _validate_specific_criteria(
-        self, data: pd.DataFrame, criteria: Dict, shared_cache=None
+        self, data: pd.DataFrame, criteria: dict, shared_cache=None
     ) -> bool:
         """Validate stock against specific PKScreener criteria"""
         if not self.screener:
@@ -839,7 +836,7 @@ class UltraOptimizedMultiTimeframeScanner:
             # print(f"Validation error: {e}")
             return False
 
-    def _emit_to_bus(self, result: Dict, timeframes: List[str]) -> None:
+    def _emit_to_bus(self, result: dict, timeframes: list[str]) -> None:
         """Prepare and emit signal data to the analytics bus"""
         # Prepare signal data for analytics
         signal_data = {
@@ -868,7 +865,7 @@ class UltraOptimizedMultiTimeframeScanner:
         # Emit to analytics system
         self.emit_signal(signal_data)
 
-    def _extract_patterns(self, result: Dict) -> List[str]:
+    def _extract_patterns(self, result: dict) -> list[str]:
         """Extract pattern names from result for analytics"""
         patterns = []
 

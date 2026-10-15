@@ -44,9 +44,9 @@ from src.data.fetcher.prices.nse_charts import NSEChartFetcher
 from src.data.fetcher.session.manager import SessionManager
 from src.data.fetcher.session.nse_session import NSESessionInitializer
 from src.data.fetcher.symbols.resolver import SymbolResolver
-from src.storage.downloader import BhavcopyDownloader
 from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
 from src.scrapers.nifty_index_fetcher import get_nifty50
+from src.storage.downloader import BhavcopyDownloader
 
 # Setup diagnostics logger
 logging.basicConfig(

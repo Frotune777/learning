@@ -78,7 +78,7 @@ class ReportingService:
         self.console = console
         self.ui = VisualUI()
 
-    def print_results_table(self, validated_results: List[Dict[str, Any]]) -> None:
+    def print_results_table(self, validated_results: list[dict[str, Any]]) -> None:
         """
         Print results using high-performance VisualUI table format.
 
@@ -130,7 +130,7 @@ class ReportingService:
         self.ui.render_results_table(formatted_data)
 
     def prepare_export_data(
-        self, results: Union[pd.DataFrame, List[Dict[str, Any]]]
+        self, results: pd.DataFrame | list[dict[str, Any]]
     ) -> pd.DataFrame:
         """
         Helper to flatten complex results for CSV or persistence layers.
@@ -240,20 +240,20 @@ class ReportingService:
 
     def _generate_reasoning(
         self,
-        row: Dict[str, Any],
-        rsi: Dict[str, Any],
-        macd: Dict[str, Any],
-        bb: Dict[str, Any],
-        st: Dict[str, Any],
-        obv: Dict[str, Any],
-        don: Dict[str, Any],
-        smc: Dict[str, Any],
+        row: dict[str, Any],
+        rsi: dict[str, Any],
+        macd: dict[str, Any],
+        bb: dict[str, Any],
+        st: dict[str, Any],
+        obv: dict[str, Any],
+        don: dict[str, Any],
+        smc: dict[str, Any],
         ml_dir: str,
         ml_conf: int,
-        mtf: Dict[str, Any],
-        ml_expy: Dict[str, Any] = None,
-        vwap: Dict[str, Any] = None,
-        vp: Dict[str, Any] = None,
+        mtf: dict[str, Any],
+        ml_expy: dict[str, Any] = None,
+        vwap: dict[str, Any] = None,
+        vp: dict[str, Any] = None,
     ) -> str:
         """
         Generate a human-readable explanation for technical signals.

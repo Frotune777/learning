@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+
 import pandas as pd
 
 from src.engine.smc import calculate_smc
-from src.engine.smc_decision import generate_smc_call, TradingCall
+from src.engine.smc_decision import TradingCall, generate_smc_call
 from src.storage.smc_db import SMCDatabase
 
 LOGGER = logging.getLogger(__name__)

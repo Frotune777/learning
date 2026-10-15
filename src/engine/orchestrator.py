@@ -7,19 +7,18 @@ from src.analysis.EnhancedBacktestValidator import (
     EnhancedBacktestValidator as BacktestValidator,
 )
 from src.analysis.optimizer import StrategyOptimizer
-from src.utils.bus import SignalEmitter
-from src.utils.config import ConfigManager
 from src.data.DataIndexManager import DataIndexManager
 from src.data.fetchers import Fetcher
 from src.data.storage import PersistenceService
+from src.engine.criteria import ScanningCriteria
 from src.engine.scanner import (
     UltraOptimizedMultiTimeframeScanner as MultiTimeframeScanner,
 )
-from src.engine.criteria import ScanningCriteria
-
 from src.ui.StockUniverseSelector import StockUniverseSelector
 from src.ui.telegram import TelegramService
 from src.ui.VisualUI import VisualUI
+from src.utils.bus import SignalEmitter
+from src.utils.config import ConfigManager
 
 console = Console()
 

@@ -13,7 +13,7 @@ class TrendLinearRegressionStrategy(BaseStrategy):
     Identifies if a stock is currently near its long-term trendline support.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         super().__init__(config)
         self.description = "Trendline Support (Linear Regression)"
         self.points_limit = 30

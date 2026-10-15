@@ -4,11 +4,13 @@ Purpose: Event-driven & VectorBT strategy backtesting workbench.
 """
 
 from __future__ import annotations
-import os
+
 import glob
+import os
+
 import pandas as pd
-import streamlit as st
 import plotly.express as px
+import streamlit as st
 
 from src.nse_bhavcopy.backtester import NSEEventBacktester, VectorBTBacktester
 from src.nse_bhavcopy.ta_indicators import add_ta_indicators

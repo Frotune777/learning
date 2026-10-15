@@ -4,19 +4,21 @@ Purpose: Professional Smart Money Concepts (SMC) & Institutional Setup Studio.
 """
 
 from __future__ import annotations
+
 from pathlib import Path
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.storage.smc_db import SMCDatabase
+from src.engine.lux_ifvg_sweeps import calculate_sweeps_ifvgs
+from src.engine.lux_model_2022 import calculate_model_2022
+from src.engine.lux_nwe import calculate_nwe
+from src.engine.lux_savgol import calculate_savgol
+from src.engine.lux_volume_profile import calculate_volume_profile
 from src.engine.smc import calculate_smc
 from src.engine.smc_decision import generate_smc_call
-from src.engine.lux_nwe import calculate_nwe
-from src.engine.lux_volume_profile import calculate_volume_profile
-from src.engine.lux_model_2022 import calculate_model_2022
-from src.engine.lux_ifvg_sweeps import calculate_sweeps_ifvgs
-from src.engine.lux_savgol import calculate_savgol
+from src.storage.smc_db import SMCDatabase
 
 
 def render_smc_view():

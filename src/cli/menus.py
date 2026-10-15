@@ -60,7 +60,7 @@ from src.scanners.etf_screener import run_liquid_etf_screener
 from src.scanners.minervini_screener import run_minervini_cli
 from src.scanners.momentum_squeeze import run_squeeze_cli
 from src.scanners.pair_scanner import run_pair_scanner_cli
-from src.scanners.unified_scanner import run_unified_scanner, compile_signals_to_dataframe
+from src.scanners.unified_scanner import compile_signals_to_dataframe, run_unified_scanner
 from src.scrapers.mmi_scraper import run_mmi_cli
 from src.screener import StockScreener
 from src.storage.downloader import BhavcopyDownloader
@@ -2033,7 +2033,7 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
 
 def menu_fyers_token() -> None:
     """Interactive handler to configure data sources and Fyers broker session."""
-    from src.core.data_sources import DataSourceManager, DATA_SOURCES
+    from src.core.data_sources import DATA_SOURCES, DataSourceManager
     from src.nse_bhavcopy.fyers_fetcher import exchange_auth_code
 
     _header(
@@ -2340,6 +2340,7 @@ def menu_query_engine(hist_dir: str, data_dir: str) -> None:
 
 def menu_train_ml(hist_dir: str, data_dir: str) -> None:
     import os
+
     from src.engine.orchestrator import ScanOrchestrator
     orchestrator = ScanOrchestrator()
     orchestrator.train_ml_models()
@@ -2348,6 +2349,7 @@ def menu_train_ml(hist_dir: str, data_dir: str) -> None:
 
 def menu_run_optimizer(hist_dir: str, data_dir: str) -> None:
     import os
+
     from src.engine.orchestrator import ScanOrchestrator
     orchestrator = ScanOrchestrator()
     orchestrator.run_optimizer()
@@ -2367,6 +2369,7 @@ def menu_smc_scan(data_dir: str, hist_dir: str) -> None:
     """Run SMC scanner and generate high R:R institutional calls."""
     _header("Smart Money Concepts (SMC) Institutional Scanner")
     import argparse
+
     from src.cli.actions import cmd_smc_scan
     sym_in = input("  Filter symbol [or press Enter for all available parquets]: ").strip()
     limit_in = input("  Max symbols to scan [default 50]: ").strip()
@@ -2385,6 +2388,7 @@ def menu_smc_calls(data_dir: str) -> None:
     """View stored SMC calls in SQLite database."""
     _header("SMC Institutional Calls Ledger")
     import argparse
+
     from src.cli.actions import cmd_smc_calls
     status_filter = input("  Filter status (ALL, PENDING, TRIGGERED, STOPPED, TARGET_HIT) [ALL]: ").strip().upper()
     args = argparse.Namespace(
@@ -2399,8 +2403,10 @@ def menu_lux_regimes(hist_dir: str) -> None:
     """Run Stan Weinstein Stage Classifier & LuxAlgo Regimes."""
     _header("LuxAlgo & Quantitative Regime Classifier")
     import glob
-    from src.engine.lux_weinstein import calculate_weinstein_stage
+
     from rich.table import Table
+
+    from src.engine.lux_weinstein import calculate_weinstein_stage
 
     files = sorted(glob.glob(os.path.join(hist_dir, "*.parquet")))
     if not files:

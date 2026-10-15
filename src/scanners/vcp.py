@@ -11,7 +11,7 @@ class VCPStrategy(BaseStrategy):
     Identifies stocks with tightening price action near highs.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         super().__init__(config)
         self.description = "Minervini VCP Pattern"
         self.lookback_days = 250  # ~1 year

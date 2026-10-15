@@ -93,7 +93,7 @@ class PerformanceTracker:
         return cursor.lastrowid
     
     def log_signal(self, scan_id: int, symbol: str, entry_price: float,
-                   signal_data: Dict[str, Any]) -> int:
+                   signal_data: dict[str, Any]) -> int:
         """Log a screening signal."""
         cursor = self.conn.cursor()
         cursor.execute('''
@@ -145,7 +145,7 @@ class PerformanceTracker:
         ))
         self.conn.commit()
     
-    def get_performance_stats(self, days: int = 30) -> Dict[str, Any]:
+    def get_performance_stats(self, days: int = 30) -> dict[str, Any]:
         """Get performance statistics for last N days."""
         cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat()
         
@@ -201,7 +201,7 @@ class PerformanceTracker:
             'avg_pnl_percent': round(avg_pnl, 2)
         }
     
-    def get_recent_signals(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_recent_signals(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get recent signals with outcomes."""
         cursor = self.conn.cursor()
         cursor.execute('''

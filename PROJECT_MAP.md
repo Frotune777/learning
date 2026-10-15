@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 9)_
+_Last updated on 2026-10-15 (Unit 10)_
 
 ## Canonical package: `src/`
 
@@ -48,7 +48,8 @@ _Last updated on 2026-10-15 (Unit 9)_
   * `mypy` excludes `_archive` and `src/dashboard` (dynamic Streamlit imports)
   * `pytest.norecursedirs` excludes `_archive`, `data`, `.venv`
   * `pytest.filterwarnings` silences 2 third-party warnings (advanced_ta, sklearn)
-  * Known ruff debt: ~1,122 findings (mostly E501 line-length + UP0xx modernizations) — deferred to Unit 10
+  * Ruff UP+I rules applied (Unit 10) — 0 remaining findings in this category
+  * Remaining ruff debt: E501 (line length), F401 (unused imports), W*, RUF* — F401 handled in Unit 11
 - `pyproject.toml` baseline snapshot: `_archive/audits/pyproject_before_unit7.toml`
 
 ## Archived (do NOT delete — reference only)
@@ -65,6 +66,7 @@ _Last updated on 2026-10-15 (Unit 9)_
 - `_archive/audits/pytest_unit7_postfix.txt`  — post-Unit-7 test baseline
 - `_archive/audits/pytest_unit8_postfix.txt`  — pytest baseline after Unit 8 fixes (206 tests)
 - `_archive/audits/pytest_unit9_postfix.txt`  — post-Unit-9 test baseline (206 tests)
+- `_archive/audits/pytest_unit10_postfix.txt` — pytest baseline after Unit 10 UP+I changes
 - `_archive/audits/pyproject_before_unit7.toml` — pre-Unit-7 config snapshot
 - `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
 - `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
@@ -87,7 +89,8 @@ _Last updated on 2026-10-15 (Unit 9)_
 - [x] Unit 8 — Duplicate validator methods in `src/engine/screener.py` (verified clean in Unit 9 Stage A — 0 duplicates; note was stale)
 - [x] Unit 9 — `src/cli/menus.py` NameErrors fixed (LOGGER + Path)
 - [x] Unit 9 — `.gitignore` cleaned (deduped, broken line repaired)
-- [ ] Unit 10 — Selective ruff modernization (~1,122 findings)
+- [x] Unit 10 — Ruff UP+I modernization applied
+- [ ] Unit 11 — Targeted F401 review (~62 findings)
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
 
 ## Credentials policy

@@ -4,9 +4,9 @@ Professional Data Repair Tool with Progress Bars
 Shows exactly what's being fixed with ETAs
 """
 
+import argparse
 import os
 import sys
-import argparse
 
 from tqdm import tqdm
 

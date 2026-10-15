@@ -4,9 +4,10 @@ Purpose: Calculates the Momentum Squeeze Indicator using Bollinger and Keltner C
 Last Modified: 2026-05-27
 """
 
+import os
+
 import numpy as np
 import pandas as pd
-import os
 
 
 def _rolling_linreg(series: pd.Series, length: int) -> pd.Series:

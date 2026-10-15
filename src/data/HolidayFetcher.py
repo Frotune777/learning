@@ -89,7 +89,7 @@ class HolidayFetcher:
         }
         self.session = requests.Session()
 
-    def fetch_nse_holidays(self) -> List[str]:
+    def fetch_nse_holidays(self) -> list[str]:
         """
         Query the NSE holiday master API and parse the CM (Equities) segment.
 
@@ -114,13 +114,13 @@ class HolidayFetcher:
             )
             response.raise_for_status()
 
-            data: Dict[str, Any] = response.json()
+            data: dict[str, Any] = response.json()
 
             if "CM" in data:
-                holidays_data: List[Dict[str, str]] = data["CM"]
+                holidays_data: list[dict[str, str]] = data["CM"]
                 print(f"  Found {len(holidays_data)} holidays in CM segment.")
 
-                holiday_dates: List[str] = []
+                holiday_dates: list[str] = []
                 for h in holidays_data:
                     if "tradingDate" in h:
                         d_str = h["tradingDate"]
@@ -152,18 +152,18 @@ class HolidayFetcher:
             print("⚠️  No holidays fetched. Skipping update.")
             return False
 
-        current_config: Dict[str, List[str]] = {}
+        current_config: dict[str, list[str]] = {}
         if self.CONFIG_PATH.exists():
             try:
-                with open(self.CONFIG_PATH, "r", encoding="utf-8") as f:
+                with open(self.CONFIG_PATH, encoding="utf-8") as f:
                     content = json.load(f)
                     if isinstance(content, dict):
                         current_config = content
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
         updates_made = False
-        holidays_by_year: Dict[str, List[str]] = {}
+        holidays_by_year: dict[str, list[str]] = {}
         for h in fetched_holidays:
             y = h.split("-")[0]
             key = f"holidays_{y}"
