@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 4)_
+_Last updated on 2026-10-15 (Unit 5)_
 
 ## Canonical package: `src/`
 
@@ -50,6 +50,7 @@ _Last updated on 2026-10-15 (Unit 4)_
 - `_archive/legacy_shims/`               — PascalCase compatibility shims (Momentum.py, Trend.py)
 - `_archive/legacy_tests/`               — old test scripts
 - `_archive/audits/`                     — project_audit.txt, project_backup.txt, project_bundle.txt
+- `_archive/audits/pytest_unit5_baseline.txt` — full pytest -v output of the 205/205 pass baseline
 - `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
 - `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
 - `_archive/fix_scripts/`                — fix_unit1.py (one-time migration helper)
@@ -59,10 +60,14 @@ _Last updated on 2026-10-15 (Unit 4)_
 - [x] Unit 3 — Root clutter: moved pine sources → docs/, session docs → docs/session/, audits/exports/debug → _archive/
 - [x] Unit 4 — `src/scanners/__init__.py` — BreakoutStrategy shadow removed
 - [x] Unit 4 — Case-duplicate files `Momentum.py` / `Trend.py` archived
-- [ ] Unit 8  — `src/engine/screener.py::validateCandlePatterns` — `patterns_found` undefined
-- [ ] Unit 9  — `src/ml/selector.py` — strategies commented out
+- [x] Unit 5 — Full pytest baseline: 205/205 PASSED, 0 errors, 19 warnings (2 ours)
+- [ ] Unit 6 — `tests/test_fyers_fetcher.py:114` — `datetime.utcnow()` deprecated
+- [ ] Unit 6 — `tests/engine/test_parallel_engine.py` — `fork()` on multithreaded process
+- [ ] Unit 6 — `src/engine/screener.py::validateCandlePatterns` — `patterns_found` undefined
+- [ ] Unit 6 — `src/ml/selector.py` — strategies commented out
+- [ ] Unit 7 — `pyproject.toml`: remove stale `scratch`/`fyers` excludes
+- [ ] Unit 8 — Duplicate validator methods in `src/engine/screener.py`
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
-- [ ] Unit 8  — Duplicate validator methods in `src/engine/screener.py`
 
 ## Credentials policy
 - All secrets live in `.env` (gitignored).
