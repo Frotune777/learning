@@ -42,7 +42,22 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-norecursedirs = ["scratch", "data", ".venv"]
+norecursedirs = ["_archive", "data", ".venv"]
+# Silence third-party warnings that we cannot fix from our code.
+# Module-scoped so we don't accidentally hide the same warning from our
+# own modules in the future.
+filterwarnings = [
+    # advanced_ta/LorentzianClassification/Classifier.py:401
+    # uses ~bool (bitwise inversion), deprecated in Python 3.13, removed in 3.16.
+    # Upstream fix pending. Tracked at:
+    # https://github.com/hudson-and-thames/advanced-ta (as of Oct 2026 — not yet patched)
+    "ignore:Bitwise inversion '~' on bool is deprecated.*:DeprecationWarning:advanced_ta.*",
+    # sklearn/utils/_array_api.py:794,814 emits RuntimeWarning when it
+    # receives an all-NaN feature window (Lorentzian KNN with insufficient bars).
+    # This is expected behavior for cold-start windows; the test suite covers
+    # the fixed path via warm-up. Filtering at module scope only.
+    "ignore:All-NaN slice encountered:RuntimeWarning:sklearn.*",
+]
 
 [tool.app]
 raw_dir = "data/raw"
@@ -60,8 +75,7 @@ symbols_per_worker = 50
 line-length = 100
 target-version = "py313"
 exclude = [
-    "scratch",
-    "fyers",
+    "_archive",
 ]
 
 [tool.ruff.lint]
@@ -83,8 +97,7 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 exclude = [
-    'scratch',
-    'fyers',
+    '_archive',
     'src/dashboard',
 ]
 disallow_untyped_defs = true

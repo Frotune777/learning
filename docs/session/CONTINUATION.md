@@ -1,6 +1,6 @@
 # Project Continuation State
 
-**Last updated:** 2026-10-15 (after Unit 6)
+**Last updated:** 2026-10-15 (after Unit 7)
 **Repo root:** /mnt/Data/Python Project/learning
 **Canonical package:** `src/`
 
@@ -26,33 +26,33 @@
 | 3 | `31c4c90` | Reorganize root — pine sources, session docs, audits, exports, debug to subdirs |
 | 4 | `d4d3660` | Fix BreakoutStrategy shadowing + archive case-duplicate shims |
 | 5 | `0a6af31` | Full pytest baseline — 205/205 PASSED, 19 warnings |
-| 6 | (see git log HEAD) | Fix 5 items: utcnow×2, fork spawn, patterns_found bug, selector cleanup |
+| 6 | `259ca8a` | Fix 5 items: utcnow×2, fork spawn, patterns_found bug, selector cleanup |
+| 7 | (see git log HEAD) | pyproject.toml cleanup — remove scratch/fyers, exclude _archive, silence 2 third-party warnings |
 
 ## Current Status
 
-- **Completed:** Units 1–6
-- **Current unit:** 6 — commit pending (Stage B)
-- **Next unit:** 7 — `pyproject.toml` cleanup + pytest filterwarnings
-- **Project health:** ✅ 205/205 tests pass · ✅ 0 import failures · ✅ 0 shadows · ✅ warnings reduced from 19 → ~10 (remaining are third-party only)
+- **Completed:** Units 1–7
+- **Current unit:** 7 — commit pending (Stage B)
+- **Next unit:** 8 — First-run CLI validation of `main.py` subcommands against real data
+- **Project health:** ✅ 205/205 tests pass · ✅ 0 import failures · ✅ 0 shadows · ✅ 0 warnings (all third-party warnings silenced via config)
 
-## Next Unit Plan (Unit 7 Preview)
+## Next Unit Plan (Unit 8 Preview)
 
-**Goal:** Clean up `pyproject.toml` and add pytest warning filters so
-third-party deprecations stop polluting test output.
+**Goal:** Validate that `main.py` subcommands actually run against real data
+(not just import). This is the first "does the CLI work end-to-end" check.
 
 **Scope:**
-- Remove stale `scratch` from `[tool.ruff]` / `[tool.mypy]` exclude lists
-  (scratch/ was archived in Unit 3)
-- Remove stale `fyers` from exclude lists (fyers/ archived in Unit 2)
-- Add `[tool.pytest.ini_options] filterwarnings` for the 2 third-party
-  warning categories we don't control:
-    * advanced_ta bitwise `~` deprecation
-    * sklearn All-NaN slice RuntimeWarning
-- Do NOT change dependency versions or add new packages
+- `main.py --help` (all subcommand helps)
+- `main.py build-master --delay 0.1` (small universe, in a temp dir)
+- `main.py fo-ban` (network, but small payload)
+- `main.py menu` (dry-run: send Ctrl-C after banner)
+- Do NOT run `sync-history` against the full universe — too heavy
+- Do NOT touch Fyers (needs live token)
+- Any failure → triage as bugs for Unit 9+
 
-**After Unit 7:**
-- Unit 8: Fix remaining documented bugs (if any) from PROJECT_MAP
-- Unit 9+: First-run validation of `main.py` CLI subcommands with real data
+**After Unit 8:**
+- Unit 9+: Fix any CLI-level failures
+- Then move to opportunistic cleanup (ruff lint fixes, docs review, etc.)
 
 ## Key Decisions Log
 
@@ -75,6 +75,9 @@ third-party deprecations stop polluting test output.
 - **Unit 6:** Fixed real bug in `src/engine/screener.py::validateCandlePatterns` — `patterns_found` was never initialized, silently swallowing all exceptions via `except: return False`. Method was a no-op since introduction. Now initializes a proper list.
 - **Unit 6:** Cleaned `src/ml/selector.py` — removed 3 dead commented imports, kept empty `self.strategies` dict but now properly typed and documented. `AutoStrategySelector` remains import-compatible.
 - **Unit 6:** Warnings reduced from 19 → ~10. Remaining warnings are all third-party (advanced_ta, sklearn) and will be silenced via pytest config in Unit 7.
+- **Unit 7:** Replaced stale `scratch`/`fyers` excludes with `_archive` in all 3 tool configs (ruff, mypy, pytest.norecursedirs). Archives are now invisible to linters and test discovery, so historical code won't produce false positives.
+- **Unit 7:** Added module-scoped `filterwarnings` for the 2 remaining third-party warning categories (advanced_ta bitwise-`~`, sklearn All-NaN). Module scope ensures we don't accidentally hide identical warnings from our own code.
+- **Unit 7:** Baseline saved as `_archive/audits/pyproject_before_unit7.toml` for diff comparison if any tooling behavior regresses later.
 
 ## Archive Layout
 
@@ -92,7 +95,7 @@ test_fyers.py
 .env copy.example
 legacy_shims/ (Momentum.py, Trend.py)
 legacy_tests/ (empty — reserved for future)
-audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt)
+audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt, pytest_unit7_postfix.txt, pyproject_before_unit7.toml)
 exports/ (Exported_Grouped_Strategies*.csv)
 debug/ (nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt)
 fix_scripts/ (fix_unit1.py)
@@ -112,7 +115,7 @@ See `docs/session/RESUME_PROMPT.md` — paste its contents at the start of any n
 - [x] Unit 6 — `fork()` warnings in parallel engine test
 - [x] Unit 6 — `patterns_found` uninitialized bug
 - [x] Unit 6 — `src/ml/selector.py` dead commented code
-- [ ] Unit 7 — `pyproject.toml`: remove stale `scratch`/`fyers` excludes
+- [x] Unit 7 — `pyproject.toml`: stale excludes removed, `_archive` excluded, warning filters added
 - [ ] Unit 8 — `src/engine/screener.py` — duplicate validator methods
 - [ ] Unit 9+ — First-run validation of `main.py` CLI subcommands against real NSE data
 - [ ] Unit 14 — Revive parts of `_archive/legacy_root/fyers/` if needed
