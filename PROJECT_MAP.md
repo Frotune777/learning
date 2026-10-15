@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated by fix_unit_1.py on 2026-10-15 15:16:10_
+_Last updated on 2026-10-15 (Unit 2)_
 
 ## Canonical package: `src/`
 
@@ -31,22 +31,22 @@ _Last updated by fix_unit_1.py on 2026-10-15 15:16:10_
 - `src/scrapers/`     — corporate_data, fo_ban, mmi_scraper, nifty_index_fetcher
 
 ## Separate modules (not part of `src/`)
-- `fyers/`   — OpenAlgo broker integration (⚠ missing parents `utils.*`, `database.*`)
-- `scripts/` — profile_scan.py
 - `tests/`   — pytest suite
 
 ## Archived (do NOT delete — reference only)
-- `_archive/merge_this/`   — old Screeni-py copy (imports `screeni.*`)
-- `_archive/scratch/`      — old experiments
-- `_archive/legacy_root/`  — old root scripts / backups
-- `_archive/legacy_tests/` — old test scripts
+- `_archive/merge_this/`                 — old Screeni-py copy (imports `screeni.*`)
+- `_archive/scratch/`                    — old experiments
+- `_archive/legacy_root/`                — old root scripts / backups
+- `_archive/legacy_root/fyers/`          — orphaned OpenAlgo broker extract
+- `_archive/legacy_root/profile_scan.py` — stale cProfile helper
+- `_archive/legacy_tests/`               — old test scripts
 
 ## Known Issues (fix order)
-- [ ] Unit 2  — Root scripts import legacy paths (`src.data.DataRepository`, `src.data.Fetcher`, `src.ui.StockUniverseSelector`)
+- [x] Unit 2 — Root scripts import legacy paths (resolved: shims work)
 - [ ] Unit 3  — `src/scanners/__init__.py` — `BreakoutStrategy` imported twice (shadowing)
 - [ ] Unit 8  — `src/engine/screener.py::validateCandlePatterns` — `patterns_found` undefined
 - [ ] Unit 9  — `src/ml/selector.py` — strategies commented out
-- [ ] Unit 14 — `fyers/` — broken imports (`utils.httpx_client`, `database.token_db`)
+- [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
 - [ ] Unit 3  — Case-duplicate files: `Momentum.py` / `momentum.py`, `Trend.py` / `trend.py`
 - [ ] Unit 8  — Duplicate validator methods in `src/engine/screener.py`
 
