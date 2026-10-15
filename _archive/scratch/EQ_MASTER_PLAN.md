@@ -238,3 +238,4 @@ midcaps = df_master[df_master["market_cap_category"] == "Mid"]["symbol"].tolist(
 screener = StockScreener()
 screener.screen_stocks(symbols=nifty50)
 ```
+https://github.com/hi-imcodeman/stock-nse-india

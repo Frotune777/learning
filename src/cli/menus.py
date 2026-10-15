@@ -6,13 +6,12 @@ Last Modified: 2026-05-31
 
 import argparse
 import glob
-import logging
 import os
-import structlog
 from collections.abc import Callable
 from datetime import datetime
 
 import pandas as pd
+import structlog
 from tqdm import tqdm
 
 from src.cli.actions import (
@@ -25,7 +24,6 @@ from src.cli.formatters import (
     _display_csv,
     _header,
     _pause,
-    _print_banner,
     _rule,
     _subheader,
     bold,
@@ -40,8 +38,9 @@ from src.cli.formatters import (
     white,
     yellow,
 )
-from src.cli.visual import VisualUI
 from src.cli.reporter import ScreenerReporter
+from src.cli.telegram import TelegramService
+from src.cli.visual import VisualUI
 from src.core.config import SCREENER_STRATEGIES, Config, UserPrefs
 from src.core.decorators import dry_run_capable
 from src.core.symbol_utils import (
@@ -60,6 +59,7 @@ from src.scanners.etf_screener import run_liquid_etf_screener
 from src.scanners.minervini_screener import run_minervini_cli
 from src.scanners.momentum_squeeze import run_squeeze_cli
 from src.scanners.pair_scanner import run_pair_scanner_cli
+from src.scanners.unified_scanner import run_unified_scanner, compile_signals_to_dataframe
 from src.scrapers.mmi_scraper import run_mmi_cli
 from src.screener import StockScreener
 from src.storage.downloader import BhavcopyDownloader
@@ -126,6 +126,12 @@ MENU_SECTIONS = {
             "menu_sync_filtered",
             "by cap, index, or count",
         ),
+        (
+            "30",
+            "DuckDB SQL Engine",
+            "menu_query_engine",
+            "Interactive SQL prompt for Parquet data",
+        ),
     ],
     "ANALYSIS": [
         ("4", "Run Technical Screener", "menu_screen", "final / swing / super lists"),
@@ -153,6 +159,18 @@ MENU_SECTIONS = {
             "menu_consensus_leaderboard",
             "top stocks ranked by multi-strategy agreement",
         ),
+        (
+            "31",
+            "Train ML Models",
+            "menu_train_ml",
+            "Train classifiers using historical data",
+        ),
+        (
+            "32",
+            "Run Strategy Optimizer",
+            "menu_run_optimizer",
+            "Optimize TA strategies with Optuna",
+        ),
     ],
     "STATUS": [
         ("5", "Parquet Sync Status", "menu_status", "rows, date ranges per symbol"),
@@ -162,6 +180,20 @@ MENU_SECTIONS = {
             "Data Quality & Auto-Healer",
             "menu_data_quality",
             "scan master symbols and fix data gaps",
+        ),
+    ],
+    "ALERTS": [
+        (
+            "27",
+            "Configure Telegram Alerts",
+            "menu_configure_alerts",
+            "set bot token & chat ID",
+        ),
+        (
+            "28",
+            "Send Screener Results via Telegram",
+            "menu_send_alerts",
+            "push today's CSVs to Telegram",
         ),
     ],
     "QUANTITATIVE": [
@@ -235,8 +267,48 @@ MENU_SECTIONS = {
             "menu_ml_anomaly",
             "Identify bad ticks or smart money footprints",
         ),
+        (
+            "29",
+            "Run Unified Multi-Scanner",
+            "menu_unified_scanner",
+            "Grouped multi-strategy market scanner",
+        ),
+        (
+            "33",
+            "Nifty Ki Dukan",
+            "menu_nifty_ki_dukan",
+            "Discount screener for Nifty 50/500 stocks",
+        ),
+    ],
+    "SMC & INSTITUTIONAL": [
+        (
+            "34",
+            "SMC Live Scan & Calls",
+            "menu_smc_scan",
+            "Order Blocks, FVGs, Sweeps & R:R signals",
+        ),
+        (
+            "35",
+            "SMC Signals Ledger",
+            "menu_smc_calls",
+            "Review saved institutional setups & calls",
+        ),
+        (
+            "36",
+            "LuxAlgo Regime & Structure Hub",
+            "menu_lux_regimes",
+            "Weinstein Stages, iFVGs, VSA & NWE",
+        ),
+        (
+            "37",
+            "Export Symbol LLM Dossier",
+            "menu_llm_dossier",
+            "Comprehensive Markdown analysis to share with AI/LLMs",
+        ),
     ],
 }
+
+
 
 
 # Singleton VisualUI and Reporter instances (shared by all menu functions)
@@ -250,11 +322,25 @@ def _print_main_menu() -> None:
     for section_name, items in MENU_SECTIONS.items():
         opts = []
         for num, label, _, hint in items:
-            opts.append({"id": num, "name": label, "emoji": "", "status": "Ready", "details": hint})
+            opts.append(
+                {
+                    "id": num,
+                    "name": label,
+                    "emoji": "",
+                    "status": "Ready",
+                    "details": hint,
+                }
+            )
         sections_rich[section_name] = opts
     # Append Exit
     sections_rich["EXIT"] = [
-        {"id": "0", "name": "Exit", "emoji": "❌", "status": "", "details": "Close application"}
+        {
+            "id": "0",
+            "name": "Exit",
+            "emoji": "❌",
+            "status": "",
+            "details": "Close application",
+        }
     ]
     _UI.render_menu("NSE DATA PIPELINE — MAIN MENU", sections_rich)
 
@@ -559,15 +645,19 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
 
     now = datetime.now()
     screener = StockScreener(processed_dir=hist_dir)
-    save_to_disk = _confirm("Automatically save all 5+ analyzed & filtered CSVs to disk?")
+    save_to_disk = _confirm(
+        "Automatically save all 5+ analyzed & filtered CSVs to disk?"
+    )
 
-    screener.screen_stocks(top_250_path=top_csv, date_obj=now, save_to_disk=save_to_disk)
+    screener.screen_stocks(
+        top_250_path=top_csv, date_obj=now, save_to_disk=save_to_disk
+    )
 
     ok("Screening complete")
     if save_to_disk:
         ok(f"All standard reports exported to {hist_dir}")
     else:
-        info("Results computed in-memory (no files written yet)")
+        tip("Results computed in-memory (no files written yet)")
     logger.info("screening_completed", date=now.strftime("%Y-%m-%d"))
 
     # ---- Upgraded results display (replaces raw CSV viewer) ----
@@ -688,7 +778,10 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
 
 def menu_data_quality(hist_dir: str, data_dir: str) -> None:
     """Scan all master symbols for data quality and provide automated healing."""
-    _header("Data Quality & Auto-Healer", "Scan for data gaps, low coverage, or missing parquets")
+    _header(
+        "Data Quality & Auto-Healer",
+        "Scan for data gaps, low coverage, or missing parquets",
+    )
 
     master_path = _find_latest_master(data_dir)
     if master_path is None:
@@ -704,31 +797,52 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
         _pause()
         return
 
-    print(f"\n  {dim('Scanning')} {bold(str(len(symbols)))} {dim('symbols in master Equity list...')}")
-    
+    print(
+        f"\n  {dim('Scanning')} {bold(str(len(symbols)))} {dim('symbols in master Equity list...')}"
+    )
+
     hs = HistoricalSync(data_dir=hist_dir)
     status_df = hs.status(symbols)
 
     total_symbols = len(status_df)
     missing = status_df[status_df["rows"] == 0]
-    low_coverage = status_df[(status_df["rows"] > 0) & (status_df["coverage_pct"] < 95.0)]
-    healthy = status_df[(status_df["rows"] > 0) & (status_df["coverage_pct"] >= 95.0)]
+    low_coverage = status_df[
+        (status_df["rows"] > 0) & (status_df["coverage_pct"] < 95.0)
+    ]
+    stale_data = status_df[
+        (status_df["rows"] > 0) & (status_df["days_stale"] > 3)
+    ]
+    nan_indicators = status_df[
+        (status_df["rows"] > 0) & (status_df["has_indicator_nan"] == True)
+    ]
+    healthy = status_df[
+        (status_df["rows"] > 0)
+        & (status_df["coverage_pct"] >= 95.0)
+        & (status_df["days_stale"] <= 3)
+        & (status_df["has_indicator_nan"] == False)
+    ]
 
     # Load failed symbols
     failed_symbols = hs._load_failed_symbols()
 
     # Display System Quality Audit Panel
+    from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
-    from rich.console import Console
+
     console = Console()
 
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_row(dim("Total Equities in Master:"), bold(str(total_symbols)))
-    table.add_row(green("Healthy Data (>=95% Coverage):"), bold(str(len(healthy))))
+    table.add_row(green("Healthy Data (>=95% Coverage, Fresh, No NaNs):"), bold(str(len(healthy))))
     table.add_row(yellow("Low Coverage (<95% Coverage):"), bold(str(len(low_coverage))))
+    table.add_row(yellow("Stale Data (>3 Days Out of Date):"), bold(str(len(stale_data))))
+    table.add_row(yellow("Incomplete / NaN Technical Indicators:"), bold(str(len(nan_indicators))))
     table.add_row(red("Missing Parquet Cache:"), bold(str(len(missing))))
-    table.add_row(dim("Failed Sync Blacklist (failed_symbols.csv):"), bold(str(len(failed_symbols))))
+    table.add_row(
+        dim("Failed Sync Blacklist (failed_symbols.csv):"),
+        bold(str(len(failed_symbols))),
+    )
 
     panel = Panel(
         table,
@@ -744,6 +858,16 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
         preview = missing["symbol"].head(10).tolist()
         print(f"    {dim(', '.join(preview))}{' ...' if len(missing) > 10 else ''}")
 
+    if not stale_data.empty:
+        print(f"\n  {yellow('● Stale Data Symbols')} ({len(stale_data)}):")
+        preview = [f"{r['symbol']} ({r['days_stale']}d stale)" for _, r in stale_data.head(5).iterrows()]
+        print(f"    {dim(', '.join(preview))}{' ...' if len(stale_data) > 5 else ''}")
+
+    if not nan_indicators.empty:
+        print(f"\n  {yellow('● Symbols with NaN Indicator Tail')} ({len(nan_indicators)}):")
+        preview = nan_indicators["symbol"].head(8).tolist()
+        print(f"    {dim(', '.join(preview))}{' ...' if len(nan_indicators) > 8 else ''}")
+
     if not low_coverage.empty:
         print(f"\n  {yellow('● Low Coverage Equities')} ({len(low_coverage)}):")
         preview = []
@@ -751,33 +875,75 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
             preview.append(f"{r['symbol']} ({r['coverage_pct']:.1f}%)")
         print(f"    {dim(', '.join(preview))}{' ...' if len(low_coverage) > 5 else ''}")
 
-    to_heal = sorted(list(set(missing["symbol"].tolist()) | set(low_coverage["symbol"].tolist())))
-
-    if not to_heal:
-        ok("All symbols have healthy historical Parquet data (>=95% coverage)!")
-        _pause()
-        return
-
-    print(f"\n  {bold(yellow(f'Total Unhealthy / Missing symbols to heal: {len(to_heal)}'))}")
+    to_heal = sorted(
+        list(
+            set(missing["symbol"].tolist())
+            | set(low_coverage["symbol"].tolist())
+            | set(stale_data["symbol"].tolist())
+        )
+    )
 
     # Give interactive options
     print(f"\n  {dim('Interactive Healer Menu:')}")
-    print(f"    {bold('H')}. Auto-Heal Data Gaps (targeted overwrite sync of {len(to_heal)} symbols)")
-    print(f"    {bold('F')}. Clear Failed Sync Blacklist ({len(failed_symbols)} symbols)")
+    print(
+        f"    {bold('H')}. Auto-Heal Data Gaps & Stale Data (Sync {len(to_heal)} symbols)"
+    )
+    print(
+        f"    {bold('T')}. Quick-Repair All TA Indicators ({len(nan_indicators)} symbols with NaNs)"
+    )
+    print(
+        f"    {bold('F')}. Clear Failed Sync Blacklist ({len(failed_symbols)} symbols)"
+    )
+    print(
+        f"    {bold('R')}. Run Smart Data Repairer (Deep repair for gaps, duplicates, ordering)"
+    )
     print(f"    {bold('Q')}. Quit to Main Menu")
 
     choice = input(f"\n  {dim('>')} ").strip().upper()
 
     if choice == "H":
-        if not _confirm(f"Start targeted auto-healing of {len(to_heal)} symbols?"):
+        if not to_heal:
+            ok("No missing or stale symbols need syncing!")
+            _pause()
+            return
+        if not _confirm(f"Start targeted sync/refresh of {len(to_heal)} symbols?"):
             warn("Cancelled.")
             _pause()
             return
-        
+
         ok("Initializing Auto-Healer pipeline...")
-        # Targeted Sync with resume=False to force refreshing/backfilling the parquets
         hs.sync(to_heal, resume=False)
         ok("Auto-healing process completed!")
+        _pause()
+    elif choice == "T":
+        if nan_indicators.empty:
+            ok("All available Parquets already have complete, non-NaN indicators!")
+            _pause()
+            return
+        ok(f"Recalculating technical indicators for {len(nan_indicators)} symbols...")
+        fixed_count = 0
+        from src.nse_bhavcopy.ta_indicators import add_ta_indicators
+        for sym in nan_indicators["symbol"].tolist():
+            try:
+                p = os.path.join(hist_dir, "1d", f"{sym}.parquet")
+                if os.path.exists(p):
+                    df_sym = pd.read_parquet(p)
+                    base_cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in df_sym.columns]
+                    if len(base_cols) >= 4 and len(df_sym) >= 15:
+                        df_fixed = add_ta_indicators(df_sym[base_cols])
+                        df_fixed.to_parquet(p)
+                        fixed_count += 1
+            except Exception as e:
+                LOGGER.warning("Failed TA repair for %s: %s", sym, e)
+        ok(f"Quick-Repaired {fixed_count} symbols! All TA indicators are now non-NaN.")
+        _pause()
+    elif choice == "R":
+        ok("Initializing Smart Data Repairer...")
+        from src.analysis.SmartDataRepairer import SmartDataRepairer
+        repairer = SmartDataRepairer()
+        repairer.repair_all(hist_dir, timeframe="1d")
+        ok("Smart Data Repairer completed!")
+        _pause()
     elif choice == "F":
         path = os.path.join(hist_dir, "failed_symbols.csv")
         if os.path.exists(path):
@@ -827,9 +993,24 @@ def menu_ta_dashboard(hist_dir: str, symbol: str | None = None) -> None:
 
         df = df.sort_index()
 
-        if "RSI_14" not in df.columns:
-            print(f"  {dim('Pre-calculated TA columns not found — computing…')}")
-            df = add_ta_indicators(df)
+        # Check if indicators are missing or if latest row has NaNs (from incremental append)
+        needs_ta = (
+            "RSI_14" not in df.columns
+            or "EMA_20" not in df.columns
+            or pd.isna(df["RSI_14"].iloc[-1])
+            or pd.isna(df["EMA_20"].iloc[-1])
+        )
+        if needs_ta:
+            print(f"  {dim('Refining and computing TA indicators on full history…')}")
+            # Retain standard base columns to prevent TA-Lib duplicate column conflicts
+            base_cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in df.columns]
+            df = add_ta_indicators(df[base_cols] if len(base_cols) >= 4 else df)
+
+        last_date = df.index[-1].date()
+        today = datetime.now().date()
+        days_stale = (today - last_date).days
+        if days_stale > 3:
+            warn(f"Data is {days_stale} days old (latest bar: {last_date}). Run sync to update.")
 
         row = df.iloc[-1]
         date_str = df.index[-1].strftime("%Y-%m-%d")
@@ -1052,6 +1233,61 @@ def menu_recompute_ta(hist_dir: str) -> None:
     _pause()
 
 
+def menu_unified_scanner(data_dir: str, hist_dir: str) -> None:
+    """Run the Unified Grouped Scanner."""
+    _header("Unified Grouped Multi-Scanner")
+    print("  Scanner groups available:")
+    print("   1. Bull Trend       (Minervini Template + Darvas Box Breakout)")
+    print("   2. Momentum         (Momentum Squeeze on key index and sectors)")
+    print("   3. Mean Reversion   (RSI Oversold + Cointegration Pairs)")
+    print("   4. Asset Allocation (Liquid Sector/Commodity ETFs)")
+    print("   5. All              (Run all groups)")
+    print()
+
+    choice = input("  Select Group [1-5, default 5]: ").strip()
+    mapping = {
+        "1": "Bull Trend",
+        "2": "Momentum",
+        "3": "Mean Reversion",
+        "4": "Asset Allocation",
+        "5": "All",
+        "": "All",
+    }
+    group_name = mapping.get(choice)
+    if not group_name:
+        warn(f"Invalid choice '{choice}'. Running 'All' group.")
+        group_name = "All"
+
+    print(f"\n  Running '{group_name}' scanner group...\n")
+
+    try:
+        signals = run_unified_scanner(group_name, data_dir=data_dir, hist_dir=hist_dir)
+        df = compile_signals_to_dataframe(signals)
+    except Exception as exc:
+        err(f"Unified scanner execution failed: {exc}")
+        logger.error("unified_scanner_failed", error=str(exc))
+        _pause()
+        return
+
+    if df.empty:
+        warn(f"No signals generated for group '{group_name}' today.")
+        _pause()
+        return
+
+    out_dir = "data/screener_output"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "unified_signals.csv")
+    df.to_csv(out_path, index=False)
+
+    _display_csv(
+        out_path,
+        f"Unified Scanner Output — {group_name}",
+        "Consolidated signals from all active quantitative scanners grouped by behavior.",
+    )
+    print(f"\n  {dim(f'Saved to {out_path}')}")
+    _pause()
+
+
 def menu_liquid_etf() -> None:
     """Run the Liquid ETF Screener and display the results."""
     _header("Liquid ETF Screener")
@@ -1081,15 +1317,24 @@ def menu_liquid_etf() -> None:
 def menu_minervini() -> None:
     """Run the Mark Minervini Trend Template Screener."""
     _header("Mark Minervini Trend Template Screener")
-    print("  Fetching 400 days of historical data via yfinance (F&O Universe)...")
+    print("  Loading 400 days of historical data from local parquets (F&O Universe)...")
     print("  Calculating RS Ratings, VCP, and Breakouts...\n")
 
-    df = run_minervini_cli()
+    signals = run_minervini_cli()
 
-    if df.empty:
+    if not signals:
         warn("No stocks met the Trend Template criteria.")
         _pause()
         return
+
+    # Convert list of Signals to DataFrame for CSV saving and display
+    import pandas as pd
+    records = []
+    for sig in signals:
+        rec = {"Symbol": sig.symbol}
+        rec.update(sig.meta)
+        records.append(rec)
+    df = pd.DataFrame(records)
 
     out_dir = "data/screener_output"
     os.makedirs(out_dir, exist_ok=True)
@@ -1306,7 +1551,7 @@ def menu_pair_scanner(hist_dir: str) -> None:
 
     try:
         pval_in = input(
-            f"  Max p-value threshold [0.001-0.20, default {defaults['max_pval_threshold']}]: "  # noqa: E501
+            f"  Max p-value threshold [0.001-0.20, default {defaults['max_pval_threshold']}]: "
         ).strip()
         max_pval = float(pval_in) if pval_in else defaults["max_pval_threshold"]
         if max_pval <= 0:
@@ -1329,12 +1574,28 @@ def menu_pair_scanner(hist_dir: str) -> None:
     print(f"\n  Scanning top {symbol_limit} symbols with max p-val = {max_pval}...\n")
 
     try:
-        df = run_pair_scanner_cli(
+        signals = run_pair_scanner_cli(
             daily_dir=daily_dir,
             max_pairs=max_pairs,
             max_pval=max_pval,
             symbol_limit=symbol_limit,
         )
+        if signals:
+            records = []
+            for sig in signals:
+                rec = {
+                    "SYMBOL": sig.symbol,
+                    "STRATEGY": sig.strategy_name,
+                    "ACTION": "BUY" if sig.action == 1 else "SELL" if sig.action == -1 else "HOLD",
+                    "CONVICTION": sig.conviction,
+                    "TIMESTAMP": sig.timestamp,
+                }
+                for k, v in sig.meta.items():
+                    rec[k.upper()] = v
+                records.append(rec)
+            df = pd.DataFrame(records)
+        else:
+            df = pd.DataFrame()
     except Exception as exc:
         err(f"Pair scanning failed: {exc}")
         logger.error("pair_scanner_failed", error=str(exc))
@@ -1748,15 +2009,9 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
         timeframe=Config.DEFAULT_TIMEFRAME,
         raw_dir=raw_dir,
         rate_delay=delay,
-        recompute_ta=recompute,
     )
 
-    # Use tqdm for progress
-    results = {}
-    for symbol in tqdm(symbols, desc="Syncing Bhavcopy data"):
-        results[symbol] = syncer.sync_one(
-            symbol, days_back=days_back, recompute_ta=recompute
-        )
+    results = syncer.run(symbols, days_back=days_back)
 
     ok_count = sum(v for v in results.values())
     needs_refresh = [s for s, v in results.items() if not v]
@@ -1776,51 +2031,76 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
 
 
 def menu_fyers_token() -> None:
-    """Interactive handler to set the Fyers API access token."""
+    """Interactive handler to configure data sources and Fyers broker session."""
+    from src.core.data_sources import DataSourceManager, DATA_SOURCES
     from src.nse_bhavcopy.fyers_fetcher import exchange_auth_code
 
     _header(
-        "Fyers API Token Setup",
-        "Exchange an auth code for a daily access token.",
+        "Data Sources & Broker Gateway",
+        "Select active data providers for Historical & Live data, or configure Fyers broker token.",
     )
 
-    api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
-    api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
+    dsm = DataSourceManager()
+    summary = dsm.get_status_summary()
 
-    if not api_key or not api_secret:
-        err("FYERS_API_KEY/BROKER_API_KEY and Secret must be set in environment.")
-        _pause()
-        return
+    print(f"  {bold('Active Historical Source:')} {cyan(DATA_SOURCES[summary['historical_active']].name)}")
+    print(f"  {bold('Active Live Source:')}       {green(DATA_SOURCES[summary['live_active']].name)}")
+    print(f"  {bold('Fyers Session:')}           {green('AUTHENTICATED') if summary['fyers']['authenticated'] else red('NO ACTIVE TOKEN')}\n")
 
-    fetcher = get_fyers_fetcher()
-    redirect = os.getenv(
-        "FYERS_REDIRECT_URI", "https://trade.fyers.in/api-login/redirect-uri/index.html"
-    )
-    url = fetcher.login_url(redirect_uri=redirect)
+    print("  [1] Switch Active Historical Data Source")
+    print("  [2] Switch Active Live Market Data Source")
+    print("  [3] Login / Refresh Fyers Daily Broker Token")
+    print("  [0] Return to Main Menu\n")
 
-    print(f"\n  {bold('Step 1:')} Open this URL to login:\n")
-    print(f"  {cyan(url)}\n")
-    print(
-        f"  {bold('Step 2:')} After login, copy the '?code=' value from "
-        "the redirect URL.\n"
-    )
+    sub_choice = input(f"  {dim('Select option')} [1-3]: ").strip()
+    if sub_choice == "1":
+        print("\n  Available Historical Providers:")
+        hist_keys = [k for k, v in DATA_SOURCES.items() if v.supports_historical]
+        for idx, k in enumerate(hist_keys, 1):
+            print(f"   {idx}. {DATA_SOURCES[k].name} ({DATA_SOURCES[k].category}) — {DATA_SOURCES[k].description[:50]}...")
+        pick = input(f"  Choose provider [1-{len(hist_keys)}]: ").strip()
+        if pick.isdigit() and 1 <= int(pick) <= len(hist_keys):
+            chosen = hist_keys[int(pick) - 1]
+            dsm.active_historical_source = chosen
+            ok(f"Active historical source switched to: {DATA_SOURCES[chosen].name}")
+    elif sub_choice == "2":
+        print("\n  Available Live Providers:")
+        live_keys = [k for k, v in DATA_SOURCES.items() if v.supports_live]
+        for idx, k in enumerate(live_keys, 1):
+            print(f"   {idx}. {DATA_SOURCES[k].name} ({DATA_SOURCES[k].category}) — {DATA_SOURCES[k].description[:50]}...")
+        pick = input(f"  Choose provider [1-{len(live_keys)}]: ").strip()
+        if pick.isdigit() and 1 <= int(pick) <= len(live_keys):
+            chosen = live_keys[int(pick) - 1]
+            dsm.active_live_source = chosen
+            ok(f"Active live source switched to: {DATA_SOURCES[chosen].name}")
+    elif sub_choice == "3":
+        api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
+        api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
+        if not api_key or not api_secret:
+            err("FYERS_API_KEY/BROKER_API_KEY and Secret must be set in .env.")
+            _pause()
+            return
 
-    code = _ask("Enter the auth code (or press Enter to cancel)", "")
-    if not code:
-        warn("Cancelled.")
-        _pause()
-        return
+        fetcher = get_fyers_fetcher()
+        redirect = os.getenv(
+            "FYERS_REDIRECT_URI", "https://trade.fyers.in/api-login/redirect-uri/index.html"
+        )
+        url = fetcher.login_url(redirect_uri=redirect)
+        print(f"\n  {bold('Step 1:')} Open this URL to login:\n")
+        print(f"  {cyan(url)}\n")
+        print(f"  {bold('Step 2:')} Copy the '?code=' value from the redirect URL.\n")
 
-    token = exchange_auth_code(code, api_key, api_secret)
-    if token:
-        fetcher.set_token(token)
-        ok(f"Token saved to {fetcher.token_cache}")
-        logger.info("fyers_token_set")
-        tip("This token is valid for the rest of the trading day.")
-    else:
-        err("Failed to exchange code for token. Check credentials.")
-
+        code = _ask("Enter the auth code (or press Enter to cancel)", "")
+        if code:
+            token = exchange_auth_code(code, api_key, api_secret)
+            if token:
+                fetcher.set_token(token)
+                ok(f"Token saved to {fetcher.token_cache}")
+                tip("This token is valid for the rest of the trading day.")
+            else:
+                err("Failed to exchange code for token. Check credentials.")
     _pause()
+
 
 
 def menu_ml_anomaly(hist_dir: str, data_dir: str) -> None:
@@ -1871,7 +2151,9 @@ def menu_strategy_inspector(hist_dir: str) -> None:
     latest = analyzed_files[0]
     df = pd.read_csv(latest)
     df = _REPORTER._ensure_consensus(df)
-    print(f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}")  # noqa: E501
+    print(
+        f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}"
+    )
     print()
 
     symbol = input(f"  {dim('Enter NSE Symbol')} (e.g. TCS): ").strip().upper()
@@ -1888,7 +2170,7 @@ def menu_strategy_inspector(hist_dir: str) -> None:
         row = row_match.iloc[0]
         narrative = _REPORTER.generate_narrative(row)
         print()
-        print(f"  {cyan('▸')} {bold('AI Narrative:')}")  # noqa: E501
+        print(f"  {cyan('▸')} {bold('AI Narrative:')}")
         print(f"  {dim(narrative)}")
 
     _pause()
@@ -1913,12 +2195,279 @@ def menu_consensus_leaderboard(hist_dir: str) -> None:
 
     latest = analyzed_files[0]
     df = pd.read_csv(latest)
-    print(f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}")
+    print(
+        f"\n  {dim('Dataset:')} {os.path.basename(latest)}  {dim(f'({len(df)} stocks)')}"
+    )
 
     top_str = input(f"  {dim('How many top stocks to show')} [20]: ").strip()
     top_n = int(top_str) if top_str.isdigit() else 20
 
     _REPORTER.print_consensus_leaderboard(df, top_n=top_n)
+    _pause()
+
+
+# ---------------------------------------------------------------------------
+# Telegram Alert Handlers
+# ---------------------------------------------------------------------------
+
+
+def menu_configure_alerts() -> None:
+    """Interactive handler for configuring Telegram bot credentials."""
+    _header(
+        "Configure Telegram Alerts",
+        "Set your bot token and chat ID for push notifications",
+    )
+
+    tip("Create a bot via @BotFather on Telegram to get your token.")
+    tip("Get your chat ID by messaging @userinfobot or @RawDataBot.")
+
+    current_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    current_chat = os.getenv("TELEGRAM_CHAT_ID", "")
+
+    if current_token:
+        ok(f"Current token: ...{current_token[-8:]} (from env)")
+    else:
+        warn("TELEGRAM_BOT_TOKEN not set in environment.")
+    if current_chat:
+        ok(f"Current chat ID: {current_chat} (from env)")
+    else:
+        warn("TELEGRAM_CHAT_ID not set in environment.")
+
+    print()
+    tip("Add these to your .env file:")
+    print(f"  {dim('TELEGRAM_BOT_TOKEN=<your_bot_token>')}")
+    print(f"  {dim('TELEGRAM_CHAT_ID=<your_chat_id>')}")
+    print()
+
+    if not _confirm("Test current credentials now?"):
+        _pause()
+        return
+
+    tip("Make sure you have sent /start to your bot in Telegram before testing.")
+    svc = TelegramService()
+    if svc.test_connection():
+        ok("Telegram bot connected successfully!")
+        if _confirm("Send a test message?"):
+            sent = svc.send_message(
+                "\U0001f680 <b>NSE Pipeline</b> \u2014 Telegram alerts are configured and working!"
+            )
+            if sent:
+                ok("Test message sent. Check your Telegram chat.")
+            else:
+                err("Message failed (400 Bad Request).")
+                warn("The bot cannot send you a message until you initiate a chat.")
+                tip("Open Telegram \u2192 search your bot \u2192 tap /start \u2192 then retry.")
+    else:
+        err("Could not connect. Check your TELEGRAM_BOT_TOKEN in .env.")
+
+
+    _pause()
+
+
+def menu_send_alerts(hist_dir: str) -> None:
+    """Send today's screener result CSVs to the configured Telegram chat."""
+    _header(
+        "Send Screener Results via Telegram",
+        "Push final_list, swing_list, and super_list CSVs to your chat",
+    )
+
+    svc = TelegramService()
+    if not svc.bot_token or not svc.chat_id:
+        err("Telegram not configured. Run option [27] first.")
+        tip("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your .env file.")
+        _pause()
+        return
+
+    # Find most recent date that has screener output
+    import glob as _glob
+
+    final_files = sorted(
+        _glob.glob(os.path.join(hist_dir, "final_list_*.csv")), reverse=True
+    )
+    if not final_files:
+        err("No screener results found. Run the Technical Screener (option 4) first.")
+        _pause()
+        return
+
+    latest = os.path.basename(final_files[0])
+    date_str = latest.replace("final_list_", "").replace(".csv", "")
+    print(f"\n  {dim('Latest screener date:')} {bold(date_str)}")
+
+    which = ["final_list", "swing_list", "super_list"]
+    if _confirm("Also send strategy-specific CSV files? (may be many)"):
+        from src.core.config import SCREENER_STRATEGIES
+
+        which += [s["file_prefix"] for s in SCREENER_STRATEGIES]
+
+    if not _confirm(f"Send {len(which)} file(s) via Telegram?"):
+        warn("Cancelled.")
+        _pause()
+        return
+
+    success = svc.send_screener_results(hist_dir, date_str, lists=which)
+    if success:
+        ok("Screener results sent successfully to Telegram!")
+    else:
+        err("Failed to send results. Check your credentials and network.")
+
+    _pause()
+
+
+def menu_query_engine(hist_dir: str, data_dir: str) -> None:
+    from src.nse_bhavcopy.query_engine import DuckDBQueryEngine
+    engine = DuckDBQueryEngine(hist_dir)
+    print(f"\n{cyan('=== DUCKDB SQL ENGINE ===')}")
+    print("Type your SQL queries. The table is named 'market_data'.")
+    print("Example: SELECT symbol, close, volume FROM market_data WHERE close > 500 LIMIT 5;")
+    print("Type 'exit' or 'quit' to return to menu.\n")
+    while True:
+        query = input(f"{cyan('SQL> ')}").strip()
+        if query.lower() in ('exit', 'quit'):
+            break
+        if not query:
+            continue
+        try:
+            df = engine.execute_query(query)
+            if df is not None and not df.empty:
+                print(df.to_string())
+            else:
+                print("No results or empty DataFrame returned.")
+        except Exception as e:
+            err(f"Query error: {e}")
+    _pause()
+
+
+def menu_train_ml(hist_dir: str, data_dir: str) -> None:
+    import os
+    from src.engine.orchestrator import ScanOrchestrator
+    orchestrator = ScanOrchestrator()
+    orchestrator.train_ml_models()
+    _pause()
+
+
+def menu_run_optimizer(hist_dir: str, data_dir: str) -> None:
+    import os
+    from src.engine.orchestrator import ScanOrchestrator
+    orchestrator = ScanOrchestrator()
+    orchestrator.run_optimizer()
+    _pause()
+
+
+def menu_nifty_ki_dukan(hist_dir: str, data_dir: str) -> None:
+    from src.nse_bhavcopy.nifty_ki_dukan import run_nifty_ki_dukan
+    try:
+        run_nifty_ki_dukan(data_dir, hist_dir)
+    except Exception as e:
+        err(f"Error running Nifty Ki Dukan: {e}")
+    _pause()
+
+
+def menu_smc_scan(data_dir: str, hist_dir: str) -> None:
+    """Run SMC scanner and generate high R:R institutional calls."""
+    _header("Smart Money Concepts (SMC) Institutional Scanner")
+    import argparse
+    from src.cli.actions import cmd_smc_scan
+    sym_in = input("  Filter symbol [or press Enter for all available parquets]: ").strip()
+    limit_in = input("  Max symbols to scan [default 50]: ").strip()
+    limit_val = int(limit_in) if limit_in.isdigit() else 50
+    args = argparse.Namespace(
+        data_dir=data_dir,
+        hist_dir=hist_dir,
+        symbol=sym_in if sym_in else None,
+        limit=limit_val,
+    )
+    cmd_smc_scan(args)
+    _pause()
+
+
+def menu_smc_calls(data_dir: str) -> None:
+    """View stored SMC calls in SQLite database."""
+    _header("SMC Institutional Calls Ledger")
+    import argparse
+    from src.cli.actions import cmd_smc_calls
+    status_filter = input("  Filter status (ALL, PENDING, TRIGGERED, STOPPED, TARGET_HIT) [ALL]: ").strip().upper()
+    args = argparse.Namespace(
+        data_dir=data_dir,
+        status=None if status_filter in ("", "ALL") else status_filter,
+    )
+    cmd_smc_calls(args)
+    _pause()
+
+
+def menu_lux_regimes(hist_dir: str) -> None:
+    """Run Stan Weinstein Stage Classifier & LuxAlgo Regimes."""
+    _header("LuxAlgo & Quantitative Regime Classifier")
+    import glob
+    from src.engine.lux_weinstein import calculate_weinstein_stage
+    from rich.table import Table
+
+    files = sorted(glob.glob(os.path.join(hist_dir, "*.parquet")))
+    if not files:
+        err("No Parquet files found in hist_dir.")
+        _pause()
+        return
+
+    print(f"  Evaluating 30-week Weinstein Macro Cycles across {len(files[:40])} symbols...\n")
+    table = Table(title="Stan Weinstein 4-Stage Macro Cycles", header_style="bold cyan")
+    table.add_column("Symbol", style="bold")
+    table.add_column("Current Stage", justify="left")
+    table.add_column("30-W MA", justify="right")
+    table.add_column("Slope %", justify="right")
+    table.add_column("Vol Ratio", justify="right")
+    table.add_column("Action Signal", justify="center")
+
+    for f in files[:40]:
+        sym = os.path.basename(f).replace(".parquet", "")
+        try:
+            df = pd.read_parquet(f)
+            df.columns = [c.lower() for c in df.columns]
+            if len(df) >= 60:
+                res = calculate_weinstein_stage(df, ma_weeks=10, slope_weeks=2, is_daily=True)
+                action = "[bold green]STAGE 2 BREAKOUT[/bold green]" if res.is_breakout else (
+                    "[bold red]STAGE 4 BREAKDOWN[/bold red]" if res.is_breakdown else "—"
+                )
+                stage_color = "magenta" if res.current_stage == 1 else "green" if res.current_stage == 2 else "yellow" if res.current_stage == 3 else "red"
+                table.add_row(
+                    sym,
+                    f"[{stage_color}]{res.stage_name}[/{stage_color}]",
+                    f"₹{res.ma_value:,.2f}",
+                    f"{res.ma_slope_pct:+.2f}%",
+                    f"{res.volume_ratio:.2f}x",
+                    action,
+                )
+        except Exception:
+            continue
+
+    _UI.console.print(table)
+    _pause()
+
+
+def menu_llm_dossier(hist_dir: str) -> None:
+    """Generate and display/save an LLM-ready quantitative dossier for any symbol."""
+    _header("Export Symbol LLM Dossier", "Markdown analysis formatted for LLMs (Claude, ChatGPT, Gemini)")
+    from src.engine.llm_report import generate_symbol_llm_dossier
+
+    symbol = input(f"  {dim('Enter NSE Symbol')} (e.g. RELIANCE, TCS, INFY): ").strip().upper()
+    if not symbol:
+        warn("No symbol entered.")
+        _pause()
+        return
+
+    print(f"\n  Compiling institutional analysis for {bold(symbol)}...")
+    dossier_text = generate_symbol_llm_dossier(symbol, hist_dir=hist_dir)
+
+    # Save to file
+    out_dir = Path("data/llm_reports")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_file = out_dir / f"{symbol}_LLM_DOSSIER.md"
+    report_file.write_text(dossier_text, encoding="utf-8")
+
+    print(f"\n  {ok('Dossier generated successfully!')}")
+    print(f"  Saved to file: {cyan(str(report_file))}\n")
+    print(_rule("═"))
+    print(dossier_text)
+    print(_rule("═"))
+    print(f"\n  {tip(f'You can copy the text above or share the markdown file at: {report_file}')}\n")
     _pause()
 
 
@@ -1968,6 +2517,17 @@ def interactive_menu(
         "24": lambda: menu_strategy_inspector(hist_dir),
         "25": lambda: menu_consensus_leaderboard(hist_dir),
         "26": lambda: menu_data_quality(hist_dir, data_dir),
+        "27": lambda: menu_configure_alerts(),
+        "28": lambda: menu_send_alerts(hist_dir),
+        "29": lambda: menu_unified_scanner(data_dir, hist_dir),
+        "30": lambda: menu_query_engine(hist_dir, data_dir),
+        "31": lambda: menu_train_ml(hist_dir, data_dir),
+        "32": lambda: menu_run_optimizer(hist_dir, data_dir),
+        "33": lambda: menu_nifty_ki_dukan(hist_dir, data_dir),
+        "34": lambda: menu_smc_scan(data_dir, hist_dir),
+        "35": lambda: menu_smc_calls(data_dir),
+        "36": lambda: menu_lux_regimes(hist_dir),
+        "37": lambda: menu_llm_dossier(hist_dir),
     }
 
     while True:
@@ -1987,4 +2547,6 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-26.")
+            warn(f"'{choice}' is not a valid option — enter 0-37.")
+
+

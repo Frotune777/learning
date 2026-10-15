@@ -329,4 +329,41 @@ Description:
 - Add Data Quality status indicator card inside Streamlit Single-Stock Strategy Inspector page.
 - Execute full 187/187 test suite validation check cleanly.
 
+---
 
+## Phase 6: Strategic Technical Audit & Quantitative Refinement
+
+### Task 6.1: Strategic Technical Audit & Upgrade Plan
+Status: Complete
+Priority: HIGH
+Assigned: LLM
+
+Description:
+Detailed quantitative audit of signal generation loops, look-ahead bias, KNN leakage, Hurst exponent calculations, unstandardized RS-Ratio, and a roadmap for architectural optimizations.
+
+#### Architectural Map & Ingestion Pipeline
+1. **Ingestion Layer**: BhavcopyDownloader + HistoricalSync fetches raw Bhavcopy files and writes raw daily data into Parquet files.
+2. **Computation Loop**: StockScreener dynamically calculates technical indicators and evaluates 10+ distinct strategies.
+3. **Consensus & Regime Layer**: consensus_engine.py aggregates strategy signals using custom weights and determines market states.
+
+#### Code-Level Mathematical Correctness Audit
+1. **Look-Ahead Bias in Backtesting**: In `MLClassifier.backtest_model` (ml_classifier.py), `X_test` indices are compared to `df_prices` using `split_idx + 1`. Because `X` has its first 20+ rows dropped, this creates an alignment offset of ~20 trading days. The backtest multiplies prediction for day $t$ with return for day $t-19$.
+2. **In-Sample Target Leakage**: In `calc_lorentzian` KNN fallback (strategies.py), the target variable uses `shift(-1)`. After dropping NaNs, the last row of the valid dataset is index $N-2$. The KNN model is trained on the entire valid dataset and then queried with `valid.iloc[-1]` (which is index $N-2$). Due to distance-weighting, the model outputs `y[-1]` (whether the market went up today). This is 100% in-sample leakage.
+3. **Data Quality Gatekeeper Skew**: In `MLDataGatekeeper.evaluate` (ml_gatekeeper.py), `combined_df` only includes the last row of `train_df` with `new_df` (length 2). Feature calculations (like 5-day rolling volume SMA) are computed over 2 rows instead of 5, causing a feature preparation skew between training and inference.
+4. **Hurst Exponent Noise**: `calculate_hurst_exponent` (quant_metrics.py) is calculated over 20 days with `lags=5`. The linear regression fits `log_tau` vs `log_lags` on exactly 3 points ($lag = 2, 3, 4$). The output is statistical noise with no predictive power.
+
+#### JdK RS-Ratio Quadrant Analysis Audit
+The sector rotation module uses de Kempenaer's quadrant mapping but lacks the crucial volatility-standardization step:
+- It computes $RS\_Ratio = \frac{RS}{SMA(RS, P)} \times 100$.
+- True JdK RS-Ratio requires dividing the difference by the rolling standard deviation: $Z = \frac{RS - SMA(RS, P)}{Std(RS, P)}$.
+- Without normalization, more volatile sectors (e.g. Realty) dominate the momentum and ratio axes.
+
+#### Value & Capability Potential Analysis
+1. **Factual Limits**: Currently acts as a batch downloader, parquet cache manager, technical indicator library, weighted consensus scanner, and dashboard visualizer.
+2. **Hidden Alpha**: Volatility regimes (GARCH(1,1)) can scale trade sizing; standardized RS-Ratio can filter stock-level purchases to leading sectors; robust Hurst exponents can trigger a switch between momentum and mean-reverting strategies.
+3. **Scalability**: Python loops and Pandas memory models will bottleneck if scaled to intraday ticks or 5000+ assets.
+
+#### Strategic Upgrade Plan ("Few Tweaks" Roadmap)
+1. **Architectural Tweaks**: Migrate core loops to Polars to speed up vector calculations, and transition feature matrices to contiguous NumPy arrays.
+2. **Advanced Analysis Layer**: Standardize JdK RS-Ratio with volatility scaling. Adjust consensus thresholds dynamically based on sector quadrants (e.g., raise buy score requirement and tighten stop-losses when in Weakening or Lagging quadrants).
+3. **Statistical Enhancements**: Correct indices alignment in `backtest_model`; exclude test points from KNN training; increase Hurst window to 100 days with `lags=20`; and add t-statistic and p-value generation to assess signal significance.

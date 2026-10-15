@@ -8,18 +8,18 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
-import yfinance as yf
-
+import os
 
 def fetch_data(
-    symbols: list[str], period_days: int
+    symbols: list[str], period_days: int, hist_dir: str = "data/historical/1d"
 ) -> tuple[dict[str, pd.Series], list[str]]:
     """
-    Fetch historical data from yfinance.
+    Fetch historical data from local offline Parquet files.
 
     Parameters:
         symbols (list[str]): List of sector/stock symbols.
         period_days (int): Number of days of historical data needed.
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         Tuple[dict[str, pd.Series], list[str]]:
@@ -28,21 +28,38 @@ def fetch_data(
     data: dict[str, pd.Series] = {}
     failed_symbols: list[str] = []
 
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=period_days + 10)
+    # rough calculation: 1 trading day = ~1 row. Add 10 buffer.
+    rows_needed = period_days + 10
 
     for symbol in symbols:
         try:
-            hist = yf.download(symbol, start=start_date, end=end_date, progress=False)
+            clean_sym = symbol.replace("^", "").replace(".NS", "")
+            path = os.path.join(hist_dir, f"{clean_sym.upper()}.parquet")
+            
+            if not os.path.exists(path):
+                failed_symbols.append(symbol)
+                continue
+                
+            hist = pd.read_parquet(path)
+            
             if hist.empty or len(hist) < 20:
                 failed_symbols.append(symbol)
                 continue
 
-            # Extract flat Close series
-            if isinstance(hist.columns, pd.MultiIndex):
-                hist.columns = hist.columns.get_level_values(0)
+            # Ensure index is datetime
+            if not isinstance(hist.index, pd.DatetimeIndex):
+                hist.index = pd.to_datetime(hist.index)
+            
+            # Map columns to lowercase just in case to find 'close', or uppercase 'Close'
+            col_mapping = {col.lower(): col for col in hist.columns}
+            if 'close' not in col_mapping:
+                failed_symbols.append(symbol)
+                continue
 
-            data[symbol] = hist["Close"]
+            close_col = col_mapping['close']
+            
+            # Keep only the needed tail
+            data[symbol] = hist[close_col].tail(rows_needed).copy()
         except Exception:
             failed_symbols.append(symbol)
 
@@ -84,21 +101,21 @@ def calculate_jdk_rs_ratio(
     relative_strength: pd.Series, long_period: int = 40
 ) -> pd.Series | None:
     """
-    Calculate JdK RS-Ratio.
+    Calculate volatility-standardized JdK RS-Ratio (Z-score normalized).
 
     Parameters:
         relative_strength (pd.Series): Relative strength vs benchmark.
         long_period (int): Rolling mean window.
 
     Returns:
-        pd.Series | None: Normalized RS-Ratio.
+        pd.Series | None: Standardized RS-Ratio centered at 100.
     """
     if len(relative_strength) < long_period:
         return None
 
-    rs_normalized = (
-        relative_strength / relative_strength.rolling(long_period).mean()
-    ) * 100
+    mean = relative_strength.rolling(long_period).mean()
+    std = relative_strength.rolling(long_period).std()
+    rs_normalized = ((relative_strength - mean) / (std + 1e-9)) * 10 + 100
     return rs_normalized
 
 
@@ -106,25 +123,28 @@ def calculate_jdk_rs_momentum(
     rs_ratio: pd.Series | None, period: int = 10
 ) -> pd.Series | None:
     """
-    Calculate JdK RS-Momentum.
+    Calculate volatility-standardized JdK RS-Momentum (Z-score normalized rate of change).
 
     Parameters:
         rs_ratio (pd.Series | None): RS-Ratio data.
         period (int): Momentum lookback period.
 
     Returns:
-        pd.Series | None: RS-Momentum data.
+        pd.Series | None: Standardized RS-Momentum centered at 100.
     """
-    if rs_ratio is None or len(rs_ratio) < period:
+    if rs_ratio is None or len(rs_ratio) < period + 1:
         return None
 
-    momentum = ((rs_ratio / rs_ratio.shift(period)) - 1) * 100
+    roc = rs_ratio.diff(1)
+    mean = roc.rolling(period).mean()
+    std = roc.rolling(period).std()
+    momentum = ((roc - mean) / (std + 1e-9)) * 10 + 100
     return momentum
 
 
 def get_quadrant_info(rs_ratio: float, rs_momentum: float) -> str:
     """
-    Determine quadrant based on RS-Ratio and Momentum.
+    Determine quadrant based on standardized RS-Ratio and Momentum.
 
     Parameters:
         rs_ratio (float): JdK RS-Ratio value.
@@ -133,40 +153,38 @@ def get_quadrant_info(rs_ratio: float, rs_momentum: float) -> str:
     Returns:
         str: Quadrant designation (Leading, Weakening, Lagging, Improving).
     """
-    if rs_ratio > 100 and rs_momentum > 0:
+    if rs_ratio > 100 and rs_momentum > 100:
         return "Leading"
-    elif rs_ratio > 100 and rs_momentum < 0:
+    elif rs_ratio > 100 and rs_momentum < 100:
         return "Weakening"
-    elif rs_ratio < 100 and rs_momentum < 0:
+    elif rs_ratio < 100 and rs_momentum < 100:
         return "Lagging"
     else:
         return "Improving"
 
 
-def run_sector_rotation_cli(benchmark: str = "^NSEI", period: int = 90) -> pd.DataFrame:
+def run_sector_rotation_cli(benchmark: str = "NIFTYBEES", period: int = 90) -> pd.DataFrame:
     """
     Runs the sector rotation analysis and formats it into a DataFrame.
 
     Parameters:
-        benchmark (str): The benchmark index symbol (default Nifty 50).
+        benchmark (str): The benchmark index symbol (default NIFTYBEES).
         period (int): Lookback period for fetching data in days.
 
     Returns:
         pd.DataFrame: A table of sectors and their JdK Rotation quadrants.
     """
     sectors = [
-        "^CNXAUTO",
-        "^CNXPHARMA",
-        "^CNXMETAL",
-        "^CNXIT",
-        "^CNXENERGY",
-        "^CNXREALTY",
-        "^CNXPSUBANK",
-        "^CNXMEDIA",
-        "^CNXINFRA",
-        "^CNXPSE",
-        "RELIANCE.NS",
-        "INFY.NS",
+        "AUTOBEES",
+        "PHARMABEES",
+        "ITBEES",
+        "INFRABEES",
+        "PSUBNKBEES",
+        "CONSUMBEES",
+        "BANKBEES",
+        "MID150BEES",
+        "RELIANCE",
+        "INFY",
     ]
 
     benchmark_data, _ = fetch_data([benchmark], period)

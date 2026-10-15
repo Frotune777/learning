@@ -137,12 +137,12 @@ class MLClassifier:
         # Rolling Hurst Exponent
         hurst_list: list[float] = []
         for i in range(len(df)):
-            if i < 20:
+            if i < 100:
                 hurst_list.append(0.5)
                 continue
-            window = close.iloc[i - 20 : i]
+            window = close.iloc[i - 100 : i]
             try:
-                hurst_list.append(calculate_hurst_exponent(window, lags=5))
+                hurst_list.append(calculate_hurst_exponent(window, lags=20))
             except Exception:
                 hurst_list.append(0.5)
         df["Hurst_20d"] = hurst_list
@@ -300,19 +300,11 @@ class MLClassifier:
         prec = precision_score(y_test, preds, zero_division=0)
         rec = recall_score(y_test, preds, zero_division=0)
 
-        # Basic backtest simulated strategy returns
-        # Position is 1 if prediction is 1, else 0 (long-only daily rebalancing)
-        test_prices = df_prices.iloc[split_idx + 1 :]
-        # Check alignment of index and pct change
-        test_returns = test_prices["Close"].pct_change().fillna(0.0)
+        # FIX: Strict index alignment ensuring zero look-ahead/lag bias
+        test_returns = df_prices.loc[X_test.index, "Close"].pct_change().shift(-1).fillna(0.0)
 
-        # Align lengths if needed
-        min_len = min(len(preds), len(test_returns))
-        preds_align = preds[:min_len]
-        rets_align = test_returns.iloc[:min_len]
-
-        strategy_rets = preds_align * rets_align
-        cum_bh = (1 + rets_align).prod() - 1.0
+        strategy_rets = preds * test_returns
+        cum_bh = (1 + test_returns).prod() - 1.0
         cum_strat = (1 + strategy_rets).prod() - 1.0
 
         return {

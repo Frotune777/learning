@@ -1,0 +1,407 @@
+"""
+File: src/analytics/SignalBus.py
+Purpose: Event bus for emitting signals from scanner to database
+
+Dependencies:
+External:
+- threading: [standard library] async event handling
+- queue: [standard library] thread-safe queue
+- logging: [standard library] event logging
+- uuid: [standard library] unique identifier generation
+- datetime: [standard library] timestamp management
+- typing: [standard library] type hints
+Internal:
+- analytics.SignalDatabase: [database] store signals
+
+Key Components:
+Classes:
+- SignalBus: Singleton event bus for signal emission
+- SignalEmitter: Mixin for scanner classes to emit signals
+Functions:
+- N/A
+
+Last Modified: 2026-02-20
+Modified By: LLM
+
+Open Tasks:
+- [ ] [LOW] Implement circular buffer for overflow handling [3h]
+- [ ] [MEDIUM] Add priorities to event queue [5h]
+
+Related Files:
+- src/analytics/SignalDatabase.py: [storage target]
+- src/classes/UltraOptimizedScanner.py: [event source]
+"""
+
+import logging
+import queue
+import threading
+import uuid
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
+
+from .bus import SignalDatabase
+
+logger = logging.getLogger(__name__)
+
+
+class SignalBus:
+    """
+    Singleton event bus for emitting signals from scanner to database.
+
+    Design Pattern: Singleton + Observer - ensures single event bus and decoupling.
+
+    Attributes:
+        _instance (Optional[SignalBus]): Singleton instance | None
+        _initialized (bool): Whether instance is initialized | False
+        listeners (List[Callable]): Registered callbacks | []
+        event_queue (queue.Queue): Thread-safe event queue | queue.Queue()
+        worker_thread (Optional[threading.Thread]): Background worker | None
+        running (bool): Worker thread state | False
+        db (SignalDatabase): Database manager instance
+
+    Public Methods:
+        - start(): Start the background worker thread.
+        - stop(): Stop the background worker thread.
+        - emit(type, data): Emit an event to the bus.
+        - register_listener(cb): Register a listener for all events.
+        - unregister_listener(cb): Remove a listener.
+        - get_stats(): Get bus statistics.
+
+    Private Methods:
+        - _worker(): Background worker to process events.
+        - _process_event(event): Logic for handling single events.
+
+    Usage Flow:
+        1. Get instance via SignalBus()
+        2. Call start() to begin processing
+        3. Emit events via scanner or mixin
+        4. Stop() on application exit
+
+    State Management:
+        - Valid states: Not Initialized, Running, Stopped
+        - State transitions: Init on first call, toggle via start/stop
+
+    Thread Safety: Yes - uses locking for singleton and thread-safe Queue.
+    """
+
+    _instance: Optional["SignalBus"] = None
+    _lock = threading.Lock()
+    _initialized: bool = False
+
+    def __new__(cls) -> "SignalBus":
+        """
+        Singleton pattern implementation.
+
+        Logic:
+            Step 1: Double-check locking for thread-safe singleton creation.
+            Step 2: Create instance if None.
+
+        Returns:
+            SignalBus: Singleton instance
+        """
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self) -> None:
+        """
+        Initialize the signal bus (once).
+
+        Logic:
+            Step 1: Check if already initialized.
+            Step 2: Setup queue and listeners.
+            Step 3: Initialize database connection.
+
+        Parameters:
+            None
+
+        Returns:
+            None: Side-effect
+        """
+        if self._initialized:
+            return
+
+        self.listeners: List[Callable[[str, Dict[str, Any]], None]] = []
+        self.event_queue: queue.Queue[Dict[str, Any]] = queue.Queue()
+        self.running = False
+        self.worker_thread: Optional[threading.Thread] = None
+        self.db = SignalDatabase()
+        self._initialized = True
+        logger.info("SignalBus initialized")
+
+    def start(self) -> None:
+        """
+        Start the background worker thread.
+
+        Logic:
+            Step 1: Verify if already running.
+            Step 2: Create and start daemon thread.
+
+        Parameters:
+            None
+
+        Returns:
+            None: Thread started
+        """
+        if self.running:
+            return
+
+        self.running = True
+        self.worker_thread = threading.Thread(target=self._worker, daemon=True)
+        self.worker_thread.start()
+        logger.info("SignalBus worker started")
+
+    def stop(self) -> None:
+        """
+        Stop the background worker thread.
+
+        Logic:
+            Step 1: Set running flag to False.
+            Step 2: Join thread with timeout.
+
+        Parameters:
+            None
+
+        Returns:
+            None: Thread stopped
+        """
+        self.running = False
+        if self.worker_thread:
+            self.worker_thread.join(timeout=2)
+        logger.info("SignalBus worker stopped")
+
+    def _worker(self) -> None:
+        """
+        Background worker to process events from the queue.
+
+        Logic:
+            Step 1: Loop while running.
+            Step 2: Get event from queue with timeout.
+            Step 3: Process and mark task as done.
+
+        Parameters:
+            None
+
+        Returns:
+            None: Continuous loop
+        """
+        while self.running:
+            try:
+                # Get event with timeout (allows checking running flag)
+                event = self.event_queue.get(timeout=0.5)
+
+                # Process event
+                self._process_event(event)
+
+                # Mark as done
+                self.event_queue.task_done()
+
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error("Error processing event: %s", e)
+
+    def _process_event(self, event: Dict[str, Any]) -> None:
+        """
+        Process a single event by saving to DB and notifying listeners.
+
+        Logic:
+            Step 1: Extract event type and data payload.
+            Step 2: If 'signal_generated', persist to SignalDatabase.
+            Step 3: If 'trade_executed', could persist to trades (placeholder).
+            Step 4: Iterate through all listeners and trigger callbacks.
+
+        Parameters:
+            event (Dict[str, Any]): Event package with type and data.
+
+        Returns:
+            None: Functional chain
+        """
+        event_type = event.get("type")
+        data = event.get("data", {})
+
+        if event_type == "signal_generated":
+            try:
+                signal_id = self.db.save_signal(data)
+                logger.debug("Signal saved to database: %s", signal_id)
+            except Exception as e:
+                logger.error("Failed to save signal to database: %s", e)
+        elif event_type == "trade_executed":
+            try:
+                trade_id = self.db.save_trade(data)
+                logger.debug("Trade saved to database: %s", trade_id)
+            except Exception as e:
+                logger.error("Failed to save trade to database: %s", e)
+
+        # Notify listeners
+        for listener in self.listeners:
+            try:
+                listener(str(event_type), data)
+            except Exception as e:
+                logger.error("Listener callback failed: %s", e)
+
+    def emit(self, event_type: str, data: Dict[str, Any]) -> None:
+        """
+        Emit an event to the bus queue for async processing.
+
+        Logic:
+            Step 1: Construct event object with metadata.
+            Step 2: Put into queue.
+
+        Parameters:
+            event_type (str): Key identifying the event ('signal_generated').
+            data (Dict[str, Any]): Payload for the event.
+
+        Returns:
+            None: Queued
+        """
+        event = {
+            "type": event_type,
+            "data": data,
+            "timestamp": datetime.now().isoformat(),
+        }
+        self.event_queue.put(event)
+        logger.debug("Event queued: %s", event_type)
+
+    def register_listener(
+        self, callback: Callable[[str, Dict[str, Any]], None]
+    ) -> None:
+        """
+        Register a listener for all events passing through the bus.
+
+        Parameters:
+            callback (Callable): Function expecting (event_type, data).
+
+        Returns:
+            None: Registered
+        """
+        self.listeners.append(callback)
+        cb_name = getattr(callback, "__name__", str(callback))
+        logger.debug("Listener registered: %s", cb_name)
+
+    def unregister_listener(self, callback: Callable) -> None:
+        """
+        Remove a previously registered listener.
+
+        Parameters:
+            callback (Callable): Function to remove.
+
+        Returns:
+            None: Unregistered
+        """
+        if callback in self.listeners:
+            self.listeners.remove(callback)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get aggregated statistics about bus performance and state.
+
+        Returns:
+            Dict[str, Any]: Statistics summary.
+        """
+        return {
+            "queue_size": self.event_queue.qsize(),
+            "listeners_count": len(self.listeners),
+            "running": self.running,
+            "db_path": str(self.db.db_path),
+        }
+
+
+class SignalEmitter:
+    """
+    Mixin class for scanner components to emit signals asynchronously.
+
+    Design Pattern: Mixin - adds signaling capabilities to target classes.
+
+    Attributes:
+        signal_bus (SignalBus): Singleton event bus.
+
+    Public Methods:
+        - emit_signal(data): Higher level wrapper for signal generation.
+        - emit_trade(data): Wrapper for trade execution events.
+
+    Usage Flow:
+        1. Inherit from SignalEmitter in Scanner or PaperTrader.
+        2. Call self.emit_signal(result) after calculation.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize the emitter by acquiring the SignalBus singleton.
+
+        Logic:
+            Step 1: Get SignalBus instance.
+            Step 2: Auto-start if not running.
+
+        Returns:
+            None: Side-effect
+        """
+        self.signal_bus = SignalBus()
+        if not self.signal_bus.running:
+            self.signal_bus.start()
+
+    def emit_signal(self, signal_data: Dict[str, Any]) -> str:
+        """
+        Emit a signal to the analytics system with metadata injection.
+
+        Logic:
+            Step 1: Copy data to avoid mutation.
+            Step 2: Inject UUID and timestamp if missing.
+            Step 3: Inject scanner metadata.
+            Step 4: Emit to SignalBus.
+
+        Parameters:
+            signal_data (Dict[str, Any]): Data describing the identified signal.
+
+        Returns:
+            str: The generated or provided signal_id.
+
+        Performance:
+            Time Complexity: O(1) [queue insertion]
+            Space Complexity: O(N) [object copy]
+        """
+        data = signal_data.copy()
+        if "signal_id" not in data:
+            data["signal_id"] = str(uuid.uuid4())
+
+        if "timestamp" not in data:
+            data["timestamp"] = datetime.now().isoformat()
+
+        # Add scanner metadata
+        data["scanner_version"] = "2.0"
+        data["source"] = self.__class__.__name__
+
+        # Emit to bus
+        self.signal_bus.emit("signal_generated", data)
+
+        logger.info("Signal emitted for %s: %s", data.get("symbol"), data["signal_id"])
+        return str(data["signal_id"])
+
+    def emit_trade(self, trade_data: Dict[str, Any]) -> str:
+        """
+        Emit a trade execution event for tracking and performance analysis.
+
+        Logic:
+            Step 1: Copy data.
+            Step 2: Inject UUID and timestamp.
+            Step 3: Emit to SignalBus.
+
+        Parameters:
+            trade_data (Dict[str, Any]): Details of the execution.
+
+        Returns:
+            str: Trade ID used for tracking.
+        """
+        data = trade_data.copy()
+        if "trade_id" not in data:
+            data["trade_id"] = str(uuid.uuid4())
+
+        if "timestamp" not in data:
+            data["timestamp"] = datetime.now().isoformat()
+
+        self.signal_bus.emit("trade_executed", data)
+        logger.info("Trade event emitted: %s", data["trade_id"])
+        return str(data["trade_id"])

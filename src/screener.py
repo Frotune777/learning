@@ -535,7 +535,9 @@ class StockScreener:
 
         return result
 
-    def screen_stocks(self, top_250_path: str, date_obj: datetime, save_to_disk: bool = True) -> str:
+    def screen_stocks(
+        self, top_250_path: str, date_obj: datetime, save_to_disk: bool = True
+    ) -> str:
         """
         Execute stock screener computations and output final CSV lists.
 
@@ -751,7 +753,7 @@ class StockScreener:
             expected = 0
             coverage_pct = 100.0
             dq_status = "HEALTHY"
-            
+
             first_date = df_ticker.index.min().date()
             last_date = df_ticker.index.max().date()
             if first_date < last_date:
@@ -762,12 +764,12 @@ class StockScreener:
                 coverage_pct = min(100.0, round(coverage_pct, 1))
             else:
                 coverage_pct = 100.0
-            
+
             has_zero_vol = False
             if "Volume" in df_ticker.columns:
                 has_zero_vol = (df_ticker["Volume"] == 0).any()
             has_zero_close = (df_ticker["Close"] == 0).any()
-            
+
             if coverage_pct < 85.0:
                 dq_status = "LOW_COVERAGE"
             elif has_zero_vol:
@@ -844,10 +846,20 @@ class StockScreener:
             if any(pd.isna(v) for v in [sma_20, dma_50, dma_100, dma_200]):
                 trend_status = "Insufficient History"
             else:
-                if cmp > sma_20 and sma_20 > dma_50 and dma_50 > dma_100 and dma_100 > dma_200:
+                if (
+                    cmp > sma_20
+                    and sma_20 > dma_50
+                    and dma_50 > dma_100
+                    and dma_100 > dma_200
+                ):
                     if 0.01 <= diff_200_dma <= self.max_diff_200_dma:
                         trend_status = "In Bull Run"
-                elif cmp < sma_20 and sma_20 < dma_50 and dma_50 < dma_100 and dma_100 < dma_200:
+                elif (
+                    cmp < sma_20
+                    and sma_20 < dma_50
+                    and dma_50 < dma_100
+                    and dma_100 < dma_200
+                ):
                     if -self.max_diff_200_dma <= diff_200_dma <= -0.01:
                         trend_status = "In Bear Run"
 
@@ -893,9 +905,7 @@ class StockScreener:
                 cmp, prev_close, dma_100, prev_sma_100, low_126d, atr
             )
             str_etf_shop = calc_etf_shop(cmp, sma_20)
-            str_super_bo = calc_super_bo(
-                cmp, dma_50, dma_100, dma_150, dma_200, atr
-            )
+            str_super_bo = calc_super_bo(cmp, dma_50, dma_100, dma_150, dma_200, atr)
             str_dma_rev = calc_dmadma_reverse(cmp, dma_150, dma_200, atr)
             str_dma_nosl = calc_dmadma_no_sl(cmp, dma_50, dma_200)
 
@@ -1106,7 +1116,10 @@ class StockScreener:
                 len(final_list_df),
             )
         else:
-            LOGGER.info("Final target list (Filter A) created in-memory (%d records)", len(final_list_df))
+            LOGGER.info(
+                "Final target list (Filter A) created in-memory (%d records)",
+                len(final_list_df),
+            )
 
         # Filter B: Bottom Out Hunting — Start GTT signals
         df_bottom_out: pd.DataFrame = df_analyzed[
@@ -1173,7 +1186,10 @@ class StockScreener:
                 len(final_b_df),
             )
         else:
-            LOGGER.info("Swing trading list (Filter B) created in-memory (%d records)", len(final_b_df))
+            LOGGER.info(
+                "Swing trading list (Filter B) created in-memory (%d records)",
+                len(final_b_df),
+            )
 
         # Filter C: COMBINED — Bull Run + Buy CAR + Start GTT (The Holy Grail)
         df_combined: pd.DataFrame = df_analyzed[
@@ -1244,7 +1260,10 @@ class StockScreener:
                 len(final_c_df),
             )
         else:
-            LOGGER.info("SUPER combined list (Filter C) created in-memory (%d records)", len(final_c_df))
+            LOGGER.info(
+                "SUPER combined list (Filter C) created in-memory (%d records)",
+                len(final_c_df),
+            )
 
         # Filter D: DMA Variant B (With SL / Reverse) — sorted CMP ascending
         # Sharegenius spec: cheapest stocks first for entry point selection
@@ -1301,7 +1320,10 @@ class StockScreener:
                     len(final_d_df),
                 )
             else:
-                LOGGER.info("DMA Variant B (SL) bull list created in-memory (%d records)", len(final_d_df))
+                LOGGER.info(
+                    "DMA Variant B (SL) bull list created in-memory (%d records)",
+                    len(final_d_df),
+                )
 
         # Filter E: Swing list with 20% profit target column
         if "GTT_TARGET_20PCT" in df_analyzed.columns:
@@ -1358,9 +1380,14 @@ class StockScreener:
                         len(final_e_df),
                     )
                 else:
-                    LOGGER.info("Swing target list (Filter E) created in-memory (%d records)", len(final_e_df))
+                    LOGGER.info(
+                        "Swing target list (Filter E) created in-memory (%d records)",
+                        len(final_e_df),
+                    )
 
-        self._generate_strategy_reports(df_analyzed, date_str, save_to_disk=save_to_disk)
+        self._generate_strategy_reports(
+            df_analyzed, date_str, save_to_disk=save_to_disk
+        )
 
         # ── Enrichment pass: consensus, MTF, position sizing, quant metrics ──
         try:
@@ -1593,6 +1620,8 @@ class StockScreener:
                             len(df_strat),
                         )
                     else:
-                        LOGGER.info("Strategy report '%s' created in-memory (%d records)", strat_name, len(df_strat))
-
-
+                        LOGGER.info(
+                            "Strategy report '%s' created in-memory (%d records)",
+                            strat_name,
+                            len(df_strat),
+                        )

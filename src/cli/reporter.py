@@ -106,9 +106,7 @@ class ScreenerReporter:
     # Public: Consensus Leaderboard
     # =========================================================================
 
-    def print_consensus_leaderboard(
-        self, df: pd.DataFrame, top_n: int = 20
-    ) -> None:
+    def print_consensus_leaderboard(self, df: pd.DataFrame, top_n: int = 20) -> None:
         """
         Show stocks ranked by CONSENSUS_SCORE (highest first).
 
@@ -146,31 +144,58 @@ class ScreenerReporter:
         market_state = str(row.get("MARKET_STATE", "SIDEWAYS"))
         action = str(row.get("PORTFOLIO_ACTION", "NEUTRAL / SIDEWAYS"))
         confidence = row.get("CONFIDENCE_PCT", 50.0)
-        
+
         bull_score = row.get("WEIGHTED_BULL_SCORE", 0.0)
         bear_score = row.get("WEIGHTED_BEAR_SCORE", 0.0)
 
         # Dynamic Stop Loss and Targets
         stop_price = row.get("STOP_PRICE")
         suggested_qty = row.get("SUGGESTED_QTY")
-        target_20pct = row.get("GTT_TARGET_20PCT") or (cmp_val * 1.2 if pd.notna(cmp_val) else None)
+        target_20pct = row.get("GTT_TARGET_20PCT") or (
+            cmp_val * 1.2 if pd.notna(cmp_val) else None
+        )
 
-        stop_str = f"₹{stop_price:,.2f}" if pd.notna(stop_price) and stop_price > 0 else "N/A"
-        target_str = f"₹{target_20pct:,.2f}" if pd.notna(target_20pct) and target_20pct > 0 else "N/A"
-        qty_str = str(int(suggested_qty)) if pd.notna(suggested_qty) and suggested_qty > 0 else "N/A"
+        stop_str = (
+            f"₹{stop_price:,.2f}" if pd.notna(stop_price) and stop_price > 0 else "N/A"
+        )
+        target_str = (
+            f"₹{target_20pct:,.2f}"
+            if pd.notna(target_20pct) and target_20pct > 0
+            else "N/A"
+        )
+        qty_str = (
+            str(int(suggested_qty))
+            if pd.notna(suggested_qty) and suggested_qty > 0
+            else "N/A"
+        )
 
         # Signal categorization
         buy_drivers: list[str] = []
         cautions: list[str] = []
 
         _BUY = {
-            "Buy", "Breakout Buy", "Explosive Buy", "Level 1 Buy", "Level 2 Buy",
-            "Level 3 Buy", "150 DMA Breakout | CMP > 200 DMA",
-            "50 DMA Breakout | CMP > 200 DMA", "Super BO Buy",
-            "Buy on Support / Demand Level", "Buy (55D Breakout)",
-            "VCP Tightening", "Squeeze Active (Bullish)", "Long Entry", "Lorentzian Buy",
+            "Buy",
+            "Breakout Buy",
+            "Explosive Buy",
+            "Level 1 Buy",
+            "Level 2 Buy",
+            "Level 3 Buy",
+            "150 DMA Breakout | CMP > 200 DMA",
+            "50 DMA Breakout | CMP > 200 DMA",
+            "Super BO Buy",
+            "Buy on Support / Demand Level",
+            "Buy (55D Breakout)",
+            "VCP Tightening",
+            "Squeeze Active (Bullish)",
+            "Long Entry",
+            "Lorentzian Buy",
         }
-        _SELL = {"Explosive Sell", "Lorentzian Sell", "Squeeze Active (Bearish)", "Close Long"}
+        _SELL = {
+            "Explosive Sell",
+            "Lorentzian Sell",
+            "Squeeze Active (Bearish)",
+            "Close Long",
+        }
 
         strategy_labels = {
             "STR_NIFTY_SHOP_ACTION": "Nifty Shop",
@@ -232,28 +257,44 @@ class ScreenerReporter:
         )
 
         bullets = []
-        
+
         # Technical Summary
         if market_state == "BULL RUN":
-            bullets.append("• Primary Trend: Strongly Bullish. Price remains above long-term moving averages (50 DMA and 200 DMA).")
+            bullets.append(
+                "• Primary Trend: Strongly Bullish. Price remains above long-term moving averages (50 DMA and 200 DMA)."
+            )
         elif market_state == "RECOVERY":
-            bullets.append("• Primary Trend: In Recovery. Trading above 50 DMA but currently below major 200 DMA overhead resistance.")
+            bullets.append(
+                "• Primary Trend: In Recovery. Trading above 50 DMA but currently below major 200 DMA overhead resistance."
+            )
         elif market_state == "BEAR TERRITORY":
-            bullets.append("• Primary Trend: Bear Territory. Key long-term moving averages are sloping down and trading above CMP.")
+            bullets.append(
+                "• Primary Trend: Bear Territory. Key long-term moving averages are sloping down and trading above CMP."
+            )
         else:
-            bullets.append("• Primary Trend: Sideways Consolidation. Price within historical range near major moving averages.")
+            bullets.append(
+                "• Primary Trend: Sideways Consolidation. Price within historical range near major moving averages."
+            )
 
         # Buy catalysts
         if buy_drivers:
-            bullets.append(f"• Positive Catalysts:\n  - " + "\n  - ".join(buy_drivers[:4]))
+            bullets.append(
+                "• Positive Catalysts:\n  - " + "\n  - ".join(buy_drivers[:4])
+            )
         else:
-            bullets.append("• Positive Catalysts: No active strategy buy setups or bullish indicators triggered.")
+            bullets.append(
+                "• Positive Catalysts: No active strategy buy setups or bullish indicators triggered."
+            )
 
         # Sell indicators / risks
         if cautions:
-            bullets.append(f"• Risk Factors & Cautions:\n  - " + "\n  - ".join(cautions[:3]))
+            bullets.append(
+                "• Risk Factors & Cautions:\n  - " + "\n  - ".join(cautions[:3])
+            )
         else:
-            bullets.append("• Risk Factors & Cautions: No active strategy sell triggers or bearish divergences.")
+            bullets.append(
+                "• Risk Factors & Cautions: No active strategy sell triggers or bearish divergences."
+            )
 
         # Actionable Advice
         advice = ""
@@ -264,7 +305,14 @@ class ScreenerReporter:
             )
         elif action == "HOLD / ADD ON DIPS":
             # Wockpharma case: 4+ buys, but some missing
-            trend_only = all("Breakout" in d or "Trend" in d or "DMA" in d or "Turtle" in d or "RDX" in d for d in buy_drivers[:3])
+            trend_only = all(
+                "Breakout" in d
+                or "Trend" in d
+                or "DMA" in d
+                or "Turtle" in d
+                or "RDX" in d
+                for d in buy_drivers[:3]
+            )
             if trend_only and len(buy_drivers) >= 3:
                 advice = (
                     f"• Verdict: Moderately Bullish. Independent trend-following systems (such as Turtle, DMA, or RDX) are confirming, "
@@ -278,8 +326,8 @@ class ScreenerReporter:
                 )
         elif action == "EXIT / REDUCE" or action == "REDUCE / MONITOR":
             advice = (
-                f"• Verdict: Bearish Setup / Exit Signal. Active strategy exits or ML sell triggers have triggered. "
-                f"Protect capital: reduce position size or exit fully. Avoid averaging down."
+                "• Verdict: Bearish Setup / Exit Signal. Active strategy exits or ML sell triggers have triggered. "
+                "Protect capital: reduce position size or exit fully. Avoid averaging down."
             )
         else:
             advice = (
@@ -316,6 +364,7 @@ class ScreenerReporter:
         if "CONSENSUS_SCORE" not in df.columns:
             try:
                 from src.core.consensus_engine import add_consensus_score
+
                 df = add_consensus_score(df)
             except Exception:
                 df["CONSENSUS_SCORE"] = 0

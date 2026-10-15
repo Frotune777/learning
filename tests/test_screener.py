@@ -48,6 +48,19 @@ import pytest
 from src.screener import StockScreener
 
 
+@pytest.fixture(autouse=True)
+def mock_corporate_data_scraper() -> Any:
+    """Mock CorporateDataScraper to prevent tests from making real network requests to NSE."""
+    with patch("src.screener.CorporateDataScraper") as MockClass:
+        mock_instance = MockClass.return_value
+        mock_instance.fetch_and_cache_all.return_value = None
+        mock_instance.get_upcoming_actions.return_value = "None"
+        mock_instance.get_recent_announcements.return_value = "No"
+        mock_instance.get_days_to_next_event.return_value = -1
+        mock_instance.get_insider_score.return_value = 0
+        yield mock_instance
+
+
 def test_screener_init(tmp_path: Path) -> None:
     """
     Verify that the StockScreener correctly sets up processed output folders.

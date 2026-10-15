@@ -30,8 +30,12 @@ except ImportError:
     _HAS_ATA = False
 
 try:
-    from sklearn.neighbors import KNeighborsClassifier as _KNN  # type: ignore[import-untyped]
-    from sklearn.preprocessing import MinMaxScaler as _Scaler  # type: ignore[import-untyped]
+    from sklearn.neighbors import (
+        KNeighborsClassifier as _KNN,  # type: ignore[import-untyped]
+    )
+    from sklearn.preprocessing import (
+        MinMaxScaler as _Scaler,  # type: ignore[import-untyped]
+    )
 
     _HAS_SKLEARN = True
 except ImportError:
@@ -443,9 +447,7 @@ def calc_vcp(
             return {"action": "No VCP", "reason": "Could not compute contraction legs"}
 
         # VCP: each leg should be smaller than the previous (10% buffer allowed)
-        is_tightening = all(
-            legs[i + 1] <= legs[i] * 1.1 for i in range(len(legs) - 1)
-        )
+        is_tightening = all(legs[i + 1] <= legs[i] * 1.1 for i in range(len(legs) - 1))
 
         legs_str = ", ".join(f"{leg:.1f}%" for leg in legs)
         if is_tightening and legs[-1] < 10.0:
@@ -652,8 +654,10 @@ def calc_dual_supertrend(
         {'action': 'Hold', 'buy_dir': 1.0, 'sell_dir': 1.0}
     """
     min_bars = max(buy_atr, sell_atr) + 2
-    if df is None or len(df) < min_bars or not all(
-        c in df.columns for c in ("High", "Low", "Close")
+    if (
+        df is None
+        or len(df) < min_bars
+        or not all(c in df.columns for c in ("High", "Low", "Close"))
     ):
         return {"action": "Insufficient Data", "buy_dir": np.nan, "sell_dir": np.nan}
 
@@ -782,7 +786,7 @@ def calc_lorentzian(df: pd.DataFrame) -> dict[str, Any]:
     # --- Strategy A: advanced_ta LorentzianClassification ---
     if _HAS_ATA:
         try:
-            import talib as talib_  # noqa: PLC0415  (local import inside guard)
+            import talib as talib_  # (local import inside guard)
 
             data = df.copy().rename(
                 columns={
@@ -856,30 +860,32 @@ def calc_lorentzian(df: pd.DataFrame) -> dict[str, Any]:
         close_series = df["Close"].astype(float)
         data = data.copy()
         data["_target"] = (close_series.shift(-1) > close_series).astype(int)
-        valid = data.dropna()
 
-        if len(valid) < 20:
+        # Train data must exclude the last row of df (which has target NaN and is dropped by dropna())
+        train_data = data.dropna()
+
+        if len(train_data) < 20:
             return {"action": "No Signal", "confidence": "Insufficient Data"}
 
-        X = valid[available].values
-        y = valid["_target"].values
+        X_train = train_data[available].values
+        y_train = train_data["_target"].values
 
         lookback = 2000
-        if len(X) > lookback:
-            X = X[-lookback:]
-            y = y[-lookback:]
+        if len(X_train) > lookback:
+            X_train = X_train[-lookback:]
+            y_train = y_train[-lookback:]
 
-        # Most recent complete row for prediction
-        latest_features = valid[available].iloc[-1].values.reshape(1, -1)
+        # Inference vector is the last row of the original data (index N-1)
+        latest_features = data[available].iloc[-1:].values
         if np.isnan(latest_features).any():
             return {"action": "No Signal", "confidence": "NaN Features"}
 
         scaler = _Scaler()
-        X_scaled = scaler.fit_transform(X)
+        X_train_scaled = scaler.fit_transform(X_train)
         latest_scaled = scaler.transform(latest_features)
 
         clf = _KNN(n_neighbors=8, metric="manhattan", weights="distance")
-        clf.fit(X_scaled, y)
+        clf.fit(X_train_scaled, y_train)
         prediction = int(clf.predict(latest_scaled)[0])
 
         if prediction == 1:
@@ -889,4 +895,3 @@ def calc_lorentzian(df: pd.DataFrame) -> dict[str, Any]:
     except Exception as exc:
         LOGGER.warning("Lorentzian sklearn fallback error: %s", exc)
         return {"action": "No Signal", "confidence": "Error"}
-

@@ -25,6 +25,7 @@ import pandas as pd
 
 from src.data.fetcher.prices.base import AbstractPriceFetcher
 from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
+from src.nse_bhavcopy.ta_indicators import add_ta_indicators
 from src.storage.sync_registry import SyncRegistry, _last_trading_day
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -56,9 +57,11 @@ class HistoricalSync:
         self.timeframe: str = timeframe
         self.start_date: str = start_date
         self.rate_delay: float = rate_delay
-        self.fetcher: AbstractPriceFetcher = fetcher or FyersFetcher(
-            rate_delay=self.rate_delay, fallback_enabled=False
-        )
+        if fetcher is not None:
+            self.fetcher: AbstractPriceFetcher = fetcher
+        else:
+            from src.core.data_sources import get_data_source_manager
+            self.fetcher = get_data_source_manager().get_price_fetcher()
 
         self._tf_dir: str = os.path.join(data_dir, timeframe)
         os.makedirs(self._tf_dir, exist_ok=True)
@@ -90,6 +93,17 @@ class HistoricalSync:
         if df.empty:
             return
         df = df[~df.index.duplicated(keep="last")].sort_index()
+
+        # Ensure all technical indicators (RSI, MACD, EMAs, ATR, ADX, etc.) are up-to-date
+        # Check if indicators need calculation or re-calculation due to new trailing bars with NaNs
+        try:
+            req_cols = {"Close", "High", "Low"}
+            if req_cols.issubset(set(df.columns)):
+                if "RSI_14" not in df.columns or pd.isna(df["RSI_14"].iloc[-1]):
+                    df = add_ta_indicators(df)
+        except Exception as exc:
+            LOGGER.warning("Could not calculate TA indicators for %s during save: %s", symbol, exc)
+
         path = self._parquet_path(symbol)
         try:
             df.to_parquet(path)
@@ -278,7 +292,9 @@ class HistoricalSync:
         )
         return merged
 
-    def sync_one(self, symbol: str, force: bool = False, registry: SyncRegistry | None = None) -> bool:
+    def sync_one(
+        self, symbol: str, force: bool = False, registry: SyncRegistry | None = None
+    ) -> bool:
         """
         Synchronise historical data for a single NSE equity symbol.
 
@@ -304,7 +320,11 @@ class HistoricalSync:
             df = self._fetch_full(symbol)
             if registry and not df.empty:
                 registry.mark_full_refreshed(symbol)
-        elif self._needs_full_refresh(existing) and not recently_full_refreshed and not force:
+        elif (
+            self._needs_full_refresh(existing)
+            and not recently_full_refreshed
+            and not force
+        ):
             # Case 2: Partial/gappy data → full refresh to fill gaps
             LOGGER.info(
                 "%s: Existing data has gaps (%d rows, %s → %s). Running full refresh.",
@@ -429,7 +449,9 @@ class HistoricalSync:
                     self._remove_failed_symbol(sym)
             else:
                 registry.mark_failed(sym)
-                self._record_failed_symbol(sym, reason="Fyers sync failed or returned empty")
+                self._record_failed_symbol(
+                    sym, reason="Fyers sync failed or returned empty"
+                )
 
             if i % save_every == 0:
                 registry.save()
@@ -492,7 +514,9 @@ class HistoricalSync:
                 df.to_csv(path, index=False)
                 LOGGER.info("Removed %s from failed_symbols.csv", symbol)
         except Exception as exc:
-            LOGGER.warning("Failed to remove %s from failed_symbols.csv: %s", symbol, exc)
+            LOGGER.warning(
+                "Failed to remove %s from failed_symbols.csv: %s", symbol, exc
+            )
 
     def read(self, symbol: str) -> pd.DataFrame:
         return self._load(symbol)
@@ -510,6 +534,17 @@ class HistoricalSync:
                     if first_date and last_date
                     else 0
                 )
+                # Check indicator completeness and staleness against current calendar
+                has_indicator_nan = False
+                days_stale = 0
+                if not df.empty:
+                    if "RSI_14" in df.columns:
+                        has_indicator_nan = bool(pd.isna(df["RSI_14"].iloc[-1]))
+                    else:
+                        has_indicator_nan = True
+                    if last_date:
+                        days_stale = (_last_trading_day() - last_date).days
+
                 rows.append(
                     {
                         "symbol": sym.upper(),
@@ -520,6 +555,8 @@ class HistoricalSync:
                         else 0,
                         "first_date": first_date,
                         "last_date": last_date,
+                        "days_stale": max(0, days_stale),
+                        "has_indicator_nan": has_indicator_nan,
                         "parquet_path": path,
                     }
                 )
@@ -532,6 +569,8 @@ class HistoricalSync:
                         "coverage_pct": 0,
                         "first_date": None,
                         "last_date": None,
+                        "days_stale": 9999,
+                        "has_indicator_nan": True,
                         "parquet_path": path,
                     }
                 )

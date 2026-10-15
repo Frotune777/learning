@@ -7,48 +7,53 @@ Last Modified: 2026-05-27
 from typing import Any
 
 import pandas as pd
-import yfinance as yf
-
+import os
 
 def run_correlation_cli(
-    tickers: list[str] | None = None, period: str = "1y"
+    tickers: list[str] | None = None, period: str = "1y", hist_dir: str = "data/historical/1d"
 ) -> pd.DataFrame:
     """
-    Downloads historical data and computes a correlation matrix.
+    Loads historical data from local offline Parquet files and computes a correlation matrix.
 
     Parameters:
         tickers (list[str] | None): List of symbols to analyze.
         period (str): The data period (e.g., '6mo', '1y').
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         pd.DataFrame: A formatted correlation matrix DataFrame.
     """
     if tickers is None:
-        tickers = ["^NSEI", "INR=X", "^NSEBANK", "GOLD", "INFY.NS", "RELIANCE.NS"]
+        tickers = ["NIFTYBEES", "BANKBEES", "GOLDBEES", "INFY.NS", "RELIANCE.NS"]
 
-    try:
-        data: Any = yf.download(
-            tickers, period=period, auto_adjust=True, progress=False
-        )
-    except Exception as e:
-        print(f"Error fetching data: {e}")
-        return pd.DataFrame()
+    prices_dict = {}
+    rows_needed = 252 if period == "1y" else (126 if period == "6mo" else 252)
 
-    if data.empty:
+    for symbol in tickers:
+        clean_sym = symbol.replace("^", "").replace(".NS", "")
+        path = os.path.join(hist_dir, f"{clean_sym.upper()}.parquet")
+        
+        if not os.path.exists(path):
+            print(f"Warning: Local data file not found for {symbol}")
+            continue
+            
+        try:
+            df = pd.read_parquet(path)
+            if not df.empty:
+                col_mapping = {c.lower(): c for c in df.columns}
+                if 'close' in col_mapping:
+                    close_col = col_mapping['close']
+                    if not isinstance(df.index, pd.DatetimeIndex):
+                        df.index = pd.to_datetime(df.index)
+                    prices_dict[symbol] = df[close_col].tail(rows_needed)
+        except Exception as e:
+            print(f"Error reading {symbol}: {e}")
+
+    if not prices_dict:
         print("No data found for the provided tickers.")
         return pd.DataFrame()
 
-    # If multiple tickers, yfinance returns MultiIndex columns.
-    # We want just the Close prices.
-    if isinstance(data.columns, pd.MultiIndex):
-        try:
-            prices = data["Close"]
-        except KeyError:
-            print("Close price data missing from yfinance payload.")
-            return pd.DataFrame()
-    else:
-        # Single ticker case
-        prices = data[["Close"]]
+    prices = pd.DataFrame(prices_dict)
 
     # Calculate daily returns
     returns = prices.pct_change().dropna()

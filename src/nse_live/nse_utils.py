@@ -94,7 +94,9 @@ class NseUtils:
 
         self.session = requests.Session()
         try:
-            self.session.get("https://www.nseindia.com", headers=self.headers, timeout=10)
+            self.session.get(
+                "https://www.nseindia.com", headers=self.headers, timeout=10
+            )
         except Exception:
             pass
         self.cookies = self.session.cookies.get_dict()
@@ -130,15 +132,13 @@ class NseUtils:
         try:
             category_clean = category.upper().replace("&", "%26").replace(" ", "%20")
 
-            ref_url = (
-                f"https://www.nseindia.com/market-data/live-equity-market?symbol={category_clean}"
-            )
+            ref_url = f"https://www.nseindia.com/market-data/live-equity-market?symbol={category_clean}"
             ref = requests.get(ref_url, headers=self.headers, timeout=10)
             url = f"https://www.nseindia.com/api/equity-stockIndices?index={category_clean}"
             resp = requests.get(
                 url, headers=self.headers, cookies=ref.cookies.get_dict(), timeout=10
             )
-            
+
             if resp.status_code == 200:
                 try:
                     data = resp.json()
@@ -159,6 +159,7 @@ class NseUtils:
             print(f"Index API failed for {category}. Attempting direct CSV fallback...")
             try:
                 import io
+
                 cat_lower = category.lower().replace(" ", "")
                 # Normalize key names for standard files
                 if cat_lower == "niftynext50":
@@ -171,9 +172,10 @@ class NseUtils:
                         # Map expected columns for normal heatmap operations
                         csv_df = csv_df.rename(columns={"Symbol": "symbol"})
                         csv_df = csv_df.set_index("symbol", drop=True)
-                        
+
                         # Populate columns with actual latest data from historical Parquets where available
                         import os
+
                         for sym in csv_df.index:
                             parquet_path = f"data/historical/1d/{sym.upper()}.parquet"
                             if os.path.exists(parquet_path):
@@ -181,24 +183,45 @@ class NseUtils:
                                     p_df = pd.read_parquet(parquet_path)
                                     if not p_df.empty:
                                         last_row = p_df.iloc[-1]
-                                        prev_row = p_df.iloc[-2] if len(p_df) > 1 else last_row
-                                        
-                                        csv_df.at[sym, "open"] = float(last_row.get("Open", 0.0))
-                                        csv_df.at[sym, "dayHigh"] = float(last_row.get("High", 0.0))
-                                        csv_df.at[sym, "dayLow"] = float(last_row.get("Low", 0.0))
-                                        csv_df.at[sym, "lastPrice"] = float(last_row.get("Close", 0.0))
-                                        
+                                        prev_row = (
+                                            p_df.iloc[-2] if len(p_df) > 1 else last_row
+                                        )
+
+                                        csv_df.at[sym, "open"] = float(
+                                            last_row.get("Open", 0.0)
+                                        )
+                                        csv_df.at[sym, "dayHigh"] = float(
+                                            last_row.get("High", 0.0)
+                                        )
+                                        csv_df.at[sym, "dayLow"] = float(
+                                            last_row.get("Low", 0.0)
+                                        )
+                                        csv_df.at[sym, "lastPrice"] = float(
+                                            last_row.get("Close", 0.0)
+                                        )
+
                                         close_val = float(last_row.get("Close", 0.0))
                                         prev_close = float(prev_row.get("Close", 0.0))
-                                        p_change = ((close_val - prev_close) / prev_close * 100.0) if prev_close > 0 else 0.0
+                                        p_change = (
+                                            (
+                                                (close_val - prev_close)
+                                                / prev_close
+                                                * 100.0
+                                            )
+                                            if prev_close > 0
+                                            else 0.0
+                                        )
                                         csv_df.at[sym, "pChange"] = p_change
-                                        
+
                                         # Use free-float market cap representation or closing volume as a proxy
-                                        csv_df.at[sym, "ffmc"] = float(last_row.get("Volume", 0.0)) * close_val
+                                        csv_df.at[sym, "ffmc"] = (
+                                            float(last_row.get("Volume", 0.0))
+                                            * close_val
+                                        )
                                         continue
                                 except Exception:
                                     pass
-                            
+
                             # Standard default if no local Parquet exists yet
                             csv_df.at[sym, "open"] = 0.0
                             csv_df.at[sym, "dayHigh"] = 0.0
@@ -208,13 +231,15 @@ class NseUtils:
                             csv_df.at[sym, "ffmc"] = 0.0
 
                         df = csv_df
-                        print(f"Successfully loaded {len(df)} constituents with active historical prices via CSV fallback for {category}.")
+                        print(
+                            f"Successfully loaded {len(df)} constituents with active historical prices via CSV fallback for {category}."
+                        )
             except Exception as csv_exc:
                 print(f"CSV fallback failed for {category}: {csv_exc}")
 
         if df.empty:
             return pd.DataFrame()
-            
+
         if list_only:
             symbol_list = sorted(df.index[1:].tolist())
             return symbol_list
@@ -275,7 +300,7 @@ class NseUtils:
                 )  # Convert string to datetime
             except ValueError:
                 print(
-                    "Error: Invalid date format! Please use 'DD-MMM-YYYY' (e.g., '19-Feb-2025')."  # noqa: E501
+                    "Error: Invalid date format! Please use 'DD-MMM-YYYY' (e.g., '19-Feb-2025')."
                 )
                 return None
         else:
@@ -305,7 +330,7 @@ class NseUtils:
                 )  # Convert string to datetime
             except ValueError:
                 print(
-                    "Error: Invalid date format! Please use 'DD-MMM-YYYY' (e.g., '19-Feb-2025')."  # noqa: E501
+                    "Error: Invalid date format! Please use 'DD-MMM-YYYY' (e.g., '19-Feb-2025')."
                 )
                 return None
         else:
@@ -868,7 +893,7 @@ class NseUtils:
         except Exception as e:
             print(e)
             raise ValueError(
-                f"either or both from_date = {from_date} || to_date = {to_date} are not valid value"  # noqa: E501
+                f"either or both from_date = {from_date} || to_date = {to_date} are not valid value"
             )
 
         nse_df = pd.DataFrame(columns=index_data_columns)

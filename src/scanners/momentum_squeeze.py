@@ -6,7 +6,7 @@ Last Modified: 2026-05-27
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import os
 
 
 def _rolling_linreg(series: pd.Series, length: int) -> pd.Series:
@@ -39,17 +39,19 @@ def momentum_squeeze(
     bb_length: int = 20,
     kc_length: int = 20,
     kc_mult: float = 1.5,
+    hist_dir: str = "data/historical/1d"
 ) -> pd.DataFrame:
     """
     Calculates the Momentum Squeeze Indicator for a given symbol.
 
     Parameters:
-        symbol (str): Yahoo Finance ticker symbol.
+        symbol (str): Ticker symbol.
         interval (str): Candle interval (e.g., '1d', '1h', '5m').
         period (str): Lookback data period (e.g., '6mo', '1y').
         bb_length (int): Bollinger Band window length.
         kc_length (int): Keltner Channel window length.
         kc_mult (float): Keltner Channel multiplier.
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         pd.DataFrame: DataFrame with Momentum, Squeeze state, and color signals.
@@ -57,16 +59,30 @@ def momentum_squeeze(
     Raises:
         ValueError: If downloaded data is empty.
     """
-    raw: pd.DataFrame = yf.download(
-        symbol,
-        interval=interval,
-        period=period,
-        progress=False,
-        multi_level_index=False,
-    )
+    # Fix symbol name for indices if they start with ^
+    clean_sym = symbol.replace("^", "")
+    path = os.path.join(hist_dir, f"{clean_sym.upper()}.parquet")
+    
+    if not os.path.exists(path):
+        raise ValueError(f"No local data returned for symbol '{symbol}' at {path}.")
+        
+    raw = pd.read_parquet(path)
 
     if raw.empty:
-        raise ValueError(f"No data returned for symbol '{symbol}'.")
+        raise ValueError(f"Empty local data returned for symbol '{symbol}'.")
+
+    # Standardize columns
+    col_mapping = {"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
+    raw = raw.rename(columns=col_mapping)
+    
+    # Keep only OHLCV to avoid dropping rows due to unrelated indicator columns containing NaNs
+    raw = raw[["Open", "High", "Low", "Close", "Volume"]]
+    
+    # Handle period sizing (rough estimates for trading days)
+    if period == "6mo":
+        raw = raw.tail(126)
+    elif period == "1y":
+        raw = raw.tail(252)
 
     raw.dropna(inplace=True)
 
@@ -141,6 +157,7 @@ def run_squeeze_cli(
     symbol: str = "^NSEI",
     interval: str = "1d",
     period: str = "6mo",
+    hist_dir: str = "data/historical/1d"
 ) -> list[Signal]:
     """
     CLI wrapper to compute and return the latest Momentum Squeeze summary.
@@ -149,12 +166,13 @@ def run_squeeze_cli(
         symbol (str): The symbol to analyse.
         interval (str): Candle interval (default daily).
         period (str): Data lookback period (default 6 months).
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         list[Signal]: Signal objects for the last 10 periods.
     """
     try:
-        result = momentum_squeeze(symbol, interval, period)
+        result = momentum_squeeze(symbol, interval, period, hist_dir=hist_dir)
     except ValueError as e:
         print(f"  Error: {e}")
         return []

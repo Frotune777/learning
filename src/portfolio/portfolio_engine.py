@@ -38,7 +38,9 @@ class Portfolio:
 
     def get_total_value(self) -> float:
         """Calculate current total portfolio value (cash + market value of open positions)."""
-        pos_val = sum(pos["qty"] * pos["current_price"] for pos in self.positions.values())
+        pos_val = sum(
+            pos["qty"] * pos["current_price"] for pos in self.positions.values()
+        )
         return self.cash + pos_val
 
     def get_sector_exposures(self) -> dict[str, float]:
@@ -58,7 +60,9 @@ class Portfolio:
         exps = self.get_sector_exposures()
         return {sect: val / total for sect, val in exps.items()}
 
-    def can_add(self, symbol: str, sector: str, price: float, value: float) -> tuple[bool, str]:
+    def can_add(
+        self, symbol: str, sector: str, price: float, value: float
+    ) -> tuple[bool, str]:
         """Check if we can add a new position without breaching constraints."""
         symbol = symbol.strip().upper()
         if symbol in self.positions:
@@ -68,14 +72,20 @@ class Portfolio:
             return False, f"Breaches max position limit of {self.max_positions}"
 
         if value > self.cash:
-            return False, f"Insufficient cash: Needs ₹{value:,.2f}, has ₹{self.cash:,.2f}"
+            return (
+                False,
+                f"Insufficient cash: Needs ₹{value:,.2f}, has ₹{self.cash:,.2f}",
+            )
 
         total_val = self.get_total_value()
-        
+
         # Check single position limit
         pct_single = value / total_val
         if pct_single > self.max_single_position_pct:
-            return False, f"Single position allocation ({pct_single:.1%}) exceeds limit ({self.max_single_position_pct:.1%})"
+            return (
+                False,
+                f"Single position allocation ({pct_single:.1%}) exceeds limit ({self.max_single_position_pct:.1%})",
+            )
 
         # Check sector exposure limit
         sector = sector or "Other"
@@ -83,7 +93,10 @@ class Portfolio:
         new_sector_val = sector_allocations.get(sector, 0.0) + value
         pct_sector = new_sector_val / total_val
         if pct_sector > self.max_sector_exposure_pct:
-            return False, f"Sector {sector} allocation ({pct_sector:.1%}) exceeds limit ({self.max_sector_exposure_pct:.1%})"
+            return (
+                False,
+                f"Sector {sector} allocation ({pct_sector:.1%}) exceeds limit ({self.max_sector_exposure_pct:.1%})",
+            )
 
         return True, "Approved"
 
@@ -115,7 +128,7 @@ class Portfolio:
             "target_price": target_price,
             "sector": sector or "Other",
             "entry_date": date_str or "",
-            "risk_amount": (price - stop_price) * qty if price > stop_price else 0.0
+            "risk_amount": (price - stop_price) * qty if price > stop_price else 0.0,
         }
         LOGGER.info("Added position %s: %d shares @ ₹%.2f", symbol, qty, price)
         return True
@@ -129,7 +142,12 @@ class Portfolio:
         pos = self.positions.pop(symbol)
         proceeds = pos["qty"] * exit_price
         self.cash += proceeds
-        LOGGER.info("Exited position %s @ ₹%.2f. Realised proceeds: ₹%.2f", symbol, exit_price, proceeds)
+        LOGGER.info(
+            "Exited position %s @ ₹%.2f. Realised proceeds: ₹%.2f",
+            symbol,
+            exit_price,
+            proceeds,
+        )
 
     def get_heat(self) -> float:
         """Calculate total cash at risk across all open positions (Portfolio Heat)."""
@@ -146,10 +164,21 @@ class Portfolio:
     def to_dataframe(self) -> pd.DataFrame:
         """Convert current positions to a formatted pandas DataFrame."""
         if not self.positions:
-            return pd.DataFrame(columns=[
-                "Symbol", "Qty", "Entry Price", "Current Price", "Stop Price", 
-                "Target Price", "Sector", "Entry Date", "Current Value", "P&L", "P&L %"
-            ])
+            return pd.DataFrame(
+                columns=[
+                    "Symbol",
+                    "Qty",
+                    "Entry Price",
+                    "Current Price",
+                    "Stop Price",
+                    "Target Price",
+                    "Sector",
+                    "Entry Date",
+                    "Current Value",
+                    "P&L",
+                    "P&L %",
+                ]
+            )
         rows = []
         for pos in self.positions.values():
             qty = pos["qty"]
@@ -158,19 +187,21 @@ class Portfolio:
             val = qty * curr
             pnl = val - (qty * entry)
             pnl_pct = (pnl / (qty * entry)) * 100.0 if entry > 0 else 0.0
-            rows.append({
-                "Symbol": pos["symbol"],
-                "Qty": qty,
-                "Entry Price": entry,
-                "Current Price": curr,
-                "Stop Price": pos["stop_price"],
-                "Target Price": pos["target_price"],
-                "Sector": pos["sector"],
-                "Entry Date": pos["entry_date"],
-                "Current Value": round(val, 2),
-                "P&L": round(pnl, 2),
-                "P&L %": round(pnl_pct, 2),
-            })
+            rows.append(
+                {
+                    "Symbol": pos["symbol"],
+                    "Qty": qty,
+                    "Entry Price": entry,
+                    "Current Price": curr,
+                    "Stop Price": pos["stop_price"],
+                    "Target Price": pos["target_price"],
+                    "Sector": pos["sector"],
+                    "Entry Date": pos["entry_date"],
+                    "Current Value": round(val, 2),
+                    "P&L": round(pnl, 2),
+                    "P&L %": round(pnl_pct, 2),
+                }
+            )
         return pd.DataFrame(rows)
 
 
@@ -189,7 +220,9 @@ class PortfolioEngine:
         self.correlation_lookback = correlation_lookback
         self.correlation_threshold = correlation_threshold
 
-    def calculate_correlations(self, candidate_symbols: list[str], active_symbols: list[str]) -> pd.DataFrame:
+    def calculate_correlations(
+        self, candidate_symbols: list[str], active_symbols: list[str]
+    ) -> pd.DataFrame:
         """Calculate correlation matrix of candidates with active positions."""
         if not active_symbols:
             return pd.DataFrame(0.0, index=candidate_symbols, columns=candidate_symbols)
@@ -203,7 +236,9 @@ class PortfolioEngine:
                     df = pd.read_parquet(p_path)
                     if "Close" in df.columns and len(df) >= self.correlation_lookback:
                         # Fetch last N daily returns
-                        returns = df["Close"].pct_change().tail(self.correlation_lookback)
+                        returns = (
+                            df["Close"].pct_change().tail(self.correlation_lookback)
+                        )
                         series_dict[sym] = returns
                 except Exception:
                     pass
@@ -221,12 +256,12 @@ class PortfolioEngine:
     ) -> list[dict[str, Any]]:
         """
         Allocate capital to buy/sell/hold based on daily signals, correlation checks, and portfolio limits.
-        
+
         Parameters:
             signals_df (pd.DataFrame): Output from StockScreener after scoring (must have COMPOSITE_SCORE, RANK).
             portfolio (Portfolio): Portfolio instance tracking current holdings.
             date_str (str): Target trade date.
-            
+
         Returns:
             list[dict[str, Any]]: List of recommended trade order dicts.
         """
@@ -244,21 +279,25 @@ class PortfolioEngine:
             if not quotes.empty:
                 cmp = float(quotes["CMP"].values[0])
                 if cmp <= pos["stop_price"]:
-                    orders.append({
-                        "symbol": sym,
-                        "action": "SELL",
-                        "qty": pos["qty"],
-                        "price": cmp,
-                        "reason": f"Stop Loss Triggered (Stop ₹{pos['stop_price']:.2f}, CMP ₹{cmp:.2f})"
-                    })
+                    orders.append(
+                        {
+                            "symbol": sym,
+                            "action": "SELL",
+                            "qty": pos["qty"],
+                            "price": cmp,
+                            "reason": f"Stop Loss Triggered (Stop ₹{pos['stop_price']:.2f}, CMP ₹{cmp:.2f})",
+                        }
+                    )
                 elif cmp >= pos["target_price"]:
-                    orders.append({
-                        "symbol": sym,
-                        "action": "SELL",
-                        "qty": pos["qty"],
-                        "price": cmp,
-                        "reason": f"Target Reached (Target ₹{pos['target_price']:.2f}, CMP ₹{cmp:.2f})"
-                    })
+                    orders.append(
+                        {
+                            "symbol": sym,
+                            "action": "SELL",
+                            "qty": pos["qty"],
+                            "price": cmp,
+                            "reason": f"Target Reached (Target ₹{pos['target_price']:.2f}, CMP ₹{cmp:.2f})",
+                        }
+                    )
 
         # Process exits on portfolio first
         for o in orders:
@@ -268,8 +307,8 @@ class PortfolioEngine:
         # 2. Process Entries: Look at Buy recommendations sorted by Rank
         # Filters: must have buy recommendation (e.g. BOTTOM_OUT_STATUS == "Start GTT" or consensus buy)
         buy_signals = signals_df[
-            (signals_df["BOTTOM_OUT_STATUS"].isin(["Start GTT", "Start GTT (Basic)"])) |
-            (signals_df["TREND_STATUS"] == "In Bull Run")
+            (signals_df["BOTTOM_OUT_STATUS"].isin(["Start GTT", "Start GTT (Basic)"]))
+            | (signals_df["TREND_STATUS"] == "In Bull Run")
         ].copy()
 
         if buy_signals.empty:
@@ -307,7 +346,12 @@ class PortfolioEngine:
                         corr_val = corr_matrix.loc[sym, active_sym]
                         if corr_val > self.correlation_threshold:
                             highly_correlated = True
-                            LOGGER.info("Skipping candidate %s: high correlation (%f) with active position %s", sym, corr_val, active_sym)
+                            LOGGER.info(
+                                "Skipping candidate %s: high correlation (%f) with active position %s",
+                                sym,
+                                corr_val,
+                                active_sym,
+                            )
                             break
 
             if highly_correlated:
@@ -331,7 +375,7 @@ class PortfolioEngine:
             if can_buy:
                 target_price = sizes["risk_reward_target"]
                 stop_price = sizes["stop_price"]
-                
+
                 portfolio.add_position(
                     symbol=sym,
                     qty=qty,
@@ -341,15 +385,17 @@ class PortfolioEngine:
                     sector=sector,
                     date_str=date_str,
                 )
-                orders.append({
-                    "symbol": sym,
-                    "action": "BUY",
-                    "qty": qty,
-                    "price": cmp,
-                    "stop_price": stop_price,
-                    "target_price": target_price,
-                    "reason": f"Signal Approved: composite rank setup on {date_str}"
-                })
+                orders.append(
+                    {
+                        "symbol": sym,
+                        "action": "BUY",
+                        "qty": qty,
+                        "price": cmp,
+                        "stop_price": stop_price,
+                        "target_price": target_price,
+                        "reason": f"Signal Approved: composite rank setup on {date_str}",
+                    }
+                )
             else:
                 LOGGER.debug("Position %s rejected by portfolio: %s", sym, reason)
 

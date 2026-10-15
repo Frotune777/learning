@@ -5,7 +5,6 @@ Last Modified: 2026-06-01
 """
 
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -16,7 +15,7 @@ LOGGER = logging.getLogger(__name__)
 class ScoringEngine:
     """
     Multi-factor weighted scoring and ranking engine.
-    
+
     Evaluates:
         1. Trend Quality (25%) - SMA alignment and distance to 200 DMA
         2. Momentum (20%) - RSI and ADX/DI alignment
@@ -46,10 +45,10 @@ class ScoringEngine:
     def score(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate composite multi-factor score and rank for the given DataFrame.
-        
+
         Parameters:
             df (pd.DataFrame): DataFrame containing technical, risk, and corporate columns.
-            
+
         Returns:
             pd.DataFrame: Enriched DataFrame with score and rank columns.
         """
@@ -60,22 +59,22 @@ class ScoringEngine:
 
         # 1. Trend Quality Score (Max 100 scaled to 25%)
         trend_score = self._score_trend(result)
-        
+
         # 2. Momentum Score (Max 100 scaled to 20%)
         momentum_score = self._score_momentum(result)
-        
+
         # 3. CAR Quality Score (Max 100 scaled to 15%)
         car_score = self._score_car(result)
-        
+
         # 4. Risk-Adjusted Score (Max 100 scaled to 15%)
         risk_score = self._score_risk(result)
-        
+
         # 5. Volume/Accumulation Score (Max 100 scaled to 10%)
         volume_score = self._score_volume(result)
-        
+
         # 6. Volatility Regime Score (Max 100 scaled to 10%)
         vol_score = self._score_volatility(result)
-        
+
         # 7. Catalyst Score (Max 100 scaled to 5%)
         catalyst_score = self._score_catalyst(result)
 
@@ -89,24 +88,24 @@ class ScoringEngine:
         result["CATALYST_FACTOR_SCORE"] = catalyst_score
 
         result["COMPOSITE_SCORE"] = (
-            (trend_score * self.weights["trend"]) +
-            (momentum_score * self.weights["momentum"]) +
-            (car_score * self.weights["car"]) +
-            (risk_score * self.weights["risk_adjusted"]) +
-            (volume_score * self.weights["volume"]) +
-            (vol_score * self.weights["volatility"]) +
-            (catalyst_score * self.weights["catalyst"])
+            (trend_score * self.weights["trend"])
+            + (momentum_score * self.weights["momentum"])
+            + (car_score * self.weights["car"])
+            + (risk_score * self.weights["risk_adjusted"])
+            + (volume_score * self.weights["volume"])
+            + (vol_score * self.weights["volatility"])
+            + (catalyst_score * self.weights["catalyst"])
         )
 
         # Rank candidates (higher score = lower rank number, i.e., rank 1 is best)
         result["RANK"] = result["COMPOSITE_SCORE"].rank(ascending=False, method="min")
-        
+
         return result
 
     def _score_trend(self, df: pd.DataFrame) -> pd.Series:
         """Score based on DMA stacks and CMP position relative to MAs."""
         score = pd.Series(0.0, index=df.index)
-        
+
         # Check DMA alignment (CMP > SMA_20 > SMA_50 > SMA_100 > SMA_150 > SMA_200)
         # We award points incrementally
         if "CMP" in df.columns:
@@ -131,11 +130,13 @@ class ScoringEngine:
                 diff = df["DIFF_200_DMA"]
                 # Full points if between 0.1% and 10%, decaying points up to 30%
                 dist_score = np.where(
-                    (diff > 0) & (diff <= 10.0), 50.0,
+                    (diff > 0) & (diff <= 10.0),
+                    50.0,
                     np.where(
-                        (diff > 10.0) & (diff <= 20.0), 35.0,
-                        np.where((diff > 20.0) & (diff <= 30.0), 15.0, 0.0)
-                    )
+                        (diff > 10.0) & (diff <= 20.0),
+                        35.0,
+                        np.where((diff > 20.0) & (diff <= 30.0), 15.0, 0.0),
+                    ),
                 )
                 score += dist_score
 
@@ -150,14 +151,17 @@ class ScoringEngine:
             rsi = df["RSI_14"]
             # Best range is 55 to 70 for strong bullish momentum
             rsi_pts = np.where(
-                (rsi >= 55.0) & (rsi <= 70.0), 50.0,
+                (rsi >= 55.0) & (rsi <= 70.0),
+                50.0,
                 np.where(
-                    (rsi >= 45.0) & (rsi < 55.0), 30.0,
+                    (rsi >= 45.0) & (rsi < 55.0),
+                    30.0,
                     np.where(
-                        (rsi > 70.0) & (rsi <= 80.0), 20.0, # Overbought but trending
-                        np.where((rsi >= 35.0) & (rsi < 45.0), 10.0, 0.0)
-                    )
-                )
+                        (rsi > 70.0) & (rsi <= 80.0),
+                        20.0,  # Overbought but trending
+                        np.where((rsi >= 35.0) & (rsi < 45.0), 10.0, 0.0),
+                    ),
+                ),
             )
             score += rsi_pts
 
@@ -167,11 +171,13 @@ class ScoringEngine:
         minus_di = df.get("MINUS_DI_14", pd.Series(np.nan, index=df.index))
 
         adx_pts = np.where(
-            (adx > 25.0) & (plus_di > minus_di), 50.0,
+            (adx > 25.0) & (plus_di > minus_di),
+            50.0,
             np.where(
-                (adx > 20.0) & (plus_di > minus_di), 35.0,
-                np.where(plus_di > minus_di, 15.0, 0.0)
-            )
+                (adx > 20.0) & (plus_di > minus_di),
+                35.0,
+                np.where(plus_di > minus_di, 15.0, 0.0),
+            ),
         )
         score += adx_pts
 
@@ -188,15 +194,13 @@ class ScoringEngine:
     def _score_risk(self, df: pd.DataFrame) -> pd.Series:
         """Score based on Sharpe Ratio and Max Drawdown."""
         score = pd.Series(0.0, index=df.index)
-        
+
         # Sharpe 1Y (50 points)
         sharpe = df.get("SHARPE_1Y", pd.Series(np.nan, index=df.index))
         sharpe_pts = np.where(
-            sharpe >= 2.0, 50.0,
-            np.where(
-                sharpe >= 1.0, 35.0,
-                np.where(sharpe >= 0.5, 15.0, 0.0)
-            )
+            sharpe >= 2.0,
+            50.0,
+            np.where(sharpe >= 1.0, 35.0, np.where(sharpe >= 0.5, 15.0, 0.0)),
         )
         score += sharpe_pts
 
@@ -205,11 +209,9 @@ class ScoringEngine:
         # Note: drawdown can be positive or negative in representation; we check absolute value
         abs_dd = max_dd.abs()
         dd_pts = np.where(
-            abs_dd <= 10.0, 50.0,
-            np.where(
-                abs_dd <= 20.0, 35.0,
-                np.where(abs_dd <= 35.0, 15.0, 0.0)
-            )
+            abs_dd <= 10.0,
+            50.0,
+            np.where(abs_dd <= 20.0, 35.0, np.where(abs_dd <= 35.0, 15.0, 0.0)),
         )
         score += dd_pts
 
@@ -222,22 +224,18 @@ class ScoringEngine:
         # Delivery Percentage (50 points)
         deliv = df.get("DELIV_PCT", pd.Series(np.nan, index=df.index))
         deliv_pts = np.where(
-            deliv >= 45.0, 50.0,
-            np.where(
-                deliv >= 30.0, 35.0,
-                np.where(deliv >= 20.0, 15.0, 0.0)
-            )
+            deliv >= 45.0,
+            50.0,
+            np.where(deliv >= 30.0, 35.0, np.where(deliv >= 20.0, 15.0, 0.0)),
         )
         score += deliv_pts
 
         # Volume Spike (50 points)
         vol_spike = df.get("VOL_SPIKE", pd.Series(np.nan, index=df.index))
         vol_pts = np.where(
-            vol_spike >= 2.5, 50.0,
-            np.where(
-                vol_spike >= 1.5, 35.0,
-                np.where(vol_spike >= 1.0, 15.0, 0.0)
-            )
+            vol_spike >= 2.5,
+            50.0,
+            np.where(vol_spike >= 1.5, 35.0, np.where(vol_spike >= 1.0, 15.0, 0.0)),
         )
         score += vol_pts
 
@@ -248,24 +246,22 @@ class ScoringEngine:
         score = pd.Series(50.0, index=df.index)  # Default neutral score
 
         vol = df.get("GARCH_VOL_PCT", pd.Series(np.nan, index=df.index))
-        
+
         # Lower volatility in trend is positive
         score = np.where(
-            vol <= 20.0, 100.0,
-            np.where(
-                vol <= 35.0, 75.0,
-                np.where(vol <= 50.0, 40.0, 10.0)
-            )
+            vol <= 20.0,
+            100.0,
+            np.where(vol <= 35.0, 75.0, np.where(vol <= 50.0, 40.0, 10.0)),
         )
         return pd.Series(score, index=df.index)
 
     def _score_catalyst(self, df: pd.DataFrame) -> pd.Series:
         """Score based on Insider trades, upcoming corporate actions, and event days."""
-        score = pd.Series(30.0, index=df.index) # Base score
+        score = pd.Series(30.0, index=df.index)  # Base score
 
         # Insider Trading Score (SEBI)
         insider = df.get("Insider Score", pd.Series(0.0, index=df.index)).fillna(0.0)
-        score += np.where(insider > 0.0, 40.0, 0.0) # Insider buying is positive
+        score += np.where(insider > 0.0, 40.0, 0.0)  # Insider buying is positive
 
         # Corporate Action Proximity / Event Risk
         event_days = df.get("Event Risk (Days)", pd.Series(np.nan, index=df.index))

@@ -9,6 +9,7 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 import requests
@@ -745,3 +746,34 @@ class FyersFetcher(AbstractPriceFetcher):
             LOGGER.error("get_quotes failed: %s", exc)
 
         return result
+
+    # ------------------------------------------------------------------
+    # Option Chain
+    # ------------------------------------------------------------------
+
+    def get_option_chain(
+        self,
+        symbol: str = "NSE:NIFTY50-INDEX",
+        strike_count: int = 10,
+    ) -> dict[str, Any]:
+        """
+        Fetch option chain data directly from Fyers API v3.
+
+        Parameters:
+            symbol (str): Underlying index or equity symbol (e.g. 'NSE:NIFTY50-INDEX').
+            strike_count (int): Number of ITM/OTM strikes to include.
+
+        Returns:
+            dict[str, Any]: Parsed response dictionary containing optionsChain, callOi, putOi, etc.
+        """
+        if not self.access_token:
+            LOGGER.warning("get_option_chain: no Fyers token available.")
+            return {}
+
+        endpoint = f"/data/options-chain-v3?symbol={symbol}&strikecount={strike_count}"
+        try:
+            data = self._get(endpoint)
+            return data.get("data", data) if isinstance(data, dict) else {}
+        except Exception as exc:
+            LOGGER.error("get_option_chain failed: %s", exc)
+            return {}

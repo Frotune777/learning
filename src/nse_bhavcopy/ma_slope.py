@@ -49,51 +49,51 @@ def calculate_ma_slope(
     return slope, ma_series
 
 
+import os
+
 def analyze_stock_ma_slope(
     ticker_symbol: str,
     ma_window: int = 20,
     slope_period: int = 30,
     days_of_data: int = 200,
+    hist_dir: str = "data/historical/1d"
 ) -> dict[str, Any]:
     """
-    Analyze the moving average slope for a given stock ticker.
+    Analyze the moving average slope for a given stock ticker using local offline data.
 
     Parameters:
-        ticker_symbol (str): Yahoo Finance ticker symbol.
+        ticker_symbol (str): The symbol of the stock.
         ma_window (int): Window size for moving average.
         slope_period (int): Period to calculate slope.
-        days_of_data (int): Historical data fetch window.
+        days_of_data (int): Number of trailing rows to analyze.
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         dict[str, Any]: A dictionary containing slope metrics and trend description.
     """
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_of_data + 50)
-
-    # Note: .NS suffix is assumed to be passed if it's an Indian stock,
-    # but we fetch whatever is passed verbatim.
+    clean_sym = ticker_symbol.replace("^", "").replace(".NS", "")
+    path = os.path.join(hist_dir, f"{clean_sym.upper()}.parquet")
+    
+    if not os.path.exists(path):
+        return {"error": f"Local data file not found: {path}"}
+        
     try:
-        data: pd.DataFrame = yf.download(
-            ticker_symbol,
-            start=start_date,
-            end=end_date,
-            progress=False,
-            auto_adjust=True,
-        )
+        data = pd.read_parquet(path)
     except Exception as e:
-        return {"error": f"Failed to download data: {e}"}
+        return {"error": f"Failed to read data: {e}"}
 
     if data.empty:
         return {"error": f"No data found for ticker {ticker_symbol}"}
 
-    # Handle multi-index columns if downloading single ticker via yfinance
-    if isinstance(data.columns, pd.MultiIndex):
-        try:
-            closing_prices = data["Close"].squeeze()
-        except KeyError:
-            return {"error": "Close price missing from data payload."}
-    else:
-        closing_prices = data["Close"]
+    col_mapping = {col.lower(): col for col in data.columns}
+    if 'close' not in col_mapping:
+        return {"error": "Close price missing from data payload."}
+        
+    close_col = col_mapping['close']
+    
+    # We only need enough rows to calculate the MA + slope period
+    needed_rows = max(days_of_data, ma_window + slope_period + 10)
+    closing_prices = data[close_col].tail(needed_rows)
 
     if len(closing_prices) < ma_window + slope_period:
         needed = ma_window + slope_period

@@ -5,10 +5,14 @@ Purpose: Non-interactive CLI subcommand handlers for the NSE data pipeline.
 Dependencies:
 External:
 - pandas>=2.2.3: DataFrame utilities and Parquet reading
+- rich>=13.9.4: Terminal tables and formatting
 Internal:
 - src.storage.equity_master: [NSEEquityMasterBuilder]
 - src.storage.historical_sync: [HistoricalSync]
+- src.storage.smc_db: [SMCDatabase]
 - src.screener: [StockScreener]
+- src.engine.smc: [calculate_smc]
+- src.engine.smc_decision: [generate_smc_call, TradingCall]
 - src.core.symbol_utils: [find_latest_master, load_symbols, load_symbols_from_bhavcopy,
                            load_symbols_strict, get_delivery_history_from_bhavcopy]
 
@@ -23,8 +27,12 @@ Functions:
 - cmd_fyers_login: Subcommand to print Fyers login URL.
 - cmd_fyers_token: Subcommand to exchange Fyers auth code.
 - cmd_ml_anomaly: Subcommand to run ML data anomaly detection.
+- cmd_train_ml: Subcommand to train ML models.
+- cmd_run_optimizer: Subcommand to run strategy optimizer.
+- cmd_smc_scan: Subcommand to run Smart Money Concepts (SMC) scanner and persist calls.
+- cmd_smc_calls: Subcommand to view and filter stored SMC trading calls.
 
-Last Modified: 2026-05-31
+Last Modified: 2026-10-15
 """
 
 from __future__ import annotations
@@ -35,15 +43,21 @@ import logging
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
+from rich.console import Console
+from rich.table import Table
 
 from src.cli.formatters import (
     cyan,
     dim,
     err,
     green,
+    ok,
+    red,
     tip,
+    warn,
 )
 from src.core.config import Config
 from src.core.symbol_utils import (
@@ -75,30 +89,6 @@ LOGGER: logging.Logger = logging.getLogger("nse_pipeline")
 def cmd_build_master(args: argparse.Namespace) -> None:
     """
     Execute the 'build-master' CLI subcommand.
-
-    Logic:
-        Step 1: Instantiate NSEEquityMasterBuilder.
-        Step 2: Call build_and_save() with configured delay.
-        Step 3: Print saved path.
-
-    Parameters:
-        args (argparse.Namespace): Parsed CLI args with .data_dir, .delay.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: On RuntimeError from builder.
-
-    Example:
-        >>> cmd_build_master(args)
-
-    Performance:
-        Time Complexity: O(N * I) [N securities, I indices]
-        Space Complexity: O(N)
-
-    Edge Cases Handled:
-        - RuntimeError from builder prints friendly message and exits 1.
     """
     LOGGER.info("=== PHASE 1: BUILD EQUITY MASTER ===")
     builder = NSEEquityMasterBuilder(
@@ -116,33 +106,6 @@ def cmd_build_master(args: argparse.Namespace) -> None:
 def cmd_sync_history(args: argparse.Namespace) -> None:
     """
     Execute the 'sync-history' CLI subcommand.
-
-    Logic:
-        Step 1: Choose symbol source — 'bhavcopy' (default) or 'master'.
-        Step 2: Load symbol list with optional cap/index filters.
-        Step 3: Instantiate HistoricalSync and call sync().
-        Step 4: Print summary of successes and failures.
-
-    Parameters:
-        args (argparse.Namespace): Parsed CLI args with hist_dir, timeframe,
-            start_date, cap_filter, index_filter, limit, resume, source.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: If no symbol source found.
-
-    Example:
-        >>> cmd_sync_history(args)
-
-    Performance:
-        Time Complexity: O(S * C) [S symbols, C chunks per symbol]
-        Space Complexity: O(N) peak per symbol
-
-    Edge Cases Handled:
-        - Missing Bhavcopy falls back to error with clear message.
-        - Individual symbol failures tracked in result dict.
     """
     LOGGER.info("=== PHASE 2: SYNC HISTORICAL DATA ===")
 
@@ -177,7 +140,7 @@ def cmd_sync_history(args: argparse.Namespace) -> None:
     )
     results = hs.sync(symbols, resume=args.resume)
 
-    ok_count = sum(v for v in results.values())
+    ok_count = sum(bool(v) for v in results.values())
     failed = [s for s, v in results.items() if not v]
     print(f"\n✔  Sync complete: {ok_count}/{len(symbols)} symbols succeeded.")
     if failed:
@@ -187,32 +150,6 @@ def cmd_sync_history(args: argparse.Namespace) -> None:
 def cmd_screen(args: argparse.Namespace) -> None:
     """
     Execute the 'screen' CLI subcommand.
-
-    Logic:
-        Step 1: Find latest master Parquet and load processed Bhavcopy.
-        Step 2: Instantiate StockScreener with Parquet-based data dir.
-        Step 3: Load symbol list with optional filters.
-        Step 4: Run screen_stocks and print output file locations.
-
-    Parameters:
-        args (argparse.Namespace): Parsed CLI args with data_dir, hist_dir,
-            processed_dir, cap_filter, index_filter, limit.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: If no master or no processed Bhavcopy found.
-
-    Example:
-        >>> cmd_screen(args)
-
-    Performance:
-        Time Complexity: O(S * H) [S symbols, H history rows each]
-        Space Complexity: O(S * H)
-
-    Edge Cases Handled:
-        - Missing Bhavcopy exits with message.
     """
     LOGGER.info("=== PHASE 3: STOCK SCREENING ===")
 
@@ -237,15 +174,6 @@ def cmd_screen(args: argparse.Namespace) -> None:
 def cmd_backtest(args: argparse.Namespace) -> None:
     """
     Run machine learning direction classifier and event backtest for a symbol.
-
-    Parameters:
-        args (argparse.Namespace): Parsed command-line arguments.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: If input parquet is not found.
     """
     symbol = args.symbol.strip().upper()
     price_path = os.path.join(args.hist_dir, "1d", f"{symbol}.parquet")
@@ -261,9 +189,6 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 
         processed_dir = os.path.join(args.data_dir, "processed")
         df_delivery = get_delivery_history_from_bhavcopy(processed_dir, symbol)
-
-        from rich.console import Console
-        from rich.table import Table
 
         from src.ml.ml_classifier import MLClassifier
         from src.nse_bhavcopy.backtester import NSEEventBacktester
@@ -319,36 +244,6 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 def cmd_bhavcopy_sync(args: argparse.Namespace) -> None:
     """
     Execute the 'bhavcopy-sync' CLI subcommand.
-
-    Downloads missing Bhavcopy ZIPs (1 per trading day) and appends OHLCV
-    rows directly into per-symbol Parquets — far faster than per-symbol API.
-
-    Logic:
-        Step 1: Load symbol list from Bhavcopy ZIP or master table.
-        Step 2: Instantiate BhavcopyIncrementalSync.
-        Step 3: Call run() which detects missing days, downloads ZIPs, appends.
-        Step 4: Print summary; symbols needing full refresh are flagged.
-
-    Parameters:
-        args (argparse.Namespace): Parsed CLI args with hist_dir, data_dir,
-            days, limit, no_ta, delay.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: If no symbol source is found.
-
-    Example:
-        >>> cmd_bhavcopy_sync(args)
-
-    Performance:
-        Time Complexity: O(D * N + S * N) [D days, S symbols, N rows/ZIP]
-        Space Complexity: O(D * N)
-
-    Edge Cases Handled:
-        - Symbols needing full refresh reported separately in output.
-        - NSE holidays produce harmless 404s which are silently skipped.
     """
     from src.storage.bhavcopy_incremental import BhavcopyIncrementalSync
 
@@ -357,7 +252,6 @@ def cmd_bhavcopy_sync(args: argparse.Namespace) -> None:
     raw_dir: str = os.path.join(args.data_dir, "raw")
     limit = getattr(args, "limit", None)
     days_back: int = getattr(args, "days", 10)
-    no_ta: bool = getattr(args, "no_ta", False)
     delay: float = getattr(args, "delay", 1.0)
 
     symbols = load_symbols_from_bhavcopy(
@@ -374,9 +268,9 @@ def cmd_bhavcopy_sync(args: argparse.Namespace) -> None:
     )
     results = syncer.run(symbols, days_back=days_back)
 
-    ok_count = sum(v for v in results.values())
+    ok_count = sum(bool(v) for v in results.values())
     needs_refresh = [s for s, v in results.items() if not v]
-    print(f"\n\u2714  Bhavcopy sync: {ok_count}/{len(symbols)} symbols updated.")
+    print(f"\n✔  Bhavcopy sync: {ok_count}/{len(symbols)} symbols updated.")
     if needs_refresh:
         print(
             f"!   {len(needs_refresh)} symbol(s) need full refresh "
@@ -388,15 +282,6 @@ def cmd_bhavcopy_sync(args: argparse.Namespace) -> None:
 def cmd_fo_ban(args: argparse.Namespace) -> None:
     """
     Fetch and display the current NSE F&O ban securities.
-
-    Parameters:
-        args (argparse.Namespace): Parsed command-line arguments.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: If F&O ban list query fails.
     """
     try:
         from src.scrapers.fo_ban import FOBanManager
@@ -417,18 +302,6 @@ def cmd_fo_ban(args: argparse.Namespace) -> None:
 def cmd_fyers_login(args: argparse.Namespace) -> None:
     """
     Print the Fyers login URL for the user to obtain an auth code.
-
-    Parameters:
-        args (argparse.Namespace): Parsed CLI args with redirect_uri.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: If FYERS_API_KEY not configured.
-
-    Example:
-        >>> cmd_fyers_login(args)
     """
     from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
 
@@ -452,20 +325,8 @@ def cmd_fyers_login(args: argparse.Namespace) -> None:
 def cmd_fyers_token(args: argparse.Namespace) -> None:
     """
     Exchange a Fyers auth code for an access token and cache it locally.
-
-    Parameters:
-        args (argparse.Namespace): Parsed CLI args with code.
-
-    Returns:
-        None
-
-    Raises:
-        SystemExit: If exchange fails or credentials missing.
-
-    Example:
-        >>> cmd_fyers_token(args)
     """
-    from src.nse_bhavcopy.fyers_fetcher import FyersFetcher, exchange_auth_code
+    from src.nse_bhavcopy.fyers_fetcher import exchange_auth_code, FyersFetcher
 
     api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
     api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
@@ -496,10 +357,7 @@ def cmd_fyers_token(args: argparse.Namespace) -> None:
 
 def cmd_ml_anomaly(args: argparse.Namespace) -> None:
     """
-    Run the ML anomaly detector on a specific symbol to find data quality issues or smart money footprints.
-
-    Parameters:
-        args (argparse.Namespace): Parsed command-line arguments.
+    Run the ML anomaly detector on a specific symbol to find data quality issues.
     """
     symbol = args.symbol.strip().upper()
     price_path = os.path.join(args.hist_dir, "1d", f"{symbol}.parquet")
@@ -508,15 +366,11 @@ def cmd_ml_anomaly(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        import pandas as pd
-
         df_prices = pd.read_parquet(price_path)
 
         from src.ml.anomaly_detector import AnomalyDetector
 
         detector = AnomalyDetector(contamination=0.02)
-
-        # 1. Show Data Quality Issues Removed
         clean_df = detector.filter_data_quality(df_prices)
 
         if len(clean_df) < len(df_prices):
@@ -524,7 +378,7 @@ def cmd_ml_anomaly(args: argparse.Namespace) -> None:
             print(
                 f"\n⚠️  Found {len(bad_dates)} severe data quality errors (zero volume, huge splits)."
             )
-            from src.cli.formatters import _confirm, cyan, err, ok
+            from src.cli.formatters import _confirm
 
             if _confirm(
                 f"Auto-heal these {len(bad_dates)} dates using NSE Bhavcopy?",
@@ -543,9 +397,7 @@ def cmd_ml_anomaly(args: argparse.Namespace) -> None:
                         if not row.empty:
                             df_prices.loc[bd, "Volume"] = row["Volume"].values[0]
                             if "Turnover" in row.columns:
-                                df_prices.loc[bd, "Turnover"] = row["Turnover"].values[
-                                    0
-                                ]
+                                df_prices.loc[bd, "Turnover"] = row["Turnover"].values[0]
                             healed_count += 1
                         else:
                             print(
@@ -557,23 +409,17 @@ def cmd_ml_anomaly(args: argparse.Namespace) -> None:
                         )
 
                 if healed_count > 0:
-                    # Save healed df back to parquet
                     df_prices.to_parquet(price_path)
                     print(
                         f"\n{ok('Healed')} {healed_count} rows and updated {price_path}!"
                     )
-                    # Re-run filter_data_quality on the healed data
                     clean_df = detector.filter_data_quality(df_prices)
 
-        # 2. Run ML Anomaly Detection on Clean Data
         if len(clean_df) < 25:
             print(f"Not enough data to run Isolation Forest on {symbol}.")
             return
 
         anomalies = detector.detect_anomalies(clean_df)
-
-        from rich.console import Console
-        from rich.table import Table
 
         console = Console()
         table = Table(
@@ -603,3 +449,199 @@ def cmd_ml_anomaly(args: argparse.Namespace) -> None:
     except Exception as exc:
         LOGGER.error("ML Anomaly detection failed: %s", exc)
         sys.exit(1)
+
+
+def cmd_train_ml(args: argparse.Namespace) -> None:
+    """
+    Execute the 'train-ml' CLI subcommand to train ML models.
+    """
+    LOGGER.info("=== ML MODEL TRAINING ===")
+    from src.engine.orchestrator import ScanOrchestrator
+
+    orchestrator = ScanOrchestrator()
+    orchestrator.train_ml_models()
+
+
+def cmd_run_optimizer(args: argparse.Namespace) -> None:
+    """
+    Execute the 'optimize' CLI subcommand to run the strategy optimizer.
+    """
+    LOGGER.info("=== STRATEGY OPTIMIZER ===")
+    from src.engine.orchestrator import ScanOrchestrator
+
+    orchestrator = ScanOrchestrator()
+    orchestrator.run_optimizer()
+
+
+# ===========================================================================
+# Smart Money Concepts (SMC) Handlers
+# ===========================================================================
+
+
+def cmd_smc_scan(args: argparse.Namespace) -> None:
+    """
+    Scan historical Parquet data using Smart Money Concepts (SMC) and persist trading calls.
+
+    Logic:
+        1. Locate historical daily Parquets.
+        2. Execute SMC analysis (BOS, CHoCH, Order Blocks, FVGs, Premium/Discount).
+        3. Evaluate institutional entry confirmation via generate_smc_call().
+        4. Persist qualified setups to the local SQLite database.
+        5. Output a structured Rich summary table.
+    """
+    LOGGER.info("=== SMART MONEY CONCEPTS (SMC) SCANNER ===")
+
+    hist_dir = getattr(args, "hist_dir", None) or Config.DEFAULT_HIST_DIR
+    target_dir = Path(hist_dir)
+    if (target_dir / "1d").exists():
+        target_dir = target_dir / "1d"
+
+    if not target_dir.exists():
+        err(f"Historical directory not found at: {target_dir}")
+        sys.exit(1)
+
+    limit: int | None = getattr(args, "limit", None)
+    symbol_filter: str | None = getattr(args, "symbol", None)
+    data_dir = getattr(args, "data_dir", None) or Config.DEFAULT_DATA_DIR
+    db_path = os.path.join(data_dir, "smc_calls.sqlite")
+
+    from src.engine.smc import calculate_smc
+    from src.engine.smc_decision import generate_smc_call
+    from src.storage.smc_db import SMCDatabase
+
+    db = SMCDatabase(db_path=db_path)
+
+    if symbol_filter:
+        files = [target_dir / f"{symbol_filter.strip().upper()}.parquet"]
+    else:
+        files = sorted(list(target_dir.glob("*.parquet")))
+
+    if limit:
+        files = files[:limit]
+
+    print(f"\n🔎 Scanning {len(files)} symbol(s) in {cyan(str(target_dir))}...")
+
+    generated_calls = []
+    scanned_count = 0
+
+    for fpath in files:
+        if not fpath.exists():
+            continue
+
+        sym = fpath.stem.replace(".NS", "")
+        try:
+            df = pd.read_parquet(fpath)
+            if df.empty or len(df) < 30:
+                continue
+
+            df.columns = [c.lower() for c in df.columns]
+            if not all(k in df.columns for k in ("open", "high", "low", "close")):
+                continue
+
+            scanned_count += 1
+            smc_res = calculate_smc(df, swing_length=20, internal_length=5)
+            call = generate_smc_call(sym, smc_res, df)
+
+            if call:
+                call_id = db.create_call(call)
+                generated_calls.append((call_id, call))
+        except Exception as exc:
+            LOGGER.debug("Skipping %s due to calculation error: %s", sym, exc)
+            continue
+
+    print(f"\n{ok('SMC Scan Finished')}: Scanned {scanned_count} securities.")
+
+    if not generated_calls:
+        print(f"ℹ️  No high-probability SMC setups triggered currently in {cyan(str(target_dir))}.\n")
+        return
+
+    console = Console()
+    table = Table(
+        title=f"🎯 SMC Actionable Trading Decisions ({len(generated_calls)} Generated)",
+        header_style="bold cyan",
+    )
+    table.add_column("ID", justify="center", style="dim")
+    table.add_column("Symbol", style="bold")
+    table.add_column("Direction", justify="center")
+    table.add_column("Setup Type", style="yellow")
+    table.add_column("Entry", justify="right")
+    table.add_column("Stop Loss", justify="right", style="red")
+    table.add_column("Target 1", justify="right", style="green")
+    table.add_column("R:R", justify="right", style="bold")
+    table.add_column("Status", justify="center")
+
+    for cid, call in generated_calls:
+        dir_style = "[bold green]BUY[/bold green]" if call.direction == "BUY" else "[bold red]SELL[/bold red]"
+        table.add_row(
+            str(cid),
+            call.symbol,
+            dir_style,
+            call.setup_type,
+            f"{call.entry_price:,.2f}",
+            f"{call.stop_loss:,.2f}",
+            f"{call.target_1:,.2f}",
+            f"{call.risk_reward:.2f}",
+            f"[cyan]{call.status}[/cyan]",
+        )
+
+    console.print()
+    console.print(table)
+    print(f"\n{ok('Saved')}: All calls committed to SQLite DB at: {dim(db_path)}\n")
+
+
+def cmd_smc_calls(args: argparse.Namespace) -> None:
+    """
+    List and filter Smart Money Concepts (SMC) calls saved in local SQLite database.
+    """
+    data_dir = getattr(args, "data_dir", None) or Config.DEFAULT_DATA_DIR
+    db_path = os.path.join(data_dir, "smc_calls.sqlite")
+
+    from src.storage.smc_db import SMCDatabase
+
+    db = SMCDatabase(db_path=db_path)
+    status_filter = getattr(args, "status", None)
+    calls = db.get_calls(status=status_filter)
+
+    if not calls:
+        filter_str = f" with status '{status_filter}'" if status_filter else ""
+        print(f"\nℹ️  No SMC trading calls found in local database{filter_str}.\n")
+        return
+
+    console = Console()
+    table = Table(
+        title=f"📋 Stored SMC Trading Calls ({len(calls)} Found)",
+        header_style="bold cyan",
+    )
+    table.add_column("ID", justify="center", style="dim")
+    table.add_column("Date", style="dim")
+    table.add_column("Symbol", style="bold")
+    table.add_column("Direction", justify="center")
+    table.add_column("Setup", style="yellow")
+    table.add_column("Entry", justify="right")
+    table.add_column("SL", justify="right", style="red")
+    table.add_column("TP 1", justify="right", style="green")
+    table.add_column("TP 2", justify="right", style="green")
+    table.add_column("R:R", justify="right", style="bold")
+    table.add_column("Status", justify="center")
+
+    for c in calls:
+        dir_style = "[bold green]BUY[/bold green]" if c["direction"] == "BUY" else "[bold red]SELL[/bold red]"
+        status_color = "green" if c["status"] == "TRIGGERED" else "cyan" if c["status"] == "PENDING" else "red"
+
+        table.add_row(
+            str(c["id"]),
+            str(c["timestamp"])[:10],
+            c["symbol"],
+            dir_style,
+            c["setup_type"],
+            f"{c['entry_price']:,.2f}",
+            f"{c['stop_loss']:,.2f}",
+            f"{c['target_1']:,.2f}",
+            f"{c['target_2']:,.2f}",
+            f"{c['risk_reward']:.2f}",
+            f"[{status_color}]{c['status']}[/{status_color}]",
+        )
+
+    console.print()
+    console.print(table)
+    print()

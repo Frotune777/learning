@@ -1,6 +1,3 @@
-from src.cli.formatters import red
-from src.core.config import Config
-
 """
 File: main.py
 Purpose: Unified CLI entry point for the NSE data pipeline.
@@ -11,11 +8,6 @@ import logging
 import os
 import sys
 
-from src.core.config import setup_logging
-
-setup_logging()
-logger = logging.getLogger("nse_pipeline")
-
 from src.cli.actions import (
     cmd_backtest,
     cmd_bhavcopy_sync,
@@ -24,10 +16,20 @@ from src.cli.actions import (
     cmd_fyers_login,
     cmd_fyers_token,
     cmd_ml_anomaly,
+    cmd_run_optimizer,
     cmd_screen,
+    cmd_smc_calls,
+    cmd_smc_scan,
     cmd_sync_history,
+    cmd_train_ml,
 )
+from src.cli.formatters import red
 from src.cli.menus import interactive_menu
+from src.core.config import Config, setup_logging
+
+setup_logging()
+logger = logging.getLogger("nse_pipeline")
+
 
 # ---------------------------------------------------------------------------
 # CLI argument parser
@@ -124,6 +126,35 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ft = sub.add_parser("fyers-token", help="Exchange auth code for token.")
     p_ft.add_argument("--code", required=True)
     p_ft.set_defaults(func=cmd_fyers_token)
+
+    # train-ml
+    sub.add_parser("train-ml", help="Train ML models interactively.").set_defaults(
+        func=cmd_train_ml
+    )
+
+    # optimize
+    sub.add_parser("optimize", help="Run strategy optimizer interactively.").set_defaults(
+        func=cmd_run_optimizer
+    )
+
+    # smc-scan
+    p_smc_scan = sub.add_parser(
+        "smc-scan", help="Run Smart Money Concepts (SMC) scanner across historical data."
+    )
+    p_smc_scan.add_argument("--limit", type=int, help="Limit number of symbols to scan")
+    p_smc_scan.add_argument("--symbol", type=str, help="Scan a single specific symbol (e.g. RELIANCE)")
+    p_smc_scan.set_defaults(func=cmd_smc_scan)
+
+    # smc-calls
+    p_smc_calls = sub.add_parser(
+        "smc-calls", help="View logged SMC trading calls from local SQLite database."
+    )
+    p_smc_calls.add_argument(
+        "--status",
+        choices=["PENDING", "ACTIVE", "TRIGGERED", "CANCELLED", "TARGET_HIT", "STOPPED"],
+        help="Filter calls by execution status",
+    )
+    p_smc_calls.set_defaults(func=cmd_smc_calls)
 
     # menu (default)
     sub.add_parser("menu", help="Launch interactive menu.").set_defaults(

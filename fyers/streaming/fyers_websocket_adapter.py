@@ -690,10 +690,10 @@ class FyersWebSocketAdapter(BaseBrokerWebSocketAdapter):
                 if hasattr(self, "zmq_port"):
                     with self._port_lock:
                         self._bound_ports.discard(self.zmq_port)
-        except Exception as e:
-            self.logger.error(f"Operation failed: {e}", exc_info=True)
+            except Exception as e:
+                self.logger.error(f"Operation failed: {e}", exc_info=True)
 
             # print("Force cleanup completed")
 
         except Exception as e:
-            self.logger.error(f"Operation failed: {e}", exc_info=True)  # Suppress all errors in force cleanup
+            self.logger.error(f"Operation failed: {e}", exc_info=True)

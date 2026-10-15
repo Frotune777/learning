@@ -115,9 +115,7 @@ def load_symbols(
             df = df[df[index_filter] == True]  # noqa: E712
             LOGGER.info("Index filter '%s': %d symbols", index_filter, len(df))
         else:
-            LOGGER.warning(
-                "Index column '%s' not found — ignoring.", index_filter
-            )
+            LOGGER.warning("Index column '%s' not found — ignoring.", index_filter)
 
     sym_col = "symbol" if "symbol" in df.columns else "Symbol"
     symbols = sorted(df[sym_col].dropna().str.strip().str.upper().tolist())

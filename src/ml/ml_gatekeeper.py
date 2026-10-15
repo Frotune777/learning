@@ -88,11 +88,13 @@ class MLDataGatekeeper:
         self.model.fit(X_train)
 
         # Now evaluate new data
-        combined_df = pd.concat([train_df.iloc[-1:], new_df])
+        # FIX: Maintain historical context window to prevent indicator truncation
+        max_lookback = 20
+        combined_df = pd.concat([train_df.iloc[-max_lookback:], new_df])
         new_features = self._engineer_features(combined_df)
 
-        # The first row of combined_df is the old data, so we drop it
-        new_features = new_features.iloc[1:]
+        # The first max_lookback rows of combined_df are the old data, so we drop them
+        new_features = new_features.iloc[max_lookback:]
 
         X_test = new_features.values
         predictions = self.model.predict(X_test)

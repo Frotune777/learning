@@ -6,49 +6,59 @@ Last Modified: 2026-05-27
 
 from datetime import date, timedelta
 from typing import Any
+import os
 
 import pandas as pd
-import yfinance as yf
 
 
-def get_historical_data(symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+def get_historical_data(symbol: str, start_date: date, end_date: date, hist_dir: str = "data/historical/1d") -> pd.DataFrame:
     """
-    Fetches historical OHLCV data for a given symbol using yfinance.
+    Fetches historical OHLCV data for a given symbol using local offline Parquet files.
 
     Parameters:
         symbol (str): The stock symbol.
         start_date (date): Start date for data fetch.
         end_date (date): End date for data fetch.
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         pd.DataFrame: DataFrame containing historical data.
-
-    Raises:
-        Exception: If the yfinance download fails unexpectedly.
     """
     try:
-        yf_symbol = f"{symbol}.NS"
-        df: pd.DataFrame = yf.download(
-            yf_symbol, start=start_date, end=end_date, progress=False
-        )
+        path = os.path.join(hist_dir, f"{symbol.upper()}.parquet")
+        if not os.path.exists(path):
+            return pd.DataFrame()
+
+        df = pd.read_parquet(path)
         if df.empty:
             return pd.DataFrame()
 
-        # yfinance returns multi-index columns if downloading multiple tickers,
-        # but for a single ticker it's usually flat or multi-index with ticker.
-        # We ensure it's flat.
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+        # Rename offline columns to match Minervini's expectation
+        col_mapping = {"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
+        df = df.rename(columns=col_mapping)
+        
+        # In case the columns are already capitalized (e.g. Open, High, Low)
+        # the rename won't hurt. We just ensure they are capitalized.
+
+        # Ensure index is datetime and sort
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+
+        # Slice by date range
+        df = df.loc[start_date:end_date]
+        if df.empty:
+            return pd.DataFrame()
 
         df = df[["Close", "High", "Low", "Volume"]].copy()
         return df
     except Exception as e:
-        print(f"Error fetching data for {symbol}: {e}")
+        print(f"Error reading local data for {symbol}: {e}")
         return pd.DataFrame()
 
 
 def load_universe(
-    symbols: list[str], start_date: date, end_date: date
+    symbols: list[str], start_date: date, end_date: date, hist_dir: str = "data/historical/1d"
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Loads historical data for a list of symbols into aligned DataFrames.
@@ -57,6 +67,7 @@ def load_universe(
         symbols (list[str]): List of stock symbols to fetch.
         start_date (date): Start date.
         end_date (date): End date.
+        hist_dir (str): Directory for local parquets.
 
     Returns:
         Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -68,7 +79,7 @@ def load_universe(
     volume_dict: dict[str, Any] = {}
 
     for s in symbols:
-        df = get_historical_data(s, start_date, end_date)
+        df = get_historical_data(s, start_date, end_date, hist_dir=hist_dir)
         if df.empty or len(df) < 256:
             continue
 
@@ -249,12 +260,13 @@ def compute_vcp(close: pd.DataFrame) -> pd.Series:
     return contraction
 
 
-def run_minervini_screener(symbols: list[str]) -> pd.DataFrame:
+def run_minervini_screener(symbols: list[str], hist_dir: str = "data/historical/1d") -> pd.DataFrame:
     """
     Orchestrates the Mark Minervini screener.
 
     Parameters:
         symbols (list[str]): List of stock symbols to screen.
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         pd.DataFrame: A DataFrame with calculated technical metrics.
@@ -262,7 +274,7 @@ def run_minervini_screener(symbols: list[str]) -> pd.DataFrame:
     end = date.today()
     start = end - timedelta(days=400)
 
-    close, high, low, volume = load_universe(symbols, start, end)
+    close, high, low, volume = load_universe(symbols, start, end, hist_dir=hist_dir)
 
     if close.empty:
         return pd.DataFrame()
@@ -323,9 +335,12 @@ from src.scanners.registry import register_scanner
 
 
 @register_scanner
-def run_minervini_cli() -> list[Signal]:
+def run_minervini_cli(hist_dir: str = "data/historical/1d") -> list[Signal]:
     """
     Entry point for CLI Minervini screener execution.
+
+    Parameters:
+        hist_dir (str): Directory containing local parquet files.
 
     Returns:
         list[Signal]: The final sorted candidates as Signal objects.
@@ -833,7 +848,7 @@ def run_minervini_cli() -> list[Signal]:
         "ZYDUSLIFE",
     ]
 
-    results = run_minervini_screener(symbols)
+    results = run_minervini_screener(symbols, hist_dir=hist_dir)
     candidates = filter_candidates(results)
 
     signals = []

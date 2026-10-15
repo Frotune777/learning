@@ -139,7 +139,9 @@ class SyncRecord:
 
         # Cooldown check: if successfully synced in the last 24 hours, skip!
         if self.last_synced_at:
-            hours_since = (datetime.now() - self.last_synced_at).total_seconds() / 3600.0
+            hours_since = (
+                datetime.now() - self.last_synced_at
+            ).total_seconds() / 3600.0
             if hours_since < 24.0:
                 return False
 
@@ -253,7 +255,9 @@ class SyncRegistry:
                     last_synced_at=self._to_datetime(row.get("last_synced_at")),
                     fail_count=int(row.get("fail_count", 0)),
                     expected_rows=int(row.get("expected_rows", 0)),
-                    last_full_refresh_at=self._to_datetime(row.get("last_full_refresh_at")),
+                    last_full_refresh_at=self._to_datetime(
+                        row.get("last_full_refresh_at")
+                    ),
                 )
                 self._store[rec.symbol] = rec
             LOGGER.info("Registry loaded: %d symbols.", len(self._store))

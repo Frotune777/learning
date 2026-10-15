@@ -1,11 +1,32 @@
 # ==============================================================================
-# Fyers Broker API Credentials
+# NSE Pipeline — Environment Configuration
 # ==============================================================================
-# You can generate these keys from your Fyers API dashboard (https://myapi.fyers.in/)
+# Copy this file to .env and fill in your credentials.
+# NEVER commit the real .env file to version control.
 
-BROKER_API_KEY=CBG9IRDDE4-100
-BROKER_API_SECRET=6NYTGCWR3R
+# ------------------------------------------------------------------------------
+# Fyers Broker API Credentials
+# ------------------------------------------------------------------------------
+# Generate at: https://myapi.fyers.in/ → API tab → Create App
+# The APP_ID always ends with "-100" for live trading.
 
-# Optional: If you already have a valid access token for the day, put it here.
-# Otherwise, use `uv run main.py fyers-login` to generate one dynamically.
+BROKER_API_KEY=YOUR_APP_ID-100
+BROKER_API_SECRET=YOUR_APP_SECRET
+
+# Access token (auto-refreshed daily via `uv run main.py fyers-login`).
+# Leave blank on first run.
 FYERS_ACCESS_TOKEN=
+
+# Redirect URI registered in your Fyers API App settings.
+# Use the official test URI if you don't have your own server:
+FYERS_REDIRECT_URI=https://trade.fyers.in/api-login/redirect-uri/index.html
+
+# ------------------------------------------------------------------------------
+# Telegram Alert Notifications (Optional)
+# ------------------------------------------------------------------------------
+# 1. Create a bot via @BotFather on Telegram → copy the token below.
+# 2. Get your chat ID: message @userinfobot or @RawDataBot in Telegram.
+# Then run option [27] in the CLI to test the connection.
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=

@@ -44,7 +44,9 @@ from src.data.fetcher.prices.nse_charts import NSEChartFetcher
 from src.data.fetcher.session.manager import SessionManager
 from src.data.fetcher.session.nse_session import NSESessionInitializer
 from src.data.fetcher.symbols.resolver import SymbolResolver
-from src.nse_bhavcopy.downloader import BhavcopyDownloader
+from src.storage.downloader import BhavcopyDownloader
+from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
+from src.scrapers.nifty_index_fetcher import get_nifty50
 
 # Setup diagnostics logger
 logging.basicConfig(
@@ -239,6 +241,51 @@ def check_bhavcopy() -> bool:
         return False
 
 
+def check_fyers(symbol: str) -> bool:
+    """
+    Verify Fyers API connection.
+    """
+    LOGGER.info("Starting Fyers API check for %s...", symbol)
+    try:
+        fetcher = FyersFetcher(fallback_enabled=False)
+        df = fetcher.fetch(symbol, period="1mo")
+        if df.empty:
+            LOGGER.error("Fyers API returned an empty DataFrame for %s. (Maybe token is expired?)", symbol)
+            return False
+        LOGGER.info(
+            "SUCCESS: Fyers fetched %d rows for %s. Last Close: %.2f",
+            len(df),
+            symbol,
+            df["Close"].iloc[-1],
+        )
+        return True
+    except Exception as e:
+        LOGGER.error("FAILED: Fyers API diagnostic failed: %s", str(e))
+        return False
+
+
+def check_nifty_index() -> bool:
+    """
+    Verify Nifty Index symbol fetching from NSE.
+    """
+    LOGGER.info("Starting Nifty Index check...")
+    try:
+        symbols = get_nifty50()
+        if not symbols:
+            LOGGER.error("Nifty Index fetch returned empty list.")
+            return False
+        LOGGER.info(
+            "SUCCESS: Nifty Index fetched %d symbols. Example: %s",
+            len(symbols),
+            ", ".join(symbols[:3]),
+        )
+        return True
+    except Exception as e:
+        LOGGER.error("FAILED: Nifty Index check failed: %s", str(e))
+        return False
+
+
+
 def main() -> None:
     """
     Execute complete market data source diagnostics.
@@ -266,19 +313,23 @@ def main() -> None:
     yf_ok: bool = check_yfinance("RELIANCE.NS")
     nse_ok: bool = check_nse_charts("RELIANCE")
     bhav_ok: bool = check_bhavcopy()
+    fyers_ok: bool = check_fyers("RELIANCE")
+    nifty_ok: bool = check_nifty_index()
 
     LOGGER.info("=== DIAGNOSTICS RESULTS SUMMARY ===")
     LOGGER.info("Yahoo Finance API (yfinance):   %s", "WORKING" if yf_ok else "FAILED")
     LOGGER.info("NSE Charting API (nse_charts):  %s", "WORKING" if nse_ok else "FAILED")
-    LOGGER.info(
-        "NSE Bhavcopy Downloader (bhav): %s", "WORKING" if bhav_ok else "FAILED"
-    )
+    LOGGER.info("NSE Bhavcopy Downloader (bhav): %s", "WORKING" if bhav_ok else "FAILED")
+    LOGGER.info("Fyers API (fyers_fetcher):      %s", "WORKING" if fyers_ok else "FAILED")
+    LOGGER.info("Nifty Index API (nifty_index):  %s", "WORKING" if nifty_ok else "FAILED")
 
-    if yf_ok and nse_ok and bhav_ok:
-        LOGGER.info("STATUS: All market data sources are 100% operational!")
+    if yf_ok and nse_ok and bhav_ok and nifty_ok:
+        LOGGER.info("STATUS: Core market data sources are operational!")
+        if not fyers_ok:
+            LOGGER.warning("Note: Fyers is failing, possibly due to missing/expired access token.")
         sys.exit(0)
     else:
-        LOGGER.error("STATUS: Diagnostics detected one or more failures.")
+        LOGGER.error("STATUS: Diagnostics detected one or more failures in core data sources.")
         sys.exit(1)
 
 

@@ -1,0 +1,116 @@
+2026-06-10 13:05:13,168 - diagnostics - INFO - === STARTING MARKET DATA SOURCES DIAGNOSTICS ===
+2026-06-10 13:05:13,169 - diagnostics - INFO - Starting yfinance check for RELIANCE.NS...
+2026-06-10 13:05:15,296 - diagnostics - INFO - SUCCESS: yfinance fetched 23 rows for RELIANCE.NS. Last Close: 1274.10
+2026-06-10 13:05:15,296 - diagnostics - INFO - Starting NSE Charting API check for RELIANCE...
+2026-06-10 13:05:15,296 - diagnostics - INFO - Warm up session cookies...
+2026-06-10 13:05:15,297 - src.data.fetcher.session.nse_session - INFO - Initializing NSE Session: warming up cookies at https://charting.nseindia.com/
+2026-06-10 13:05:15,297 - src.data.fetcher.session.manager - INFO - Initialized shared HTTP persistent requests Session.
+2026-06-10 13:05:16,192 - src.data.fetcher.session.nse_session - INFO - NSE session warmed up successfully. Cookies: {'_abck': '90957791DC10D349B611A1BD31DF05CB~-1~YAAQLhzFF9cZxoeeAQAAavV0sBBT/9Mt5bHzrbXetoSNhbB/Oppwe/vIRgbe5cN5r0YHmu9yt8AWJWYQYkZ6cmKe5s4ln/3biM8eqjWsJCdMqxTqFhbjb7d1+mCYLyaqoEIOfd9zOztZmtBqx3d/GegI82WObBUhuz6IY5JJsF5NxtRUIWUjolB6wFZJ1F7K1tEf4N/OEdP8kqZ71Wg/D5DWpiyGq49zBHT3EUEomrPadG1x4gj+NAfgZnnWyTjbg4pGlgFIowwwvnxHgGuzkKOZff3zVXKU6ExWGX6lW+gOoQUV5D+B5z9etfVt2iogzbfeVlCTuZMbOdJun6QXvfPUsPXFMZwBj69r/mLxlg7YQZZBmkOw8jEaqQmM7UMLxIXu/73TlUB2TLaEs6hkP//tnRTMQ+wCuH2YGtm8epHGgMUB/Kvp35KHzzHm6CWp1GuHj6EJUbTOpg==~-1~-1~-1~-1~-1', 'bm_sz': '2EA754127A64CF9CDF845A3A5FCF4531~YAAQLhzFFxIaxoeeAQAAz/d0sAC1mWceEIWN6nMxToCvhNK2xN1PS96Bk5tjY/WsCck7bEmnfmEgHQn7gAHmCP72x5OMkTON5d+LLTgf33ZDgLyKXdLMx+oI5xZjfUxkz6LebViaGuVRjb9Lk1EflY8Z/tVhdEW6wFmtlc7KGYKditSWXoFI1A1cHx7rNN2qPAYVBWLu1LoNVy9didiEeYcDgft+HPdcg3fT1KH138c4KDq7dmC+LRUWTlKRQSsmiVsCQe9i0pTW9bBcDKI7M7EKbdWs5twGmJE0WZWe78Et1rYKcakQZPXXWomTOYMvzIKC/SGfUec/QPDunf48lF1Z1nBAEskKAg4zpYSzabVnz3FVe9Abp7HpC0VrwXeooU/co1rxd5OH~3684150~4468784'}
+2026-06-10 13:05:16,402 - diagnostics - INFO - SUCCESS: NSE Charting API returned 248 rows. Last Close: 1272.50
+2026-06-10 13:05:16,403 - diagnostics - INFO - Starting NSE Bhavcopy Downloader check...
+2026-06-10 13:05:16,403 - src.storage.downloader - INFO - Initialized downloader with raw: data/raw_test, processed: data/processed_test
+2026-06-10 13:05:16,404 - diagnostics - INFO - Trying download for date: 2026-06-10
+2026-06-10 13:05:16,404 - src.storage.downloader - INFO - Checking file for date: 20260610
+2026-06-10 13:05:16,997 - diagnostics - INFO - === STARTING MARKET DATA SOURCES DIAGNOSTICS ===
+2026-06-10 13:05:16,998 - diagnostics - INFO - Starting yfinance check for RELIANCE.NS...
+2026-06-10 13:05:19,759 - src.storage.downloader - WARNING - Failed to fetch Bhavcopy for date 20260610, Status: 404
+2026-06-10 13:05:19,760 - diagnostics - WARNING - Date 2026-06-10 not available: File not found on NSE. HTTP status: 404
+2026-06-10 13:05:19,761 - diagnostics - INFO - Trying download for date: 2026-06-09
+2026-06-10 13:05:19,761 - src.storage.downloader - INFO - Checking file for date: 20260609
+2026-06-10 13:05:30,540 - yfinance - ERROR - $RELIANCE.NS: possibly delisted; no price data found  (period=1mo)
+2026-06-10 13:05:30,543 - diagnostics - ERROR - yfinance returned an empty DataFrame for RELIANCE.NS.
+2026-06-10 13:05:30,544 - diagnostics - INFO - Starting NSE Charting API check for RELIANCE...
+2026-06-10 13:05:30,545 - diagnostics - INFO - Warm up session cookies...
+2026-06-10 13:05:30,545 - src.data.fetcher.session.nse_session - INFO - Initializing NSE Session: warming up cookies at https://charting.nseindia.com/
+2026-06-10 13:05:30,546 - src.data.fetcher.session.manager - INFO - Initialized shared HTTP persistent requests Session.
+2026-06-10 13:05:34,881 - src.data.fetcher.session.nse_session - INFO - NSE session warmed up successfully. Cookies: {'_abck': '70BA0805D6C2CD08246569127CDC0AD5~-1~YAAQLRzFF5RwX4eeAQAA2jh1sBBt0uywEJUlCnR0/Qpyo+LyYzO60ftE3duRS0e8JURrtbmECq5cb59M3rMYgGPmPuSAWU4NzxtmPPiCr3feFd0SFg5y+dm4BflN6ZhGwdPMbRjro8MHOWhTHhzZgbF4y6NyAn25bYzIbyrssdhQ1n/XkGrdRg6yP2lh6egRFUOmDuWcxTh8ptGwAhey+e866HjWasBx9pGYbhBHxqAMQXulfB+6YRZjTMQVW3JbxunkgsNxWPspSWUMqPuuwEHDC1pxP0s/LirZl3ND60TjMXNYrSrjaZfYCQlQRbcV5qID+Jru0sZWlb+MeYZ5VbAqR8EzyMed5wPvHvj8UAX5GTszSLMSRGUkVx2z4Rhpc8gg/Zaj4kIQAXttL1l7ytPmwqcg8ZY9lS3FNOt+qlzk6O3wWYifYqVyjjUe/SNTr5Jqurc8MvYIHQ==~-1~-1~-1~-1~-1', 'bm_sz': '692B806B4A9E006D30CA3E8AE79531C9~YAAQLRzFF3BxX4eeAQAAUz91sAA6d9wAIBJG5Bp0wQn2MFTUSpQkSD5J3UpU2kR8gLAy3MMG7IIGIfYCEhiWj44GWvAvmn1lPAHl4cjKtDkzqYocfSjvUInuEDHs59tTMReqnmXQCrWFtQr+MjT/halKmM64c0qUT4ZGhnMSATAOKJ20RSrRnJUqkB6P/D9HgAvtTQRusruL3UYGKoAF//daQIAM+dDScNcn7a5RffoCEicB8+PtG3FKk2IyzhYaDKs7pEwZKlX2o5Vfoplpvyrm+dCq7qCDrB8S2cDy10X9x7Dq3pE6iXW2bga0XvLdQUX0zuqd50I93iiF7ZKIHSy2E62lyRo7F393IJ2dsfZrSAZV0VSU4kk4sqWiX7hsAFoj8xxDAaKg~4276786~3485762'}
+2026-06-10 13:05:36,311 - diagnostics - INFO - SUCCESS: NSE Charting API returned 248 rows. Last Close: 1274.80
+2026-06-10 13:05:36,313 - diagnostics - INFO - Starting NSE Bhavcopy Downloader check...
+2026-06-10 13:05:36,314 - src.storage.downloader - INFO - Initialized downloader with raw: data/raw_test, processed: data/processed_test
+2026-06-10 13:05:36,315 - diagnostics - INFO - Trying download for date: 2026-06-10
+2026-06-10 13:05:36,315 - src.storage.downloader - INFO - Checking file for date: 20260610
+2026-06-10 13:05:47,074 - src.storage.downloader - WARNING - Failed to fetch Bhavcopy for date 20260610, Status: 404
+2026-06-10 13:05:47,075 - diagnostics - WARNING - Date 2026-06-10 not available: File not found on NSE. HTTP status: 404
+2026-06-10 13:05:47,076 - diagnostics - INFO - Trying download for date: 2026-06-09
+2026-06-10 13:05:47,077 - src.storage.downloader - INFO - Checking file for date: 20260609
+2026-06-10 13:05:47,789 - src.storage.downloader - INFO - Successfully fetched 190188 bytes from NSE
+2026-06-10 13:05:47,797 - src.storage.downloader - INFO - Raw zip saved locally at: data/raw_test/BhavCopy_NSE_CM_0_0_0_20260609_F_0000.csv.zip
+2026-06-10 13:05:48,204 - src.storage.downloader - INFO - Processed CSV saved locally at: data/processed_test/top_10_20260609.csv
+2026-06-10 13:05:48,207 - diagnostics - INFO - SUCCESS: Bhavcopy downloaded. Processed 10 records.
+2026-06-10 13:05:48,208 - diagnostics - INFO - Starting Fyers API check for RELIANCE...
+2026-06-10 13:05:48,230 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-06-10 13:05:48,231 - src.nse_bhavcopy.fyers_fetcher - INFO - Fyers fetch NSE:RELIANCE-EQ [1D] from 2021-06-11 to 2026-06-10
+2026-06-10 13:05:50,963 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:52,394 - src.storage.downloader - INFO - Successfully fetched 190188 bytes from NSE
+2026-06-10 13:05:52,404 - src.storage.downloader - INFO - Raw zip saved locally at: data/raw_test/BhavCopy_NSE_CM_0_0_0_20260609_F_0000.csv.zip
+2026-06-10 13:05:52,456 - src.storage.downloader - INFO - Processed CSV saved locally at: data/processed_test/top_10_20260609.csv
+2026-06-10 13:05:52,456 - diagnostics - INFO - SUCCESS: Bhavcopy downloaded. Processed 10 records.
+2026-06-10 13:05:52,456 - diagnostics - INFO - Starting Fyers API check for RELIANCE...
+2026-06-10 13:05:52,457 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-06-10 13:05:52,457 - src.nse_bhavcopy.fyers_fetcher - INFO - Fyers fetch NSE:RELIANCE-EQ [1D] from 2021-06-11 to 2026-06-10
+2026-06-10 13:05:52,679 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:53,220 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:54,911 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:57,484 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:57,485 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:58,223 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:05:59,108 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:59,109 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2021-06-11&range_to=2022-06-10&cont_flag=1
+2026-06-10 13:05:59,798 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:06:00,467 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:06:02,054 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:06:04,678 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:06:04,678 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:06:05,366 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:06,224 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:06:06,225 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2022-06-11&range_to=2023-06-10&cont_flag=1
+2026-06-10 13:06:06,912 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:07,619 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:09,107 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:11,814 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:11,815 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:12,546 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2024-06-10&range_to=2025-06-09&cont_flag=1
+2026-06-10 13:06:13,426 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:13,427 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2023-06-11&range_to=2024-06-09&cont_flag=1
+2026-06-10 13:06:14,145 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2024-06-10&range_to=2025-06-09&cont_flag=1
+2026-06-10 13:06:14,750 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2024-06-10&range_to=2025-06-09&cont_flag=1
+2026-06-10 13:06:16,395 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2024-06-10&range_to=2025-06-09&cont_flag=1
+2026-06-10 13:06:20,663 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2024-06-10&range_to=2025-06-09&cont_flag=1
+2026-06-10 13:06:20,664 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2024-06-10&range_to=2025-06-09&cont_flag=1
+2026-06-10 13:06:21,403 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2025-06-10&range_to=2026-06-09&cont_flag=1
+2026-06-10 13:06:23,593 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2025-06-10&range_to=2026-06-09&cont_flag=1
+2026-06-10 13:06:28,718 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2025-06-10&range_to=2026-06-09&cont_flag=1
+2026-06-10 13:06:28,719 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2025-06-10&range_to=2026-06-09&cont_flag=1
+2026-06-10 13:06:29,473 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 1/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2026-06-10&range_to=2026-06-10&cont_flag=1
+2026-06-10 13:06:31,794 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 2/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2026-06-10&range_to=2026-06-10&cont_flag=1
+2026-06-10 13:06:36,036 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers GET attempt 3/3 failed: 401 Client Error: Unauthorized for url: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2026-06-10&range_to=2026-06-10&cont_flag=1
+2026-06-10 13:06:36,037 - src.nse_bhavcopy.fyers_fetcher - ERROR - Chunk fetch failed: Fyers API GET failed after 3 retries: https://api-t1.fyers.in/data/history?symbol=NSE%3ARELIANCE-EQ&resolution=1D&date_format=1&range_from=2026-06-10&range_to=2026-06-10&cont_flag=1
+2026-06-10 13:06:36,039 - src.nse_bhavcopy.fyers_fetcher - WARNING - Fyers: no data returned for RELIANCE.
+2026-06-10 13:06:36,040 - diagnostics - ERROR - Fyers API returned an empty DataFrame for RELIANCE. (Maybe token is expired?)
+2026-06-10 13:06:36,040 - diagnostics - INFO - Starting Nifty Index check...
+2026-06-10 13:06:37,382 - src.scrapers.nifty_index_fetcher - WARNING - NSE API request failed for index 'nifty50' (404 Client Error: Not Found for url: https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050). Trying direct CSV fallback...
+2026-06-10 13:06:37,727 - src.scrapers.nifty_index_fetcher - INFO - Fetched 50 symbols for index 'nifty50' via CSV fallback.
+2026-06-10 13:06:37,731 - diagnostics - INFO - SUCCESS: Nifty Index fetched 50 symbols. Example: ADANIENT, ADANIPORTS, APOLLOHOSP
+2026-06-10 13:06:37,731 - diagnostics - INFO - === DIAGNOSTICS RESULTS SUMMARY ===
+2026-06-10 13:06:37,732 - diagnostics - INFO - Yahoo Finance API (yfinance):   FAILED
+2026-06-10 13:06:37,733 - diagnostics - INFO - NSE Charting API (nse_charts):  WORKING
+2026-06-10 13:06:37,733 - diagnostics - INFO - NSE Bhavcopy Downloader (bhav): WORKING
+2026-06-10 13:06:37,734 - diagnostics - INFO - Fyers API (fyers_fetcher):      FAILED
+2026-06-10 13:06:37,734 - diagnostics - INFO - Nifty Index API (nifty_index):  WORKING
+2026-06-10 13:06:37,735 - diagnostics - ERROR - STATUS: Diagnostics detected one or more failures in core data sources.
+2026-10-15 12:30:03,268 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:30:42,496 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:30:51,201 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:30:51,309 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:30:51,547 - src.nse_bhavcopy.fyers_fetcher - INFO - Fyers token cached to data/cache/fyers_token.txt
+2026-10-15 12:30:51,547 - src.nse_bhavcopy.fyers_fetcher - INFO - Access token updated.
+2026-10-15 12:30:51,695 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:31:17,916 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:31:18,395 - src.nse_bhavcopy.fyers_fetcher - INFO - Fyers token exchange successful.
+2026-10-15 12:31:18,398 - src.nse_bhavcopy.fyers_fetcher - INFO - Fyers token cached to data/cache/fyers_token.txt
+2026-10-15 12:31:18,398 - src.nse_bhavcopy.fyers_fetcher - INFO - Access token updated.
+2026-10-15 12:31:18,554 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:31:31,870 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:31:43,839 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 12:48:12,115 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
+2026-10-15 13:42:55,713 - src.nse_bhavcopy.fyers_fetcher - INFO - FyersFetcher: token loaded from cache/param.
