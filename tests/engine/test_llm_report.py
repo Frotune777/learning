@@ -62,3 +62,43 @@ def test_llm_report_recomputes_stale_trailing_nan_ta(tmp_path: Path):
     for line in dossier.splitlines():
         if any(term in line for term in ["RSI (14):", "ADX (14):", "ATR (14):", "200 SMA:"]):
             assert "nan" not in line.lower(), f"Line contains nan: {line}"
+
+
+def test_reconciliation_section_present():
+    """Verify Section 7 is Lens Reconciliation and Section 8 is LLM Prompting."""
+    dossier = generate_symbol_llm_dossier("TCS", hist_dir="data/historical")
+    assert "## 7. Quantitative Lens Reconciliation" in dossier
+    assert "## 8. Instructions for LLM Prompting / Strategy Formulation" in dossier
+
+    # Ensure Section 7 precedes Section 8
+    idx_sec7 = dossier.index("## 7. Quantitative Lens Reconciliation")
+    idx_sec8 = dossier.index("## 8. Instructions for LLM Prompting / Strategy Formulation")
+    assert idx_sec7 < idx_sec8
+
+
+def test_reconciliation_names_disagreement():
+    """Verify divergent lenses (Stage 4 + SMC Bullish) explicitly state counter-trend bounce."""
+    dossier = generate_symbol_llm_dossier("TCS", hist_dir="data/historical")
+    sec7_text = dossier.split("## 7. Quantitative Lens Reconciliation")[1].split("## 8. Instructions for LLM Prompting")[0]
+    assert "Stage 4" in sec7_text
+    assert "counter-trend" in sec7_text.lower()
+
+
+def test_reconciliation_does_not_invent_signals():
+    """Verify Section 7 does not invent phantom signals like accumulation/distribution/smart money."""
+    dossier = generate_symbol_llm_dossier("TCS", hist_dir="data/historical")
+    sec7_text = dossier.split("## 7. Quantitative Lens Reconciliation")[1].split("## 8. Instructions for LLM Prompting")[0]
+
+    for forbidden in ["smart money", "accumulation", "distribution"]:
+        assert forbidden not in sec7_text.lower(), f"Section 7 contains forbidden phrase: {forbidden}"
+
+
+def test_weinstein_label_matches_parameter():
+    """Verify Section 1 correctly displays 10W MA and includes the explanatory footnote."""
+    dossier = generate_symbol_llm_dossier("TCS", hist_dir="data/historical")
+    sec1_text = dossier.split("## 1. Executive Summary & Market Snapshot")[1].split("## 2. Actionable SMC Trading Setup")[0]
+
+    assert "10W MA:" in sec1_text
+    assert "30W MA:" not in sec1_text
+    assert "Classifier uses a 10W MA, faster than Weinstein's original 30W." in sec1_text
+

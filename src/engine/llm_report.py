@@ -37,7 +37,97 @@ def _needs_ta_recompute(df: pd.DataFrame) -> bool:
     for col in req_indicators:
         if col not in df.columns or pd.isna(df[col].iloc[-1]):
             return True
-    return False
+def _build_reconciliation_section(
+    cmp: float,
+    smc_res: Any,
+    w_res: Any,
+    nwe_res: Any,
+    sg_res: Any,
+    vsa_res: Any,
+    ta_score_dict: dict[str, Any],
+    sma_50: float,
+    sma_200: float,
+    vp_res: Any,
+) -> list[str]:
+    """
+    Synthesize multi-lens disagreements and confluences into Markdown Section 7.
+    """
+    sec = ["\n## 7. Quantitative Lens Reconciliation"]
+
+    # 7.1 Macro vs. Micro Structural Alignment
+    sec.append("### 7.1 Macro vs. Micro Structural Alignment")
+    sec.append(f"- **Macro Weinstein Stage:** `{w_res.stage_name}`")
+    swing_trend_str = "BULLISH" if smc_res.current_swing_trend == 1 else ("BEARISH" if smc_res.current_swing_trend == -1 else "NEUTRAL")
+    sec.append(f"- **SMC Institutional Trend:** `{swing_trend_str}`")
+
+    # Weinstein vs SMC
+    if w_res.current_stage == 4 and smc_res.current_swing_trend == 1:
+        sec.append("- **Structural Synthesis:** Counter-trend rally within a broader markdown regime; treat institutional buy setups as tactical pullbacks rather than secular reversals.")
+    elif w_res.current_stage == 2 and smc_res.current_swing_trend == -1:
+        sec.append("- **Structural Synthesis:** Short-term structural pullback within an advancing macro markup stage; monitor discount zones for trend continuation support.")
+    elif w_res.current_stage == 2 and smc_res.current_swing_trend == 1:
+        sec.append("- **Structural Synthesis:** Bullish multi-timeframe confluence; intermediate markup stage aligns with upward institutional swing structure.")
+    elif w_res.current_stage == 4 and smc_res.current_swing_trend == -1:
+        sec.append("- **Structural Synthesis:** Bearish multi-timeframe confluence; intermediate markdown stage aligns with downward institutional swing structure.")
+    else:
+        sec.append("- **Structural Synthesis:** Transitional macro/micro structure; monitor structural breaks (BOS/CHoCH) for confirmation.")
+
+    # SMA 50 vs SMA 200
+    if not np.isnan(sma_50) and not np.isnan(sma_200):
+        if cmp > sma_50 and cmp < sma_200:
+            sec.append("- **Macro Moving Average Context:** Intermediate cyclical recovery operating below the secular 200-day moving average; long-term macro resistance remains overhead (Note: 10W MA ≡ SMA_50 by construction).")
+        elif cmp < sma_50 and cmp > sma_200:
+            sec.append("- **Macro Moving Average Context:** Corrective pullback testing intermediate support above the secular 200-day bull anchor (Note: 10W MA ≡ SMA_50 by construction).")
+        elif cmp > sma_50 and cmp > sma_200:
+            sec.append("- **Macro Moving Average Context:** Full macro moving average alignment (price above both 50D and 200D averages).")
+        elif cmp < sma_50 and cmp < sma_200:
+            sec.append("- **Macro Moving Average Context:** Full secular bear alignment (price below both 50D and 200D averages).")
+
+    # 7.2 Statistical Extremes & Momentum Tension
+    sec.append("\n### 7.2 Statistical Extremes & Momentum Tension")
+    score = ta_score_dict.get("score", 50)
+    rating = ta_score_dict.get("rating", "NEUTRAL")
+    sec.append(f"- **Composite Technical Score:** {score}/100 (`{rating}`)")
+
+    # Composite vs Weinstein
+    if score >= 70 and w_res.current_stage == 4:
+        sec.append("- **Score vs. Regime Conflict:** Intermediate technical momentum and indicator alignment conflict with macro stage headwinds; high-beta rally occurring below declining moving averages.")
+    elif score <= 30 and w_res.current_stage == 2:
+        sec.append("- **Score vs. Regime Conflict:** Temporary indicator exhaustion or consolidation within an advancing stage; underlying macro trend remains constructive.")
+
+    # SMC vs NWE
+    nwe_overbought = cmp >= nwe_res.latest_upper
+    nwe_oversold = cmp <= nwe_res.latest_lower
+    if smc_res.current_swing_trend == 1 and nwe_overbought:
+        sec.append("- **Statistical Envelope Tension:** Bullish structural expansion has reached an upper statistical volatility extreme; elevated risk of sharp mean-reversion pullback before further upside.")
+    elif smc_res.current_swing_trend == -1 and nwe_oversold:
+        sec.append("- **Statistical Envelope Tension:** Bearish structural impulse is extended into the lower statistical envelope; high probability of a short-squeeze or snapback bounce.")
+    else:
+        sec.append("- **Statistical Envelope Context:** Price oscillating within standard non-parametric kernel distribution boundaries.")
+
+    # SMC Trend vs Savitzky-Golay
+    if smc_res.current_swing_trend == 1 and sg_res.latest_turn_signal == -1:
+        sec.append("- **Digital Filter Turning Inflection:** Upward trend showing local deceleration; negative second derivative suggests short-term momentum exhaustion prior to structural confirmation.")
+    elif smc_res.current_swing_trend == -1 and sg_res.latest_turn_signal == 1:
+        sec.append("- **Digital Filter Turning Inflection:** Downward trend showing local deceleration; positive second derivative highlights nascent curvature bottoming.")
+    else:
+        sec.append("- **Digital Filter Inflection Context:** Savitzky-Golay polynomial trajectory indicates momentum trend continuation.")
+
+    # 7.3 Volume Conviction & Auction Context
+    sec.append("\n### 7.3 Volume Conviction & Auction Context")
+    if vsa_res.latest_no_demand:
+        sec.append("- **Volume Spread Assessment:** Upward price progression accompanied by low relative volume and narrow spread, signaling lack of aggressive buying conviction.")
+    elif vsa_res.latest_no_supply:
+        sec.append("- **Volume Spread Assessment:** Downside progression on dried-up volume and narrow spread, suggesting exhaustion of aggressive selling pressure.")
+    else:
+        sec.append("- **Volume Spread Assessment:** Volume spread profile shows normal participation without active No-Demand or No-Supply testing signals.")
+
+    cmp_va_pos = "Inside 70% Value Area" if vp_res.val_price <= cmp <= vp_res.vah_price else (
+        "Above Value Area (Premium/Overextended)" if cmp > vp_res.vah_price else "Below Value Area (Discount/Undervalued)"
+    )
+    sec.append(f"- **Auction Value Position:** `{cmp_va_pos}` relative to VPOC anchor at ₹{vp_res.poc_price:,.2f}.")
+
+    return sec
 
 
 def generate_symbol_llm_dossier(
@@ -149,7 +239,8 @@ def generate_symbol_llm_dossier(
     doc.append(f"- **Day's Range:** Low ₹{low_p:,.2f} — High ₹{high_p:,.2f} (Open: ₹{open_p:,.2f})")
     doc.append(f"- **Traded Volume:** {volume:,.0f} shares")
     doc.append(f"- **Technical Composite Score:** {ta_score_dict.get('score', 'N/A')}/100 (`{ta_score_dict.get('rating', 'NEUTRAL')}`)")
-    doc.append(f"- **Macro Weinstein Stage:** `{w_res.stage_name}` (30W MA: ₹{w_res.ma_value:,.2f}, Slope: {w_res.ma_slope_pct:+.2f}%, Vol Ratio: {w_res.volume_ratio:.2f}x)")
+    doc.append(f"- **Macro Weinstein Stage:** `{w_res.stage_name}` (10W MA: ₹{w_res.ma_value:,.2f}, Slope: {w_res.ma_slope_pct:+.2f}%, Vol Ratio: {w_res.volume_ratio:.2f}x)")
+    doc.append("  * *(Classifier uses a 10W MA, faster than Weinstein's original 30W.)*")
     if w_res.is_breakout:
         doc.append("  * **ALERT:** Active Stage 2 Expansion Breakout confirmed!")
     if w_res.is_breakdown:
@@ -229,7 +320,26 @@ def generate_symbol_llm_dossier(
     doc.append(f"| SMA (200) | ₹{sma_200:,.2f} | Secular Macro Trend | {'Price Above (Secular Bull)' if cmp > sma_200 else 'Price Below (Secular Bear)'} |")
     doc.append(f"| MACD (12,26,9) | Line: {macd:.2f}, Sig: {macd_sig:.2f} | Histogram: {macd_hist:.2f} | {'Bullish Crossover' if macd > macd_sig else 'Bearish Crossunder'} |")
 
-    doc.append("\n## 7. Instructions for LLM Prompting / Strategy Formulation")
-    doc.append("> When reviewing this dossier, evaluate: (1) Does the SMC trade setup align with the macro Weinstein Stage and VPOC context? (2) Is volume confirming the move or showing exhaustion/no-demand? (3) Formulate a precise risk management thesis with position sizing and invalidation criteria.")
+    # 7. Quantitative Lens Reconciliation
+    doc.extend(
+        _build_reconciliation_section(
+            cmp=cmp,
+            smc_res=smc_res,
+            w_res=w_res,
+            nwe_res=nwe_res,
+            sg_res=sg_res,
+            vsa_res=vsa_res,
+            ta_score_dict=ta_score_dict,
+            sma_50=sma_50,
+            sma_200=sma_200,
+            vp_res=vp_res,
+        )
+    )
+
+    # 8. Instructions for LLM Prompting / Strategy Formulation
+    doc.append("\n## 8. Instructions for LLM Prompting / Strategy Formulation")
+    doc.append(
+        "> When reviewing this dossier, evaluate: (1) Does the SMC trade setup align with the macro Weinstein Stage and VPOC context? (2) Is volume confirming the move or showing exhaustion/no-demand? (3) Reconcile any Section 7 tactical vs. strategic tensions before formulating a thesis with position sizing and invalidation criteria."
+    )
 
     return "\n".join(doc)
