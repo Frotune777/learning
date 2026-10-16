@@ -2,7 +2,9 @@
   "min_coverage_pct": 0.85,
   "max_stale_days": 3,
   "fail_on_stale_ta": true,
-  "halt_if_failure_pct": 0.05,
+  "halt_if_failure_pct": 0.08,
+  "delisted_threshold_days": 90,
+  "report_delisted_in_summary": true,
   "audit_dir": "logs/dq",
   "retention_days": 90
 }

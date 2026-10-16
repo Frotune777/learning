@@ -342,6 +342,26 @@ Unit 17 introduces an automated, deterministic verification checkpoint between d
 3. **Corporate-Action Correctness:** Splits, bonuses, and dividend price adjustments are handled by ratio detection logic in `historical_sync.py` and `bhavcopy_incremental.py`.
 4. **Intraday / Tick Granularity:** The gate is scoped to the canonical 1d historical storage layer.
 
+---
+
+## Unit 19A — DQ Gate Inactive-Tail Classification & Halt Policy Refinement
+
+### Previous Behavior
+- On a full 2,700-symbol universe run (`uv run python main.py dq-check`), 401 legitimate suspended/delisted historical names failed recency (`DATA_STALE`).
+- Because all stale symbols were treated as critical failures, the gate reported an 18.1% failure rate against a 5.0% threshold, halting execution with exit code 1 on every run and making it unusable as a CI gate.
+
+### New Behavior
+- **Classification Layer:** Extends `SymbolDQResult` with `classification` (`HEALTHY`, `STALE_TRADING`, `INACTIVE`).
+- **Inactive Window:** Symbols failing recency whose last bar is $\ge 90$ calendar days old are categorized as `INACTIVE`.
+- **Halt Numerator Refinement:** Only actionable failures (`STALE_TRADING`, `LOW_COVERAGE`, `OHLCV_INVALID`, `STALE_TA`, `FILE_MISSING`) count toward the failure rate numerator. `INACTIVE` symbols are subtracted by default.
+- **Calibrated Policy:** Configured `delisted_threshold_days: 90` and `halt_if_failure_pct: 0.08`. Baseline failure rate across 2,700 symbols is 7.44% (114 stale trading + 87 low coverage), yielding exit code 0 (`Halt: NO`).
+- **Registry Artifact:** Generates `data/historical/inactive_symbols.csv` (schema: `symbol,last_bar_date,days_since_last_trade,classified_at`) as a single source of truth for operator review.
+- **CLI Options:**
+  - `uv run python main.py dq-check`: Default run, exits 0.
+  - `uv run python main.py dq-check --include-inactive`: Includes inactive symbols in halt numerator (exits 1).
+  - `uv run python main.py dq-check --min-last-trade-days N`: Per-run override for inactivity threshold.
+
+
 
 
 

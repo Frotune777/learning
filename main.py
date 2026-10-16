@@ -176,9 +176,28 @@ def _build_parser() -> argparse.ArgumentParser:
     ).set_defaults(func=cmd_repair_ta)
 
     # dq-check
-    sub.add_parser(
+    p_dq = sub.add_parser(
         "dq-check", help="Run Data Quality Gate assertions across historical Parquet files."
-    ).set_defaults(func=cmd_dq_check)
+    )
+    p_dq.add_argument(
+        "--include-inactive",
+        action="store_true",
+        default=False,
+        help="Include inactive/delisted symbols in the halt numerator.",
+    )
+    p_dq.add_argument(
+        "--include-delisted",
+        action="store_true",
+        default=False,
+        help=argparse.SUPPRESS,
+    )
+    p_dq.add_argument(
+        "--min-last-trade-days",
+        type=int,
+        default=None,
+        help="Override the inactive threshold in days.",
+    )
+    p_dq.set_defaults(func=cmd_dq_check)
 
     # menu (default)
     sub.add_parser("menu", help="Launch interactive menu.").set_defaults(

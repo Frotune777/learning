@@ -688,21 +688,32 @@ def cmd_dq_check(args: argparse.Namespace) -> None:
     files = sorted(p1d.glob("*.parquet"))
     symbols = [f.stem for f in files]
 
+    include_inactive = getattr(args, "include_inactive", False) or getattr(args, "include_delisted", False)
+    min_last_trade_days = getattr(args, "min_last_trade_days", None)
+
     gate = DataQualityGate()
     batch_result = gate.check_batch(
         symbols,
         hist_dir=p1d,
         stage="cli.dq-check",
         halt_on_breach=False,
+        include_inactive=include_inactive,
+        min_last_trade_days=min_last_trade_days,
     )
 
     total = batch_result.total_symbols
     healthy = batch_result.passed_count
-    stale = sum(1 for r in batch_result.symbol_results if r.failure_reason == "DATA_STALE")
+    inactive = batch_result.inactive_count
+    stale = batch_result.stale_count
+    low_coverage = batch_result.low_coverage_count
     missing_ta = sum(1 for r in batch_result.symbol_results if r.has_stale_ta or r.failure_reason == "STALE_TA")
-    runs_log = gate.audit_dir / "runs.jsonl"
+    halt_str = "YES" if batch_result.halt_triggered else "NO"
 
-    print(f"DQ: {total} symbols checked, {healthy} healthy, {stale} stale, {missing_ta} missing TA. Log: {runs_log}")
+    print(
+        f"DQ: {total} symbols checked | {healthy} healthy | {inactive} inactive | {stale} stale | "
+        f"{low_coverage} low-coverage | {missing_ta} missing TA. Halt: {halt_str} "
+        f"({batch_result.failure_pct:.1%} failure, threshold {gate.halt_if_failure_pct:.1%})"
+    )
 
     if batch_result.halt_triggered:
         raise DataQualityHalt(

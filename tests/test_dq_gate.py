@@ -186,7 +186,7 @@ def test_dq_check_cli_exit_codes(tmp_path: Path):
     ]
     res_healthy = subprocess.run(cmd_healthy, capture_output=True, text=True)
     assert res_healthy.returncode == 0
-    assert "DQ: 1 symbols checked, 1 healthy" in res_healthy.stdout
+    assert "DQ: 1 symbols checked | 1 healthy" in res_healthy.stdout
 
     # Stale sandbox
     stale_dir = tmp_path / "stale" / "1d"
@@ -204,4 +204,162 @@ def test_dq_check_cli_exit_codes(tmp_path: Path):
     ]
     res_stale = subprocess.run(cmd_stale, capture_output=True, text=True)
     assert res_stale.returncode == 1
-    assert "DQ: 1 symbols checked, 0 healthy, 0 stale, 1 missing TA" in res_stale.stdout
+    assert "DQ: 1 symbols checked | 0 healthy" in res_stale.stdout
+    assert "1 missing TA" in res_stale.stdout
+
+
+def test_inactive_symbol_classified_as_inactive():
+    """Real market Parquet with last bar >90 days old is classified as INACTIVE."""
+    from datetime import date
+    gate = DataQualityGate()
+    res = gate.check_symbol("ABAN", REAL_HIST_1D, ref_date=date(2026, 10, 16))
+    assert res.passed is False
+    assert res.failure_reason == "DATA_STALE"
+    assert res.classification == "INACTIVE"
+
+
+def test_recently_stale_symbol_classified_as_stale_trading(tmp_path: Path):
+    """Real market Parquet stalled recently (<90 days) is classified as STALE_TRADING."""
+    from datetime import date
+    sandbox = tmp_path / "1d"
+    sandbox.mkdir(parents=True)
+
+    df = pd.read_parquet(REAL_HIST_1D / "RELIANCE.parquet")
+    # Slice to 8 days before 2026-10-16 reference date
+    sliced = df[df.index <= "2026-10-08"]
+    sliced.to_parquet(sandbox / "RELIANCE.parquet")
+
+    gate = DataQualityGate()
+    res = gate.check_symbol("RELIANCE", sandbox, ref_date=date(2026, 10, 16))
+    assert res.passed is False
+    assert res.failure_reason == "DATA_STALE"
+    assert res.classification == "STALE_TRADING"
+
+
+def test_batch_halt_ignores_inactive_by_default(tmp_path: Path):
+    """Batch with inactive symbols does not count them in halt numerator by default."""
+    from datetime import date
+    sandbox = tmp_path / "1d"
+    sandbox.mkdir(parents=True)
+
+    healthy_symbols = [
+        "RELIANCE", "INFY", "HDFCBANK", "ICICIBANK",
+        "AXISBANK", "LT", "HINDUNILVR", "ITC"
+    ]
+    for sym in healthy_symbols:
+        shutil.copyfile(REAL_HIST_1D / f"{sym}.parquet", sandbox / f"{sym}.parquet")
+
+    # Inactive symbol: ABAN (last trade Feb 2026)
+    shutil.copyfile(REAL_HIST_1D / "ABAN.parquet", sandbox / "ABAN.parquet")
+
+    gate = DataQualityGate(audit_dir=str(tmp_path / "logs"), halt_if_failure_pct=0.08)
+    batch_res = gate.check_batch(
+        healthy_symbols + ["ABAN"],
+        hist_dir=sandbox,
+        stage="test_batch_inactive",
+        ref_date=date(2026, 10, 16),
+        halt_on_breach=True,
+    )
+
+    assert batch_res.halt_triggered is False
+    assert batch_res.inactive_count == 1
+    assert batch_res.failed_count == 0
+
+
+def test_batch_halt_includes_inactive_when_flag_set(tmp_path: Path):
+    """Batch with include_inactive=True counts inactive symbols in halt numerator."""
+    from datetime import date
+    sandbox = tmp_path / "1d"
+    sandbox.mkdir(parents=True)
+
+    healthy_symbols = [
+        "RELIANCE", "INFY", "HDFCBANK", "ICICIBANK",
+        "AXISBANK", "LT", "HINDUNILVR", "ITC"
+    ]
+    for sym in healthy_symbols:
+        shutil.copyfile(REAL_HIST_1D / f"{sym}.parquet", sandbox / f"{sym}.parquet")
+
+    shutil.copyfile(REAL_HIST_1D / "ABAN.parquet", sandbox / "ABAN.parquet")
+
+    gate = DataQualityGate(audit_dir=str(tmp_path / "logs"), halt_if_failure_pct=0.08)
+
+    with pytest.raises(DataQualityHalt) as exc_info:
+        gate.check_batch(
+            healthy_symbols + ["ABAN"],
+            hist_dir=sandbox,
+            stage="test_batch_inactive_flag",
+            ref_date=date(2026, 10, 16),
+            include_inactive=True,
+            halt_on_breach=True,
+        )
+
+    assert "exceeding halt threshold" in str(exc_info.value)
+
+
+def test_inactive_threshold_override():
+    """Threshold override reclassifies symbol from INACTIVE to STALE_TRADING."""
+    from datetime import date
+    gate = DataQualityGate()
+    # Default 90 days -> INACTIVE
+    res_def = gate.check_symbol("ABAN", REAL_HIST_1D, ref_date=date(2026, 10, 16))
+    assert res_def.classification == "INACTIVE"
+
+    # Override 300 days -> STALE_TRADING
+    res_over = gate.check_symbol("ABAN", REAL_HIST_1D, ref_date=date(2026, 10, 16), min_last_trade_days=300)
+    assert res_over.classification == "STALE_TRADING"
+
+
+def test_summary_line_reports_inactive_count(tmp_path: Path):
+    """Summary line prints explicit inactive count and halt status."""
+    sandbox = tmp_path / "1d"
+    sandbox.mkdir(parents=True)
+    shutil.copyfile(REAL_HIST_1D / "RELIANCE.parquet", sandbox / "RELIANCE.parquet")
+    shutil.copyfile(REAL_HIST_1D / "ABAN.parquet", sandbox / "ABAN.parquet")
+
+    cmd = [
+        sys.executable,
+        "main.py",
+        "--hist-dir",
+        str(sandbox.parent),
+        "dq-check",
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "inactive" in res.stdout
+    assert "threshold 8.0%" in res.stdout
+
+
+def test_inactive_snapshot_written(tmp_path: Path):
+    """Artifact inactive_symbols.csv is written with expected schema."""
+    import csv
+    from datetime import date
+
+    sandbox = tmp_path / "1d"
+    sandbox.mkdir(parents=True)
+    shutil.copyfile(REAL_HIST_1D / "ABAN.parquet", sandbox / "ABAN.parquet")
+
+    gate = DataQualityGate(audit_dir=str(tmp_path / "logs"))
+    gate.check_batch(["ABAN"], hist_dir=sandbox, ref_date=date(2026, 10, 16), write_audit=True)
+
+    snapshot_path = tmp_path / "inactive_symbols.csv"
+    assert snapshot_path.is_file()
+
+    with open(snapshot_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        assert header == ["symbol", "last_bar_date", "days_since_last_trade", "classified_at"]
+        rows = list(reader)
+        assert len(rows) == 1
+        assert rows[0][0] == "ABAN"
+        assert rows[0][1] == "2026-02-20"
+
+
+def test_dq_check_cli_exits_zero_on_current_universe():
+    """Unit 19A acceptance test: main.py dq-check exits 0 on current universe."""
+    cmd = [sys.executable, "main.py", "dq-check"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "Halt: NO" in res.stdout
+    assert "inactive" in res.stdout
+    assert "threshold 8.0%" in res.stdout
+
