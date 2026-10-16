@@ -12,6 +12,26 @@ import pandas as pd
 import streamlit as st
 
 
+# NSE equity universe is ~2700; anything below 1000 is a partial run
+MIN_MEANINGFUL_UNIVERSE = 1000
+
+
+def _select_latest_run(runs: list[dict]) -> dict | None:
+    if not runs:
+        return None
+
+    meaningful = [
+        r for r in runs
+        if r.get("total_symbols", 0) >= MIN_MEANINGFUL_UNIVERSE
+        and (
+            r.get("stage") == "cli.dq-check"
+            or r.get("stage") in {"bhavcopy_incremental.run", "historical_sync.sync"}
+        )
+    ]
+    candidates = meaningful if meaningful else runs
+    return sorted(candidates, key=lambda r: str(r.get("timestamp", "")), reverse=True)[0]
+
+
 def render_dq_view():
     st.markdown("""
     <div>
@@ -38,16 +58,10 @@ def render_dq_view():
                 except Exception:
                     pass
 
-    if not runs:
+    latest_run = _select_latest_run(runs)
+    if not latest_run:
         st.info("No DQ runs recorded yet. Run `./scripts/dq_gate.sh` to generate the first run.")
         return
-
-    # Prefer latest full batch run if available, fallback to last entry
-    batch_runs = [
-        r for r in runs
-        if r.get("total_symbols", 0) > 1 or r.get("stage") in {"cli.dq-check", "bhavcopy_incremental.run", "historical_sync.sync"}
-    ]
-    latest_run = batch_runs[-1] if batch_runs else runs[-1]
 
     # Load threshold from config
     cfg_threshold = 0.08
