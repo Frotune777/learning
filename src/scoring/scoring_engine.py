@@ -245,13 +245,17 @@ class ScoringEngine:
         """Score based on GARCH volatility or daily return volatility (low volatility preferred)."""
         score = pd.Series(50.0, index=df.index)  # Default neutral score
 
-        vol = df.get("GARCH_VOL_PCT", pd.Series(np.nan, index=df.index))
+        vol = pd.to_numeric(df.get("GARCH_VOL_PCT", pd.Series(np.nan, index=df.index)), errors="coerce")
 
-        # Lower volatility in trend is positive
+        # Lower volatility in trend is positive; NaN/missing gets neutral 50.0
         score = np.where(
-            vol <= 20.0,
-            100.0,
-            np.where(vol <= 35.0, 75.0, np.where(vol <= 50.0, 40.0, 10.0)),
+            pd.isna(vol),
+            50.0,
+            np.where(
+                vol <= 20.0,
+                100.0,
+                np.where(vol <= 35.0, 75.0, np.where(vol <= 50.0, 40.0, 10.0)),
+            ),
         )
         return pd.Series(score, index=df.index)
 

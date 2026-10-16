@@ -57,3 +57,22 @@ def test_scoring_engine_calculation() -> None:
     # Check that rank is correctly assigned
     assert res.loc[0, "RANK"] == 1.0
     assert res.loc[0, "COMPOSITE_SCORE"] > 50.0
+
+
+def test_volatility_scoring_tiers_and_nan() -> None:
+    """Verify NaN/None volatility yields 50.0 (neutral), while tiers score 100, 75, 40, 10."""
+    import numpy as np
+
+    engine = ScoringEngine()
+    df = pd.DataFrame({
+        "GARCH_VOL_PCT": [np.nan, 15.0, 25.0, 40.0, 60.0, None],
+    })
+
+    vol_scores = engine._score_volatility(df).tolist()
+    assert vol_scores[0] == 50.0   # NaN -> 50.0
+    assert vol_scores[1] == 100.0  # 15.0 <= 20.0 -> 100.0
+    assert vol_scores[2] == 75.0   # 25.0 <= 35.0 -> 75.0
+    assert vol_scores[3] == 40.0   # 40.0 <= 50.0 -> 40.0
+    assert vol_scores[4] == 10.0   # 60.0 > 50.0 -> 10.0
+    assert vol_scores[5] == 50.0   # None -> 50.0
+

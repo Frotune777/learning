@@ -1139,3 +1139,78 @@ def test_screen_stocks_circuit_limits_and_delivery(tmp_path: Path) -> None:
     assert tcs_row["DELIV_PCT"] == 75.0
     assert bool(tcs_row["CIRCUIT_LOCKED"]) is False
     assert pd.isna(tcs_row["CIRCUIT_TYPE"])
+
+
+def test_enrich_analysis_wires_scoring_engine() -> None:
+    """Verify enrich_analysis adds the nine composite scoring columns and maintains rank monotonicity."""
+    screener = StockScreener()
+    raw_df = pd.DataFrame([
+        {
+            "SYMBOL": "TCS",
+            "CMP": 3500.0,
+            "SMA_20": 3400.0,
+            "DMA_50": 3300.0,
+            "DMA_100": 3200.0,
+            "DMA_150": 3100.0,
+            "DMA_200": 3000.0,
+            "DIFF_200_DMA": 16.67,
+            "RSI_14": 65.0,
+            "ADX_14": 32.0,
+            "PLUS_DI_14": 28.0,
+            "MINUS_DI_14": 12.0,
+            "CAR_RATING": "Buy/Average Out",
+            "SHARPE_1Y": 2.1,
+            "MAX_DRAWDOWN_PCT": -9.0,
+            "DELIV_PCT": 55.0,
+            "VOL_SPIKE": 2.5,
+            "GARCH_VOL_PCT": 18.0,
+            "Insider Score": 1.0,
+            "Event Risk (Days)": 10.0,
+        },
+        {
+            "SYMBOL": "INFY",
+            "CMP": 1400.0,
+            "SMA_20": 1380.0,
+            "DMA_50": 1420.0,
+            "DMA_100": 1450.0,
+            "DMA_150": 1480.0,
+            "DMA_200": 1500.0,
+            "DIFF_200_DMA": -6.67,
+            "RSI_14": 42.0,
+            "ADX_14": 18.0,
+            "PLUS_DI_14": 14.0,
+            "MINUS_DI_14": 26.0,
+            "CAR_RATING": "Hold",
+            "SHARPE_1Y": 0.8,
+            "MAX_DRAWDOWN_PCT": -22.0,
+            "DELIV_PCT": 35.0,
+            "VOL_SPIKE": 0.9,
+            "GARCH_VOL_PCT": 38.0,
+            "Insider Score": 0.0,
+            "Event Risk (Days)": 30.0,
+        },
+    ])
+
+    enriched = screener.enrich_analysis(raw_df, weekly_dir="non_existent", daily_dir="non_existent")
+
+    expected_cols = [
+        "TREND_FACTOR_SCORE",
+        "MOMENTUM_FACTOR_SCORE",
+        "CAR_FACTOR_SCORE",
+        "RISK_FACTOR_SCORE",
+        "VOLUME_FACTOR_SCORE",
+        "VOLATILITY_FACTOR_SCORE",
+        "CATALYST_FACTOR_SCORE",
+        "COMPOSITE_SCORE",
+        "RANK",
+    ]
+    for col in expected_cols:
+        assert col in enriched.columns, f"Expected column {col} missing from enriched DataFrame"
+
+    # Higher COMPOSITE_SCORE must yield lower or equal RANK (i.e. rank 1 is top)
+    sorted_by_rank = enriched.sort_values(by="RANK", ascending=True)
+    scores = sorted_by_rank["COMPOSITE_SCORE"].tolist()
+    # As rank increases, score must be non-increasing (monotone)
+    assert scores[0] >= scores[1]
+    assert sorted_by_rank.iloc[0]["RANK"] <= sorted_by_rank.iloc[1]["RANK"]
+

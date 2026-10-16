@@ -12,6 +12,7 @@ from src.engine.smc import (
     BEARISH,
     BULLISH,
     FairValueGap,
+    OrderBlock,
     SMCResult,
     calculate_smc,
 )
@@ -142,3 +143,103 @@ def test_bullish_fvg_fill_still_generates_buy_call() -> None:
     assert call.stop_loss < call.entry_price  # Stop loss below entry for long
     assert call.target_1 > call.entry_price  # Target above entry for long
     assert call.risk_reward >= 1.8
+
+
+def test_bearish_ob_proximity_requires_wick_into_zone() -> None:
+    """Verify Bearish OB call requires the current bar's high to wick into the zone (high >= bar_low)."""
+    n = 40
+    ob = OrderBlock(bar_low=100.0, bar_high=102.0, bias=BEARISH, bar_index=35)
+
+    # Base df with 39 neutral bars
+    base_data = {
+        "open": [95.0] * (n - 1),
+        "high": [97.0] * (n - 1),
+        "low": [93.0] * (n - 1),
+        "close": [95.0] * (n - 1),
+    }
+
+    # Case A: Last bar closes 1.4% below floor (cmp=98.6), but high=99.5 never wicked into [100.0, 102.0]
+    df_no_wick = pd.DataFrame({
+        "open": base_data["open"] + [97.0],
+        "high": base_data["high"] + [99.5],  # high < 100.0 -> NO wick into zone
+        "low": base_data["low"] + [96.0],
+        "close": base_data["close"] + [98.6],  # 100 * 0.985 = 98.5 <= 98.6 <= 102
+    })
+    smc_res_a = SMCResult(
+        df=pl.from_pandas(df_no_wick).with_columns(pl.Series("smc_atr", [1.0] * n)),
+        active_order_blocks=[ob],
+        current_swing_trend=BEARISH,
+        discount_zone=(80.0, 85.0),
+        equilibrium_level=90.0,
+    )
+    call_no_wick = generate_smc_call("TEST_BEAR", smc_res_a, df_no_wick)
+    assert call_no_wick is None, "Expected no call when bar high never reached OB floor"
+
+    # Case B: Last bar closes 1.4% below floor (cmp=98.6), and wicked to 100.5 (into zone)
+    df_wick = pd.DataFrame({
+        "open": base_data["open"] + [97.0],
+        "high": base_data["high"] + [100.5],  # high >= 100.0 -> wicked into zone!
+        "low": base_data["low"] + [96.0],
+        "close": base_data["close"] + [98.6],
+    })
+    smc_res_b = SMCResult(
+        df=pl.from_pandas(df_wick).with_columns(pl.Series("smc_atr", [1.0] * n)),
+        active_order_blocks=[ob],
+        current_swing_trend=BEARISH,
+        discount_zone=(80.0, 85.0),
+        equilibrium_level=90.0,
+    )
+    call_wick = generate_smc_call("TEST_BEAR", smc_res_b, df_wick)
+    assert call_wick is not None
+    assert call_wick.direction == "SELL"
+    assert call_wick.setup_type == "OB_SUPPLY_TAP"
+
+
+def test_bullish_ob_proximity_requires_wick_into_zone() -> None:
+    """Verify Bullish OB call requires the current bar's low to wick into the zone (low <= bar_high)."""
+    n = 40
+    ob = OrderBlock(bar_low=98.0, bar_high=100.0, bias=BULLISH, bar_index=35)
+
+    base_data = {
+        "open": [105.0] * (n - 1),
+        "high": [107.0] * (n - 1),
+        "low": [103.0] * (n - 1),
+        "close": [105.0] * (n - 1),
+    }
+
+    # Case A: Last bar closes 1.4% above ceiling (cmp=101.4), but low=100.5 never reached <= 100.0
+    df_no_wick = pd.DataFrame({
+        "open": base_data["open"] + [103.0],
+        "high": base_data["high"] + [104.0],
+        "low": base_data["low"] + [100.5],  # low > 100.0 -> NO wick into zone
+        "close": base_data["close"] + [101.4],  # 98 <= 101.4 <= 100 * 1.015 = 101.5
+    })
+    smc_res_a = SMCResult(
+        df=pl.from_pandas(df_no_wick).with_columns(pl.Series("smc_atr", [1.0] * n)),
+        active_order_blocks=[ob],
+        current_swing_trend=BULLISH,
+        premium_zone=(115.0, 120.0),
+        equilibrium_level=105.0,
+    )
+    call_no_wick = generate_smc_call("TEST_BULL", smc_res_a, df_no_wick)
+    assert call_no_wick is None, "Expected no call when bar low never reached OB ceiling"
+
+    # Case B: Last bar closes 1.4% above ceiling (cmp=101.4), and low=99.5 reached into zone
+    df_wick = pd.DataFrame({
+        "open": base_data["open"] + [103.0],
+        "high": base_data["high"] + [104.0],
+        "low": base_data["low"] + [99.5],  # low <= 100.0 -> wicked into zone!
+        "close": base_data["close"] + [101.4],
+    })
+    smc_res_b = SMCResult(
+        df=pl.from_pandas(df_wick).with_columns(pl.Series("smc_atr", [1.0] * n)),
+        active_order_blocks=[ob],
+        current_swing_trend=BULLISH,
+        premium_zone=(115.0, 120.0),
+        equilibrium_level=105.0,
+    )
+    call_wick = generate_smc_call("TEST_BULL", smc_res_b, df_wick)
+    assert call_wick is not None
+    assert call_wick.direction == "BUY"
+    assert call_wick.setup_type == "OB_DEMAND_TAP"
+

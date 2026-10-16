@@ -38,21 +38,22 @@ def get_consensus_recommendation(score: float) -> str:
         return "HOLD"
 
 
-def _get_symbol_sector_map() -> dict[str, str]:
+def get_symbol_sector_map(df: pd.DataFrame | None = None) -> dict[str, str]:
     import os
 
     from src.core.symbol_utils import find_latest_master
-    
-    master_path = find_latest_master("data")
-    if not master_path or not os.path.exists(master_path):
-        return {}
-        
-    try:
-        df = pd.read_parquet(master_path)
-    except Exception as exc:
-        LOGGER.warning("Failed to load symbol sector map from master: %s", exc)
-        return {}
-        
+
+    if df is None:
+        master_path = find_latest_master("data")
+        if not master_path or not os.path.exists(master_path):
+            return {}
+
+        try:
+            df = pd.read_parquet(master_path)
+        except Exception as exc:
+            LOGGER.warning("Failed to load symbol sector map from master: %s", exc)
+            return {}
+
     # Map index flag columns to sector symbols
     col_to_sector = {
         "is_nifty_auto": "^CNXAUTO",
@@ -65,9 +66,9 @@ def _get_symbol_sector_map() -> dict[str, str]:
         "is_nifty_media": "^CNXMEDIA",
         "is_nifty_infra": "^CNXINFRA",
         "is_nifty_pse": "^CNXPSE",
-        "is_nifty_bank": "^CNXPSUBANK",
+        "is_nifty_bank": "^NSEBANK",
     }
-    
+
     sym_map = {}
     for _, row in df.iterrows():
         sym = str(row.get("Symbol" if "Symbol" in row else "symbol", "")).strip().upper()
@@ -79,13 +80,17 @@ def _get_symbol_sector_map() -> dict[str, str]:
                 matched_sector = sec_sym
                 break
         sym_map[sym] = matched_sector
-        
+
     return sym_map
+
+
+_get_symbol_sector_map = get_symbol_sector_map
 
 
 def add_consensus_score(
     df: pd.DataFrame,
     symbol_col: str = "SYMBOL",
+    sector_quadrants: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     """
     Append consensus, weighted consensus, market state, and action columns to the DataFrame.
@@ -97,18 +102,18 @@ def add_consensus_score(
         )
 
     # Dynamic Sector Regime Lookup
-    try:
-        sym_sector_map = _get_symbol_sector_map()
-        from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
-        df_sec = run_sector_rotation_cli(period=90)
-        if not df_sec.empty:
-            sector_quadrants = dict(zip(df_sec["Sector"], df_sec["Quadrant"]))
-        else:
+    sym_sector_map = _get_symbol_sector_map()
+    if sector_quadrants is None:
+        try:
+            from src.nse_bhavcopy.sector_rotation import run_sector_rotation_cli
+            df_sec = run_sector_rotation_cli(period=90)
+            if not df_sec.empty:
+                sector_quadrants = dict(zip(df_sec["Sector"], df_sec["Quadrant"]))
+            else:
+                sector_quadrants = {}
+        except Exception as exc:
+            LOGGER.warning("Regime Filter sector rotation lookup failed: %s", exc)
             sector_quadrants = {}
-    except Exception as exc:
-        LOGGER.warning("Regime Filter sector rotation lookup failed: %s", exc)
-        sym_sector_map = {}
-        sector_quadrants = {}
 
     df = df.copy()
     strategy_cols = [
@@ -264,12 +269,12 @@ def add_consensus_score(
         else:
             # Aggressive Regime Filter (Consensus >= 3.5 + 50% Stop-Loss tightening)
             sl_factors.append(0.5)
-            if net_score >= 3.5:
-                action = "HOLD / ADD ON DIPS"
-                conf = 50.0 + (net_score * 8.0)
-            elif net_score >= 5.0:
+            if net_score >= 5.0:
                 action = "STRONG BUY"
                 conf = min(100.0, 50.0 + (net_score * 8.0))
+            elif net_score >= 3.5:
+                action = "HOLD / ADD ON DIPS"
+                conf = 50.0 + (net_score * 8.0)
             elif net_score <= -2.0:
                 action = "EXIT / REDUCE"
                 conf = min(100.0, 50.0 + (abs(net_score) * 8.0))

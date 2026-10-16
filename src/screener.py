@@ -1467,6 +1467,7 @@ class StockScreener:
         from src.nse_bhavcopy.quant_metrics import add_quant_metrics
         from src.nse_bhavcopy.risk_metrics import add_risk_metrics
         from src.nse_bhavcopy.volatility_regime import add_volatility_regime
+        from src.scoring.scoring_engine import ScoringEngine
 
         # Step 1: Consensus Score
         try:
@@ -1537,6 +1538,13 @@ class StockScreener:
                 )
         except Exception as exc:
             LOGGER.warning("Enrichment: volatility regime failed: %s", exc)
+
+        # Step 7: Multi-Factor Scoring Engine
+        try:
+            df = ScoringEngine().score(df)
+            LOGGER.info("Enrichment: multi-factor scoring applied.")
+        except Exception as exc:
+            LOGGER.warning("Enrichment: scoring engine failed: %s", exc)
 
         return df
 

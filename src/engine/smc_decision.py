@@ -57,8 +57,8 @@ def generate_smc_call(symbol: str, smc_res: SMCResult, current_df: pd.DataFrame)
         # A. Bullish Order Block Test
         for ob in reversed(active_obs):
             if ob.bias == BULLISH and ob.bar_index >= recent_bar_cutoff:
-                # Proximity check: Price is within 1% of OB High or inside OB
-                if ob.bar_low <= cmp <= ob.bar_high * 1.015:
+                # Proximity check: Price is within 1.5% of OB High or inside OB, and wicked into the zone
+                if current_low <= ob.bar_high and ob.bar_low <= cmp <= ob.bar_high * 1.015:
                     sl = round(ob.bar_low - (0.15 * atr), 2)
                     risk = cmp - sl
                     max_allowed_risk = cmp * 0.06  # Max 6% SL
@@ -121,7 +121,7 @@ def generate_smc_call(symbol: str, smc_res: SMCResult, current_df: pd.DataFrame)
         # A. Bearish Order Block Test
         for ob in reversed(active_obs):
             if ob.bias == BEARISH and ob.bar_index >= recent_bar_cutoff:
-                if ob.bar_low * 0.985 <= cmp <= ob.bar_high:
+                if current_high >= ob.bar_low and ob.bar_low * 0.985 <= cmp <= ob.bar_high:
                     sl = round(ob.bar_high + (0.15 * atr), 2)
                     risk = sl - cmp
                     max_allowed_risk = cmp * 0.06

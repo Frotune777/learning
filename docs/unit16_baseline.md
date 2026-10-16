@@ -181,3 +181,79 @@ Inspected existing processed outputs in `data/processed/`:
    - Proximity tap tolerance: 1.5% for OB (`ob.bar_low <= cmp <= ob.bar_high * 1.015`), 1.5x ATR for FVG.
 3. **Bearish FVG Parameters:** Built symmetrically to Bullish FVG without introducing any speculative parameters.
 
+---
+
+## 7. Open Questions
+
+### 1. OB Tap Proximity Guard Buffer (1.5% tolerance vs Strict Zone Touch)
+- **Code Reference:** `src/engine/smc_decision.py:61, 124`:
+  - Bullish OB: `ob.bar_low <= cmp <= ob.bar_high * 1.015` (CMP can be up to 1.5% above zone ceiling).
+  - Bearish OB: `ob.bar_low * 0.985 <= cmp <= ob.bar_high` (CMP can be up to 1.5% below zone floor).
+- **Observation:** In the INFY verification, the Bearish OB zone is `[1125.60, 1156.00]`. CMP was `1110.00` (1.39% below `ob.bar_low`).
+  - The tap was **physically verified**: On the final bar `2026-10-15`, INFY's intraday high was `1126.70`, which crossed above `ob.bar_low` (1125.60) by 1.10 points before closing at `1110.00`.
+  - **Issue for review:** The predicate tested only `ob.bar_low * 0.985 <= cmp <= ob.bar_high` (`1108.72 <= 1110.0 <= 1156.0`), allowing any CMP within 1.5% of the zone to trigger a call, even if the bar's wick never actually touched the zone. Consider whether future tuning should require `current_high >= ob.bar_low` (for supply) / `current_low <= ob.bar_high` (for demand), or tighten the 1.5% CMP proximity buffer to ≤0.5%.
+
+### 2. Unclassified Market Regime Fall-Through (`consensus_engine.py:224-234`)
+- **Code Reference:** `src/core/consensus_engine.py:224-234`:
+  ```python
+  if cmp > dma_200 and cmp > dma_50:
+      market_state = "BULL RUN"
+  elif cmp < dma_200 and cmp > dma_50:
+      market_state = "RECOVERY"
+  elif cmp < dma_200 and cmp < dma_50:
+      market_state = "BEAR TERRITORY"
+  ```
+- **Unclassified Condition:**
+  When `cmp > dma_200 and cmp < dma_50` (price is above long-term 200-day trend line but has pulled back below the intermediate 50-day moving average), none of the three branches match. Price silently falls through to the default `market_state = "SIDEWAYS"`.
+- **Proposed Classification for Sign-off:**
+  Classify `cmp > dma_200 and cmp < dma_50` explicitly as `"BULLISH_PULLBACK"` (or `"PULLBACK IN UPTREND"`). Behavior is deliberately preserved as `"SIDEWAYS"` in Phase 2 pending user sign-off.
+
+---
+
+## 8. Phase 2 Results: Consensus & Scoring Correctness + Wiring
+
+### Summary of Fixes
+
+| Component | Issue | Before | After | Regression Test |
+| :--- | :--- | :--- | :--- | :--- |
+| `consensus_engine.py:267-272` | Dead `elif net_score >= 5.0` branch | `if net_score >= 3.5:` swallowed `>= 5.0` | `if net_score >= 5.0:` evaluated first | `test_consensus_aggressive_regime_branch_order` |
+| `consensus_engine.py:68` | Wrong Bank index symbol | `"is_nifty_bank": "^CNXPSUBANK"` | `"is_nifty_bank": "^NSEBANK"` | `test_sector_mapping_nifty_bank` |
+| `scoring_engine.py:246-256` | NaN volatility penalty | `np.where(vol <= 20, ...)` mapped NaN to `10.0` | `pd.isna(vol)` explicitly maps to neutral `50.0` | `test_volatility_scoring_tiers_and_nan` |
+| `screener.py:1414-1541` | `ScoringEngine` uncalled | Screener output omitted composite scores | Wired as Step 7 in `enrich_analysis` | `test_enrich_analysis_wires_scoring_engine` |
+| `smc_decision.py:61, 124` | OB proximity guard buffer | CMP-only check (`ob.bar_low <= cmp <= ob.bar_high * 1.015`) | Added wick requirement: `current_low <= ob.bar_high` (Demand) / `current_high >= ob.bar_low` (Supply) | `test_bullish_ob_proximity_requires_wick_into_zone`, `test_bearish_ob_proximity_requires_wick_into_zone` |
+
+### Screener Output CSV Column Diff
+- Output file: `data/historical/top_250_enriched_20261016.csv`
+- Total columns: **108** (99 before + 9 new composite columns)
+- New columns added:
+  1. `TREND_FACTOR_SCORE`
+  2. `MOMENTUM_FACTOR_SCORE`
+  3. `CAR_FACTOR_SCORE`
+  4. `RISK_FACTOR_SCORE`
+  5. `VOLUME_FACTOR_SCORE`
+  6. `VOLATILITY_FACTOR_SCORE`
+  7. `CATALYST_FACTOR_SCORE`
+  8. `COMPOSITE_SCORE`
+  9. `RANK`
+
+### SMC Scan Universe Call Counts (Phase 1 vs. Phase 2B)
+Scan executed over 2,694 symbols:
+
+| Setup Type | Direction | Phase 1 | Phase 2B (Tightened Wick) | Delta |
+| :--- | :--- | :--- | :--- | :--- |
+| `OB_DEMAND_TAP` | BUY | 36 | **31** | -5 (-13.9%) |
+| `OB_SUPPLY_TAP` | SELL | 23 | **21** | -2 (-8.7%) |
+| **Total OB Calls** | | **59** | **52** | **-7 (-11.9%)** |
+| `FVG_FILL` | BUY | 46 | **51** | +5 (+10.9%) |
+| `FVG_FILL` | SELL | 4 | **5** | +1 (+25.0%) |
+| **Total SMC Calls** | | **109** | **108** | **-1 (-0.9%)** |
+
+> Note: Total OB calls dropped by **11.9%**, well within the ≤40% constraint threshold. Only spurious calls hovering in the 1.5% buffer without a physical zone wick were pruned.
+
+### Open Questions Pending Sign-off
+1. **Market Regime Classification (`consensus_engine.py:224-234`):**
+   `cmp > dma_200 and cmp < dma_50` currently falls through to `"SIDEWAYS"`. Recommended for sign-off: classify as `"BULLISH_PULLBACK"` in Phase 3.
+
+
+
+
