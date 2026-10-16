@@ -14,21 +14,65 @@ import streamlit as st
 from src.core.config import SCREENER_STRATEGIES
 
 
-def render_screener_view():
+def get_screener_csvs(hist_dir: str = "data/historical") -> list[str]:
+    """Discover screener CSV output files in priority order."""
+    enriched = sorted(glob.glob(os.path.join(hist_dir, "top_250_enriched_*.csv")), reverse=True)
+    analyzed = sorted(glob.glob(os.path.join(hist_dir, "top_250_analyzed_*.csv")), reverse=True)
+    other = sorted(
+        glob.glob(os.path.join(hist_dir, "final_list_*.csv"))
+        + glob.glob(os.path.join(hist_dir, "swing_list_*.csv"))
+        + glob.glob(os.path.join(hist_dir, "super_list_*.csv")),
+        reverse=True,
+    )
+    return enriched + analyzed + other
+
+
+def _get_strategy_action_column(strategy_name: str, available_cols: list[str]) -> str | None:
+    """Map strategy display name or config key to actual action column in DataFrame."""
+    known_map = {
+        "Nifty Shop (Single Leg)": "STR_NIFTY_SHOP_ACTION",
+        "Buy Low Sell High": "STR_BUY_LOW_ACTION",
+        "Turtle Trading": "STR_TURTLE_ACTION",
+        "RDX Indicator": "STR_RDX_ACTION",
+        "100 SMA Breakout": "STR_100SMA_ACTION",
+        "ETF Shop Method": "STR_ETF_SHOP_ACTION",
+        "Super BO Stocks": "STR_SUPER_BO_ACTION",
+        "DMADMA (Reverse)": "STR_DMA_REV_ACTION",
+        "DMADMA (No SL)": "STR_DMA_NOSL_ACTION",
+        "Minervini VCP": "STR_VCP_ACTION",
+        "TTM Squeeze": "STR_TTM_ACTION",
+        "SuperTrend": "STR_SUPERTREND_ACTION",
+        "Lorentzian Classification": "STR_LORENTZIAN_ACTION",
+    }
+    if strategy_name in known_map and known_map[strategy_name] in available_cols:
+        return known_map[strategy_name]
+
+    strat = next((s for s in SCREENER_STRATEGIES if s.get("name") == strategy_name), None)
+    if strat:
+        pfx = strat.get("file_prefix", "").replace("strategy_", "").upper()
+        cand = f"STR_{pfx}_ACTION"
+        if cand in available_cols:
+            return cand
+        for c in available_cols:
+            if c.startswith("STR_") and c.endswith("_ACTION") and pfx in c:
+                return c
+    return None
+
+
+def render_screener_view(data_dir: str = "data/historical"):
     st.markdown("""
     <div>
         <h2 style="margin:0; font-weight:800; color:#f8fafc;">⚡ Multi-Strategy Technical Screener & Scanners</h2>
         <p style="margin:4px 0 16px; color:#94a3b8; font-size:0.9rem;">
-            Filter screened stocks by strategy signals, volume bursts, Minervini VCP, and consensus score.
+            Filter screened stocks by strategy signals, volume bursts, Minervini VCP, and composite score.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    processed_dir = "data/processed"
-    csv_files = sorted(glob.glob(os.path.join(processed_dir, "screen_stocks_*.csv")), reverse=True)
+    csv_files = get_screener_csvs(data_dir)
 
     if not csv_files:
-        st.info("No screened CSVs found in data/processed/. Run `uv run main.py screen` to populate.")
+        st.info(f"No screened CSVs found in {data_dir}. Run `uv run main.py screen` to populate.")
         return
 
     # File selection & overview
@@ -50,7 +94,8 @@ def render_screener_view():
         </div>
         """, unsafe_allow_html=True)
     with c2:
-        top_picks = len(df[df["CAR_Category"].isin(["Buy", "Breakout Buy"])]) if "CAR_Category" in df.columns else 0
+        car_col = "CAR_RATING" if "CAR_RATING" in df.columns else ("CAR_Category" if "CAR_Category" in df.columns else None)
+        top_picks = len(df[df[car_col].astype(str).str.contains("Buy", case=False, na=False)]) if car_col else 0
         st.markdown(f"""
         <div class="pro-card">
             <div class="pro-card-title">CAR Buy Rated</div>
@@ -59,16 +104,24 @@ def render_screener_view():
         </div>
         """, unsafe_allow_html=True)
     with c3:
-        vol_spikes = len(df[df["Volume_Spike_10d"] == True]) if "Volume_Spike_10d" in df.columns else 0
+        vol_col = "VOL_SPIKE" if "VOL_SPIKE" in df.columns else ("Volume_Spike_10d" if "Volume_Spike_10d" in df.columns else None)
+        if vol_col:
+            if pd.api.types.is_numeric_dtype(df[vol_col]):
+                vol_spikes = int((df[vol_col] >= 2.0).sum())
+            else:
+                vol_spikes = int((df[vol_col] == True).sum())
+        else:
+            vol_spikes = 0
         st.markdown(f"""
         <div class="pro-card">
             <div class="pro-card-title">Volume Spikes</div>
             <div class="pro-card-value" style="color:#f59e0b;">{vol_spikes}</div>
-            <div class="pro-card-sub">>2x 10d volume burst</div>
+            <div class="pro-card-sub">&ge;2.0x volume burst</div>
         </div>
         """, unsafe_allow_html=True)
     with c4:
-        avg_score = f"{df['Composite_Score'].mean():.1f}" if "Composite_Score" in df.columns else "N/A"
+        comp_col = "COMPOSITE_SCORE" if "COMPOSITE_SCORE" in df.columns else ("Composite_Score" if "Composite_Score" in df.columns else None)
+        avg_score = f"{df[comp_col].mean():.1f}" if comp_col and not df[comp_col].empty and pd.api.types.is_numeric_dtype(df[comp_col]) else "N/A"
         st.markdown(f"""
         <div class="pro-card">
             <div class="pro-card-title">Avg Composite Score</div>
@@ -82,14 +135,16 @@ def render_screener_view():
     # Filter dataframe
     display_df = df.copy()
     if strategy_filter != "ALL":
-        strat_col = next((s["col"] for s in SCREENER_STRATEGIES if s["name"] == strategy_filter), None)
-        if strat_col and strat_col in display_df.columns:
-            display_df = display_df[display_df[strat_col].astype(str).str.contains("Buy|Breakout|Long", case=False, na=False)]
+        action_col = _get_strategy_action_column(strategy_filter, list(display_df.columns))
+        if action_col and action_col in display_df.columns:
+            display_df = display_df[display_df[action_col].astype(str).str.contains("Buy|Breakout|Long|Explosive|Level", case=False, na=False)]
 
-    # Quick Search
+    # Quick Search by Symbol
     search_q = st.text_input("Filter by Symbol or Sector:", placeholder="Type e.g. TATA, RELIANCE, Nifty IT...")
     if search_q.strip():
         q = search_q.strip().upper()
-        display_df = display_df[display_df["SYMBOL"].astype(str).str.contains(q, case=False, na=False)]
+        sym_col = "SYMBOL" if "SYMBOL" in display_df.columns else ("Symbol" if "Symbol" in display_df.columns else None)
+        if sym_col:
+            display_df = display_df[display_df[sym_col].astype(str).str.contains(q, case=False, na=False)]
 
     st.dataframe(display_df, use_container_width=True, height=520)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from src.portfolio.portfolio_engine import Portfolio
 
 
 def render_portfolio_view():
@@ -20,17 +21,19 @@ def render_portfolio_view():
     </div>
     """, unsafe_allow_html=True)
 
-    if "portfolio_cash" not in st.session_state:
-        st.session_state["portfolio_cash"] = 500_000.0
-    if "portfolio_positions" not in st.session_state:
-        st.session_state["portfolio_positions"] = []
+    st.session_state.setdefault("portfolio_cash", 500_000.0)
+    # Ensure canonical dict schema: {SYMBOL: {pos_details}}
+    if not isinstance(st.session_state.get("portfolio_positions"), dict):
+        st.session_state["portfolio_positions"] = {}
 
-    positions = st.session_state["portfolio_positions"]
-    pos_df = pd.DataFrame(positions) if positions else pd.DataFrame()
+    cash = float(st.session_state["portfolio_cash"])
+    port = Portfolio(initial_cash=cash)
+    port.cash = cash
+    port.positions = st.session_state["portfolio_positions"]
 
-    total_pos_val = (pos_df["qty"] * pos_df["current_price"]).sum() if not pos_df.empty else 0.0
-    cash = st.session_state["portfolio_cash"]
-    nav = cash + total_pos_val
+    pos_df = port.to_dataframe()
+    nav = port.get_total_value()
+    total_pos_val = nav - port.cash
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -38,14 +41,14 @@ def render_portfolio_view():
         <div class="pro-card">
             <div class="pro-card-title">Total Portfolio Value (NAV)</div>
             <div class="pro-card-value">₹{nav:,.2f}</div>
-            <div class="pro-card-sub">Cash + Open Value</div>
+            <div class="pro-card-sub">Cash + Open Market Value</div>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class="pro-card">
             <div class="pro-card-title">Available Cash</div>
-            <div class="pro-card-value" style="color:#10b981;">₹{cash:,.2f}</div>
+            <div class="pro-card-value" style="color:#10b981;">₹{port.cash:,.2f}</div>
             <div class="pro-card-sub">Deployable liquidity</div>
         </div>
         """, unsafe_allow_html=True)
@@ -54,16 +57,17 @@ def render_portfolio_view():
         <div class="pro-card">
             <div class="pro-card-title">Invested Capital</div>
             <div class="pro-card-value" style="color:#38bdf8;">₹{total_pos_val:,.2f}</div>
-            <div class="pro-card-sub">{len(positions)} active allocations</div>
+            <div class="pro-card-sub">{len(port.positions)} active allocations</div>
         </div>
         """, unsafe_allow_html=True)
     with c4:
         exposure_pct = (total_pos_val / nav * 100) if nav > 0 else 0.0
+        heat_pct = port.get_heat() * 100
         st.markdown(f"""
         <div class="pro-card">
-            <div class="pro-card-title">Capital Exposure</div>
+            <div class="pro-card-title">Capital Exposure / Heat</div>
             <div class="pro-card-value" style="color:#f59e0b;">{exposure_pct:.1f}%</div>
-            <div class="pro-card-sub">Cap limit: 80%</div>
+            <div class="pro-card-sub">Risk Heat: {heat_pct:.1f}% (Cap: 80%)</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -74,35 +78,62 @@ def render_portfolio_view():
         st.markdown("#### Open Portfolio Positions")
         if not pos_df.empty:
             st.dataframe(pos_df, use_container_width=True)
+
+            # Exit Position controls
+            st.markdown("---")
+            st.markdown("#### Exit / Liquidate Position")
+            col_ex_sym, col_ex_p, col_ex_btn = st.columns([1.5, 1.5, 1])
+            with col_ex_sym:
+                exit_sym = st.selectbox("Select Position to Exit", list(port.positions.keys()))
+            with col_ex_p:
+                curr_price = float(port.positions[exit_sym].get("current_price", 0.0))
+                exit_price = st.number_input("Exit Price (₹)", value=curr_price, step=10.0)
+            with col_ex_btn:
+                st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+                if st.button("Execute Sell", use_container_width=True):
+                    port.exit_position(exit_sym, exit_price)
+                    st.session_state["portfolio_cash"] = port.cash
+                    st.session_state["portfolio_positions"] = port.positions
+                    st.success(f"Successfully closed position in {exit_sym}!")
+                    st.rerun()
         else:
             st.info("No open simulated positions. Add positions using the Trade Panel on the right.")
 
     with col_add:
         st.markdown("#### Quick Allocation Entry")
         sym_input = st.text_input("Symbol", "RELIANCE")
+        sector_input = st.text_input("Sector", "Energy")
         entry_p = st.number_input("Entry Price (₹)", value=2500.0, step=10.0)
         atr_input = st.number_input("ATR (₹)", value=40.0, step=1.0)
         risk_pct = st.slider("Risk Per Trade %", 0.5, 3.0, 1.0)
 
         risk_amt = nav * (risk_pct / 100.0)
         stop_dist = 1.5 * atr_input
-        calc_qty = max(1, int(risk_amt / stop_dist))
+        calc_qty = max(1, int(risk_amt / stop_dist)) if stop_dist > 0 else 1
+        stop_price = round(entry_p - stop_dist, 2)
+        target_price = round(entry_p + 3.0 * atr_input, 2)
         st.caption(f"Suggested Qty (1.5x ATR Stop): **{calc_qty} shares** (Required: ₹{calc_qty * entry_p:,.2f})")
 
         if st.button("Add to Simulated Portfolio", use_container_width=True, type="primary"):
-            cost = calc_qty * entry_p
-            if cost > cash:
-                st.error("Insufficient cash in simulated account.")
+            sym = sym_input.strip().upper()
+            val = calc_qty * entry_p
+            ok, reason = port.can_add(sym, sector_input.strip() or "Other", entry_p, val)
+            if not ok:
+                st.error(f"Cannot add position: {reason}")
             else:
-                st.session_state["portfolio_cash"] -= cost
-                st.session_state["portfolio_positions"].append({
-                    "symbol": sym_input.upper(),
-                    "qty": calc_qty,
-                    "entry_price": entry_p,
-                    "current_price": entry_p,
-                    "stop_loss": round(entry_p - stop_dist, 2),
-                    "target": round(entry_p + 3.0 * atr_input, 2),
-                    "unrealized_pnl": 0.0
-                })
-                st.success(f"Added {calc_qty} shares of {sym_input.upper()}!")
-                st.rerun()
+                added = port.add_position(
+                    symbol=sym,
+                    qty=float(calc_qty),
+                    price=entry_p,
+                    stop_price=stop_price,
+                    target_price=target_price,
+                    sector=sector_input.strip() or "Other",
+                    date_str=pd.Timestamp.now().strftime("%Y-%m-%d"),
+                )
+                if added:
+                    st.session_state["portfolio_cash"] = port.cash
+                    st.session_state["portfolio_positions"] = port.positions
+                    st.success(f"Added {calc_qty} shares of {sym}!")
+                    st.rerun()
+                else:
+                    st.error("Failed to add position.")
