@@ -1,0 +1,41 @@
+name: Data Quality Gate
+
+# NOTE: Do NOT wire this workflow to `push` or `pull_request`.
+# The DQ gate validates on-disk historical data (data/historical/1d/*.parquet)
+# which is populated by external sync jobs and does not exist in standard
+# ephemeral CI checkouts unless hydrated or mounted.
+on:
+  workflow_dispatch:
+  schedule:
+    # 02:00 IST nightly = 20:30 UTC previous day
+    - cron: "30 20 * * *"
+
+jobs:
+  dq-check:
+    name: DQ Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run Data Quality Gate
+        run: ./scripts/dq_gate.sh
+
+      - name: Upload DQ audit logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dq-audit-logs
+          path: logs/dq/*.jsonl
+          if-no-files-found: ignore

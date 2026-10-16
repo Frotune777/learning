@@ -361,6 +361,15 @@ Unit 17 introduces an automated, deterministic verification checkpoint between d
   - `uv run python main.py dq-check --include-inactive`: Includes inactive symbols in halt numerator (exits 1).
   - `uv run python main.py dq-check --min-last-trade-days N`: Per-run override for inactivity threshold.
 
+---
+
+## Unit 19C — CI integration
+- `scripts/dq_gate.sh`: canonical manual/cron entry point
+- `scripts/dq_gate_watch.sh`: cron-friendly variant with log capture
+- `.github/workflows/dq-check.yml`: created
+- Exit-code contract: 0 healthy, 1 halt, 2 script error
+
+
 
 
 
