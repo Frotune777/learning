@@ -136,20 +136,20 @@ def _subheader(title: str) -> None:
     print(_rule("╌"))
 
 
-def ok(msg: str) -> None:
-    print(f"\n  {green('✔')}  {msg}")
+def ok(msg: str) -> str:
+    return f"\n  {green('✔')}  {msg}"
 
 
-def warn(msg: str) -> None:
-    print(f"\n  {yellow('!')}  {msg}")
+def warn(msg: str) -> str:
+    return f"\n  {yellow('!')}  {msg}"
 
 
-def err(msg: str) -> None:
-    print(f"\n  {red('✘')}  {msg}")
+def err(msg: str) -> str:
+    return f"\n  {red('✘')}  {msg}"
 
 
-def tip(msg: str) -> None:
-    print(f"  {dim('→')}  {dim(msg)}")
+def tip(msg: str) -> str:
+    return f"  {dim('→')}  {dim(msg)}"
 
 
 def _pause() -> None:
@@ -175,7 +175,7 @@ def _ask_float(prompt: str, default: float) -> float:
     try:
         return float(raw) if raw else default
     except ValueError:
-        warn(f"Invalid number — using {default}")
+        print(warn(f"Invalid number — using {default}"))
         return default
 
 
@@ -203,7 +203,7 @@ def _display_csv(path: str, title: str, desc: str | None = None) -> None:
         None
     """
     if not os.path.exists(path):
-        err(f"{title} not found at {path}")
+        print(err(f"{title} not found at {path}"))
         return
 
     df = pd.read_csv(path)
@@ -220,7 +220,7 @@ def _display_csv(path: str, title: str, desc: str | None = None) -> None:
         print(f"  {dim(desc)}\n")
 
     if df.empty:
-        warn("No stocks met the criteria.")
+        print(warn("No stocks met the criteria."))
         return
 
     from rich import box

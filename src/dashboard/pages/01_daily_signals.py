@@ -29,7 +29,6 @@ import pandas as pd
 import streamlit as st
 
 from src.portfolio.portfolio_engine import Portfolio
-from src.scoring.scoring_engine import ScoringEngine
 
 try:
     st.set_page_config(page_title="Daily Signals", page_icon="🔍", layout="wide")
@@ -86,7 +85,7 @@ analyzed_files = sorted(
 enriched_files = sorted(
     glob.glob(os.path.join(processed_dir, "top_250_enriched_*.csv"))
 )
-target_files = analyzed_files if analyzed_files else enriched_files
+target_files = enriched_files if enriched_files else analyzed_files
 
 if not target_files:
     st.error(
@@ -104,11 +103,7 @@ latest_file = next(f for f in target_files if os.path.basename(f) == selected_fi
 df = pd.read_csv(latest_file)
 st.sidebar.success(f"✅ {len(df)} stocks loaded")
 
-# Compute composite + consensus if missing
-if "COMPOSITE_SCORE" not in df.columns:
-    scorer = ScoringEngine()
-    df = scorer.score(df)
-
+# Compute consensus if missing
 if "CONSENSUS_SCORE" not in df.columns:
     try:
         from src.core.consensus_engine import add_consensus_score

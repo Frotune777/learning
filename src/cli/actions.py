@@ -315,8 +315,8 @@ def cmd_fyers_login(args: argparse.Namespace) -> None:
         print(f"  {dim('After login, copy the ?code= param from the redirect URL.')}")
         print(f"  {dim('Then run:  uv run main.py fyers-token --code <auth_code>')}")
     except RuntimeError as exc:
-        err(str(exc))
-        tip("Set FYERS_API_KEY or BROKER_API_KEY environment variable first.")
+        print(err(str(exc)))
+        print(tip("Set FYERS_API_KEY or BROKER_API_KEY environment variable first."))
         sys.exit(1)
 
 
@@ -330,20 +330,22 @@ def cmd_fyers_token(args: argparse.Namespace) -> None:
     api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
 
     if not api_key or not api_secret:
-        err(
-            "FYERS_API_KEY and FYERS_API_SECRET "
-            "(or BROKER_API_KEY / BROKER_API_SECRET) must be set as env vars."
+        print(
+            err(
+                "FYERS_API_KEY and FYERS_API_SECRET "
+                "(or BROKER_API_KEY / BROKER_API_SECRET) must be set as env vars."
+            )
         )
         sys.exit(1)
 
     code = getattr(args, "code", "")
     if not code:
-        err("--code is required. Run 'fyers-login' first.")
+        print(err("--code is required. Run 'fyers-login' first."))
         sys.exit(1)
 
     token = exchange_auth_code(code, api_key, api_secret)
     if not token:
-        err("Token exchange failed. Check your auth code and credentials.")
+        print(err("Token exchange failed. Check your auth code and credentials."))
         sys.exit(1)
 
     fetcher = FyersFetcher()
@@ -495,7 +497,7 @@ def cmd_smc_scan(args: argparse.Namespace) -> None:
         target_dir = target_dir / "1d"
 
     if not target_dir.exists():
-        err(f"Historical directory not found at: {target_dir}")
+        print(err(f"Historical directory not found at: {target_dir}"))
         sys.exit(1)
 
     limit: int | None = getattr(args, "limit", None)

@@ -79,24 +79,27 @@ class SMCPatterns:
     def detect_order_blocks(
         data: pd.DataFrame, threshold: float = 0.02
     ) -> pd.DataFrame:
-        """Detect Order Blocks - Vectorized candidate identification"""
-        next_close = data["Close"].shift(-1)
-        move_pct = abs(next_close - data["Close"]) / data["Close"]
+        """
+        Detect Order Blocks - Vectorized candidate identification with same-bar confirmation.
+        Semantics follow LuxAlgo SMC: confirmation is evaluated on the current bar close vs prior close,
+        eliminating any lookahead (shift(-1)).
+        """
+        prev_close = data["Close"].shift(1)
+        move_pct = abs(data["Close"] - prev_close) / prev_close
 
-        # Identification masks
+        # Identification masks (evaluated at bar i relative to prior bar i-1)
         bull_mask = (
             (move_pct >= threshold)
-            & (next_close > data["Close"])
+            & (data["Close"] > prev_close)
             & (data["Close"] > data["Open"])
         )
         bear_mask = (
             (move_pct >= threshold)
-            & (next_close < data["Close"])
+            & (data["Close"] < prev_close)
             & (data["Close"] < data["Open"])
         )
 
         obs = []
-        # We still iterate for result collection, but logic is vectorized
         for idx in data.index[bull_mask]:
             row = data.loc[idx]
             obs.append(
@@ -127,14 +130,15 @@ class SMCPatterns:
 
     @staticmethod
     def detect_fvg(data: pd.DataFrame) -> pd.DataFrame:
-        """Detect Fair Value Gaps (FVG) - Vectorized"""
-        p_high = data["High"].shift(1)
-        n_low = data["Low"].shift(-1)
-        p_low = data["Low"].shift(1)
-        n_high = data["High"].shift(-1)
+        """
+        Detect Fair Value Gaps (FVG) - Vectorized 3-bar past window (i-2, i-1, i).
+        Evaluated strictly at current bar i without future lookahead (shift(-1)).
+        """
+        p2_high = data["High"].shift(2)
+        p2_low = data["Low"].shift(2)
 
-        bull_fvg_mask = p_high < n_low
-        bear_fvg_mask = p_low > n_high
+        bull_fvg_mask = (data["Low"] > p2_high) & p2_high.notna()
+        bear_fvg_mask = (data["High"] < p2_low) & p2_low.notna()
 
         fvgs = []
         for idx in data.index[bull_fvg_mask]:
@@ -142,9 +146,9 @@ class SMCPatterns:
                 {
                     "Date": idx,
                     "Type": "Bullish FVG",
-                    "Gap_Top": n_low[idx],
-                    "Gap_Bottom": p_high[idx],
-                    "Gap_Size": n_low[idx] - p_high[idx],
+                    "Gap_Top": data.loc[idx, "Low"],
+                    "Gap_Bottom": p2_high[idx],
+                    "Gap_Size": data.loc[idx, "Low"] - p2_high[idx],
                 }
             )
 
@@ -153,9 +157,9 @@ class SMCPatterns:
                 {
                     "Date": idx,
                     "Type": "Bearish FVG",
-                    "Gap_Top": p_low[idx],
-                    "Gap_Bottom": n_high[idx],
-                    "Gap_Size": p_low[idx] - n_high[idx],
+                    "Gap_Top": p2_low[idx],
+                    "Gap_Bottom": data.loc[idx, "High"],
+                    "Gap_Size": p2_low[idx] - data.loc[idx, "High"],
                 }
             )
 
@@ -237,30 +241,36 @@ class WilliamsFractals:
 
     @staticmethod
     def detect_fractals(data: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
-        """Detect Williams Fractals - Vectorized"""
+        """
+        Detect Williams Fractals - Vectorized without lookahead.
+        The 5-bar fractal definition (peak/trough at bar i-2 compared to bars i-4, i-3, i-1, and i)
+        is confirmed and recorded at confirmation bar i, eliminating future bar references.
+        """
         high = data["High"]
         low = data["Low"]
 
-        # Bullish Fractal: High > 2 highs on each side
+        # 5-bar confirmation at bar i: candidate peak is at bar i-2
+        peak = high.shift(2)
+        trough = low.shift(2)
+
         bull_mask = (
-            (high > high.shift(1))
-            & (high > high.shift(2))
-            & (high > high.shift(-1))
-            & (high > high.shift(-2))
+            (peak > high.shift(4))
+            & (peak > high.shift(3))
+            & (peak > high.shift(1))
+            & (peak > high)
         )
-        # Bearish Fractal: Low < 2 lows on each side
         bear_mask = (
-            (low < low.shift(1))
-            & (low < low.shift(2))
-            & (low < low.shift(-1))
-            & (low < low.shift(-2))
+            (trough < low.shift(4))
+            & (trough < low.shift(3))
+            & (trough < low.shift(1))
+            & (trough < low)
         )
 
         f_highs = pd.Series(index=data.index, dtype=float)
         f_lows = pd.Series(index=data.index, dtype=float)
 
-        f_highs[bull_mask] = high[bull_mask]
-        f_lows[bear_mask] = low[bear_mask]
+        f_highs[bull_mask] = peak[bull_mask]
+        f_lows[bear_mask] = trough[bear_mask]
 
         return f_highs, f_lows
 

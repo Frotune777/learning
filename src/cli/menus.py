@@ -354,10 +354,10 @@ def _print_main_menu() -> None:
 def menu_build_master(data_dir: str) -> None:
     """Interactive handler for building the equity master table."""
     _header("Build Equity Master", "Downloads sec_list.csv + all index constituents")
-    tip("This replaces any previously cached master Parquet.")
+    print(tip("This replaces any previously cached master Parquet."))
 
     if not _confirm("Start build?"):
-        warn("Cancelled.")
+        print(warn("Cancelled."))
         return
 
     delay = _ask_float("API delay between index calls (seconds)", 1.0)
@@ -368,10 +368,10 @@ def menu_build_master(data_dir: str) -> None:
     )
     try:
         path = builder.build_and_save(delay=delay)
-        ok(f"Master saved  →  {path}")
+        print(ok(f"Master saved  →  {path}"))
         logger.info("master_built", path=path, delay=delay)
     except RuntimeError as exc:
-        err(f"Build failed: {exc}")
+        print(err(f"Build failed: {exc}"))
         logger.error("master_build_failed", error=str(exc))
 
     _pause()
@@ -393,7 +393,7 @@ def menu_sync_history(
     )
 
     if not symbols:
-        err("No symbols found. Run 'Build Master' first.")
+        print(err("No symbols found. Run 'Build Master' first."))
         _pause()
         return
 
@@ -409,7 +409,7 @@ def menu_sync_history(
     delay = _ask_float("Rate delay between requests (seconds)", 0.5)
 
     if dry_run:
-        ok(f"Dry run: Would sync {len(symbols)} symbols with {tf} timeframe")
+        print(ok(f"Dry run: Would sync {len(symbols)} symbols with {tf} timeframe"))
         _pause()
         return
 
@@ -425,13 +425,13 @@ def menu_sync_history(
     ok_count = sum(v for v in results.values())
     failed = [s for s, v in results.items() if not v]
 
-    ok(f"Sync complete  {ok_count}/{len(symbols)} succeeded")
+    print(ok(f"Sync complete  {ok_count}/{len(symbols)} succeeded"))
     if failed:
         limit = Config.DISPLAY_LIMITS["symbol_preview"]
-        warn(
+        print(warn(
             f"{len(failed)} failed: {', '.join(failed[:limit])}"
             + (" …" if len(failed) > limit else "")
-        )
+        ))
 
     logger.info("sync_completed", succeeded=ok_count, failed=len(failed))
     _pause()
@@ -446,7 +446,7 @@ def menu_sync_filtered(data_dir: str, hist_dir: str) -> None:
     print(f"  {dim('Market cap:')}  Large · Mid · Small · Other · {dim('Enter = All')}")
     cap = input("  Cap filter: ").strip() or None
     if cap and cap not in ("Large", "Mid", "Small", "Other"):
-        warn(f"Unknown cap '{cap}' — no cap filter applied.")
+        print(warn(f"Unknown cap '{cap}' — no cap filter applied."))
         cap = None
 
     print(
@@ -478,7 +478,7 @@ def _display_strategy_results(csv_path: str, name: str, description: str) -> Non
     if os.path.exists(csv_path):
         _display_csv(csv_path, name, description)
     else:
-        warn(f"No results generated for {name} today.")
+        print(warn(f"No results generated for {name} today."))
 
 
 def _screener_results_menu(hist_dir: str, date_str: str) -> None:
@@ -602,7 +602,7 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
                     f"{cyan(export_path)} in the project root."
                 )
             else:
-                warn("No strategy results found for today.")
+                print(warn("No strategy results found for today."))
         else:
             try:
                 c_idx = int(choice)
@@ -615,9 +615,9 @@ def _screener_results_menu(hist_dir: str, date_str: str) -> None:
                         csv_path, strategy["name"], strategy["description"]
                     )
                 else:
-                    warn(f"Invalid choice '{choice}'.")
+                    print(warn(f"Invalid choice '{choice}'."))
             except ValueError:
-                warn(f"Invalid choice '{choice}'.")
+                print(warn(f"Invalid choice '{choice}'."))
 
         _pause()
 
@@ -636,8 +636,8 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
     csv_pattern = os.path.join(processed_dir, "*.csv")
     csv_files = sorted(glob.glob(csv_pattern), reverse=True)
     if not csv_files:
-        err(f"No processed Bhavcopy CSV found in '{processed_dir}'.")
-        tip("Run option [2] or [3] to sync data first.")
+        print(err(f"No processed Bhavcopy CSV found in '{processed_dir}'."))
+        print(tip("Run option [2] or [3] to sync data first."))
         _pause()
         return
 
@@ -654,11 +654,11 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
         top_250_path=top_csv, date_obj=now, save_to_disk=save_to_disk
     )
 
-    ok("Screening complete")
+    print(ok("Screening complete"))
     if save_to_disk:
-        ok(f"All standard reports exported to {hist_dir}")
+        print(ok(f"All standard reports exported to {hist_dir}"))
     else:
-        tip("Results computed in-memory (no files written yet)")
+        print(tip("Results computed in-memory (no files written yet)"))
     logger.info("screening_completed", date=now.strftime("%Y-%m-%d"))
 
     # ---- Upgraded results display (replaces raw CSV viewer) ----
@@ -676,7 +676,7 @@ def menu_screen(data_dir: str, hist_dir: str, processed_dir: str) -> None:
             title=f"ANALYSIS RESULTS — {now.strftime('%Y-%m-%d')}",
         )
     else:
-        err("No analysis results to display.")
+        print(err("No analysis results to display."))
         _pause()
 
 
@@ -686,8 +686,8 @@ def menu_status(hist_dir: str, data_dir: str) -> None:
 
     master_path = _find_latest_master(data_dir)
     if master_path is None:
-        err("No master table found.")
-        tip("Run option [1] to build the master first.")
+        print(err("No master table found."))
+        print(tip("Run option [1] to build the master first."))
         _pause()
         return
 
@@ -735,8 +735,8 @@ def menu_registry(data_dir: str, hist_dir: str) -> None:
     n = reg.load()
 
     if n == 0:
-        warn("No registry found.")
-        tip("Run a sync (option [2] or [3]) to create one.")
+        print(warn("No registry found."))
+        print(tip("Run a sync (option [2] or [3]) to create one."))
         _pause()
         return
 
@@ -786,15 +786,15 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
 
     master_path = _find_latest_master(data_dir)
     if master_path is None:
-        err("No master table found.")
-        tip("Run option [1] to build the master first.")
+        print(err("No master table found."))
+        print(tip("Run option [1] to build the master first."))
         _pause()
         return
 
     builder = NSEEquityMasterBuilder(output_dir=data_dir)
     symbols = builder.get_symbols(master_path)
     if not symbols:
-        err("No symbols loaded from Equity Master.")
+        print(err("No symbols loaded from Equity Master."))
         _pause()
         return
 
@@ -904,24 +904,24 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
 
     if choice == "H":
         if not to_heal:
-            ok("No missing or stale symbols need syncing!")
+            print(ok("No missing or stale symbols need syncing!"))
             _pause()
             return
         if not _confirm(f"Start targeted sync/refresh of {len(to_heal)} symbols?"):
-            warn("Cancelled.")
+            print(warn("Cancelled."))
             _pause()
             return
 
-        ok("Initializing Auto-Healer pipeline...")
+        print(ok("Initializing Auto-Healer pipeline..."))
         hs.sync(to_heal, resume=False)
-        ok("Auto-healing process completed!")
+        print(ok("Auto-healing process completed!"))
         _pause()
     elif choice == "T":
         if nan_indicators.empty:
-            ok("All available Parquets already have complete, non-NaN indicators!")
+            print(ok("All available Parquets already have complete, non-NaN indicators!"))
             _pause()
             return
-        ok(f"Recalculating technical indicators for {len(nan_indicators)} symbols...")
+        print(ok(f"Recalculating technical indicators for {len(nan_indicators)} symbols..."))
         fixed_count = 0
         from src.nse_bhavcopy.ta_indicators import add_ta_indicators
         for sym in nan_indicators["symbol"].tolist():
@@ -936,27 +936,27 @@ def menu_data_quality(hist_dir: str, data_dir: str) -> None:
                         fixed_count += 1
             except Exception as e:
                 logger.warning("Failed TA repair for %s: %s", sym, e)
-        ok(f"Quick-Repaired {fixed_count} symbols! All TA indicators are now non-NaN.")
+        print(ok(f"Quick-Repaired {fixed_count} symbols! All TA indicators are now non-NaN."))
         _pause()
     elif choice == "R":
-        ok("Initializing Smart Data Repairer...")
+        print(ok("Initializing Smart Data Repairer..."))
         from src.analysis.SmartDataRepairer import SmartDataRepairer
         repairer = SmartDataRepairer()
         repairer.repair_all(hist_dir, timeframe="1d")
-        ok("Smart Data Repairer completed!")
+        print(ok("Smart Data Repairer completed!"))
         _pause()
     elif choice == "F":
         path = os.path.join(hist_dir, "failed_symbols.csv")
         if os.path.exists(path):
             try:
                 os.remove(path)
-                ok("Successfully cleared failed_symbols.csv blacklist!")
+                print(ok("Successfully cleared failed_symbols.csv blacklist!"))
             except Exception as e:
-                err(f"Failed to clear blacklist: {e}")
+                print(err(f"Failed to clear blacklist: {e}"))
         else:
-            warn("No blacklist file found.")
+            print(warn("No blacklist file found."))
     else:
-        warn("Quit healing.")
+        print(warn("Quit healing."))
 
     _pause()
 
@@ -975,15 +975,15 @@ def menu_ta_dashboard(hist_dir: str, symbol: str | None = None) -> None:
 
     path = os.path.join(hist_dir, "1d", f"{symbol}.parquet")
     if not os.path.exists(path):
-        err(f"Historical data for '{symbol}' not found at: {path}")
-        tip("Sync this symbol first using option [2] or [3].")
+        print(err(f"Historical data for '{symbol}' not found at: {path}"))
+        print(tip("Sync this symbol first using option [2] or [3]."))
         _pause()
         return
 
     try:
         df = pd.read_parquet(path)
         if df.empty:
-            err(f"Data file for '{symbol}' is empty.")
+            print(err(f"Data file for '{symbol}' is empty."))
             _pause()
             return
 
@@ -1011,7 +1011,7 @@ def menu_ta_dashboard(hist_dir: str, symbol: str | None = None) -> None:
         today = datetime.now().date()
         days_stale = (today - last_date).days
         if days_stale > 3:
-            warn(f"Data is {days_stale} days old (latest bar: {last_date}). Run sync to update.")
+            print(warn(f"Data is {days_stale} days old (latest bar: {last_date}). Run sync to update."))
 
         row = df.iloc[-1]
         date_str = df.index[-1].strftime("%Y-%m-%d")
@@ -1209,7 +1209,7 @@ def menu_ta_dashboard(hist_dir: str, symbol: str | None = None) -> None:
         logger.info("ta_dashboard_viewed", symbol=symbol, score=score)
 
     except Exception as exc:
-        err(f"Error loading '{symbol}': {exc}")
+        print(err(f"Error loading '{symbol}': {exc}"))
         logger.error("ta_dashboard_failed", symbol=symbol, error=str(exc))
 
     _pause()
@@ -1221,15 +1221,15 @@ def menu_recompute_ta(hist_dir: str) -> None:
         "Recompute TA Indicators",
         "Loops all local Parquet files and rewrites TA columns",
     )
-    tip("This may take several minutes for large datasets.")
+    print(tip("This may take several minutes for large datasets."))
 
     if not _confirm("Proceed?"):
-        warn("Cancelled.")
+        print(warn("Cancelled."))
         return
 
     sync_obj = HistoricalSync(data_dir=hist_dir)
     sync_obj.recompute_all_ta()
-    ok("TA recompute complete.")
+    print(ok("TA recompute complete."))
     logger.info("ta_recomputed")
     _pause()
 
@@ -1256,7 +1256,7 @@ def menu_unified_scanner(data_dir: str, hist_dir: str) -> None:
     }
     group_name = mapping.get(choice)
     if not group_name:
-        warn(f"Invalid choice '{choice}'. Running 'All' group.")
+        print(warn(f"Invalid choice '{choice}'. Running 'All' group."))
         group_name = "All"
 
     print(f"\n  Running '{group_name}' scanner group...\n")
@@ -1265,13 +1265,13 @@ def menu_unified_scanner(data_dir: str, hist_dir: str) -> None:
         signals = run_unified_scanner(group_name, data_dir=data_dir, hist_dir=hist_dir)
         df = compile_signals_to_dataframe(signals)
     except Exception as exc:
-        err(f"Unified scanner execution failed: {exc}")
+        print(err(f"Unified scanner execution failed: {exc}"))
         logger.error("unified_scanner_failed", error=str(exc))
         _pause()
         return
 
     if df.empty:
-        warn(f"No signals generated for group '{group_name}' today.")
+        print(warn(f"No signals generated for group '{group_name}' today."))
         _pause()
         return
 
@@ -1297,7 +1297,7 @@ def menu_liquid_etf() -> None:
     df = run_liquid_etf_screener()
 
     if df.empty:
-        warn("Failed to retrieve or parse ETF data.")
+        print(warn("Failed to retrieve or parse ETF data."))
         _pause()
         return
 
@@ -1324,7 +1324,7 @@ def menu_minervini() -> None:
     signals = run_minervini_cli()
 
     if not signals:
-        warn("No stocks met the Trend Template criteria.")
+        print(warn("No stocks met the Trend Template criteria."))
         _pause()
         return
 
@@ -1360,7 +1360,7 @@ def menu_sector_rotation() -> None:
     df = run_sector_rotation_cli()
 
     if df.empty:
-        warn("No sector data could be processed.")
+        print(warn("No sector data could be processed."))
         _pause()
         return
 
@@ -1387,7 +1387,7 @@ def menu_correlation() -> None:
     df = run_correlation_cli()
 
     if df.empty:
-        warn("No correlation data could be generated.")
+        print(warn("No correlation data could be generated."))
         _pause()
         return
 
@@ -1419,7 +1419,7 @@ def menu_heatmap() -> None:
     df = run_heatmap_cli(index_name)
 
     if df.empty:
-        warn(f"No data could be generated for {index_name}.")
+        print(warn(f"No data could be generated for {index_name}."))
         _pause()
         return
 
@@ -1461,7 +1461,7 @@ def menu_ma_slope(ticker: str | None = None) -> None:
     result = analyze_stock_ma_slope(ticker)
 
     if "error" in result:
-        warn(result["error"])
+        print(warn(result["error"]))
         _pause()
         return
 
@@ -1498,7 +1498,7 @@ def menu_squeeze(ticker: str | None = None) -> None:
     df = run_squeeze_cli(symbol=ticker, period=period)
 
     if df.empty:
-        warn("No squeeze data returned. Check the symbol and period.")
+        print(warn("No squeeze data returned. Check the symbol and period."))
         _pause()
         return
 
@@ -1523,13 +1523,13 @@ def menu_pair_scanner(hist_dir: str) -> None:
 
     daily_dir = os.path.join(hist_dir, "1d")
     if not os.path.isdir(daily_dir):
-        warn(f"Daily directory '{daily_dir}' does not exist.")
+        print(warn(f"Daily directory '{daily_dir}' does not exist."))
         _pause()
         return
 
     parquet_files = [f for f in os.listdir(daily_dir) if f.endswith(".parquet")]
     if not parquet_files:
-        warn(f"No parquet files found in '{daily_dir}'.")
+        print(warn(f"No parquet files found in '{daily_dir}'."))
         _pause()
         return
 
@@ -1547,7 +1547,7 @@ def menu_pair_scanner(hist_dir: str) -> None:
         if symbol_limit < 2:
             symbol_limit = 2
     except ValueError:
-        warn(f"Invalid number. Using default {defaults['default_symbol_limit']}.")
+        print(warn(f"Invalid number. Using default {defaults['default_symbol_limit']}."))
         symbol_limit = defaults["default_symbol_limit"]
 
     try:
@@ -1558,7 +1558,7 @@ def menu_pair_scanner(hist_dir: str) -> None:
         if max_pval <= 0:
             max_pval = defaults["max_pval_threshold"]
     except ValueError:
-        warn(f"Invalid float. Using default {defaults['max_pval_threshold']}.")
+        print(warn(f"Invalid float. Using default {defaults['max_pval_threshold']}."))
         max_pval = defaults["max_pval_threshold"]
 
     try:
@@ -1569,7 +1569,7 @@ def menu_pair_scanner(hist_dir: str) -> None:
         if max_pairs <= 0:
             max_pairs = defaults["max_pairs"]
     except ValueError:
-        warn(f"Invalid number. Using default {defaults['max_pairs']}.")
+        print(warn(f"Invalid number. Using default {defaults['max_pairs']}."))
         max_pairs = defaults["max_pairs"]
 
     print(f"\n  Scanning top {symbol_limit} symbols with max p-val = {max_pval}...\n")
@@ -1598,13 +1598,13 @@ def menu_pair_scanner(hist_dir: str) -> None:
         else:
             df = pd.DataFrame()
     except Exception as exc:
-        err(f"Pair scanning failed: {exc}")
+        print(err(f"Pair scanning failed: {exc}"))
         logger.error("pair_scanner_failed", error=str(exc))
         _pause()
         return
 
     if df.empty:
-        warn("No cointegrated pairs found matching the criteria.")
+        print(warn("No cointegrated pairs found matching the criteria."))
         _pause()
         return
 
@@ -1629,7 +1629,7 @@ def menu_nse_live() -> None:
         "Live NSE Data Hub",
         "Pre-market · Price Info · Index · FII/DII · Holidays",
     )
-    tip("Each query makes a live request to NSE. Ensure internet is available.")
+    print(tip("Each query makes a live request to NSE. Ensure internet is available."))
 
     sub_opts = [
         ("1", "Pre-Market Snapshot", "Live pre-market data (NIFTY 50, BANK, F&O…)"),
@@ -1663,7 +1663,7 @@ def menu_nse_live() -> None:
         try:
             nse = get_nse_utils()
         except Exception as exc:
-            err(f"Failed to connect to NSE: {exc}")
+            print(err(f"Failed to connect to NSE: {exc}"))
             _pause()
             continue
 
@@ -1677,7 +1677,7 @@ def menu_nse_live() -> None:
             try:
                 df_pm = nse.pre_market_info(category=cat)
                 if df_pm.empty:
-                    warn("No pre-market data returned.")
+                    print(warn("No pre-market data returned."))
                 else:
                     from rich import box
                     from rich.console import Console
@@ -1716,19 +1716,19 @@ def menu_nse_live() -> None:
                     console.print(tbl)
                     print(f"\n  {dim(f'{len(df_pm)} total rows (showing {limit})')}")
             except Exception as exc:
-                err(f"Pre-market query failed: {exc}")
+                print(err(f"Pre-market query failed: {exc}"))
                 logger.error("premarket_failed", error=str(exc))
 
         elif sub == "2":
             _subheader("Live Price Info")
             symbol = input("  NSE Symbol (e.g. RELIANCE): ").strip().upper()
             if not symbol:
-                warn("No symbol entered.")
+                print(warn("No symbol entered."))
             else:
                 try:
                     info = nse.price_info(symbol)
                     if not info:
-                        warn(f"No data found for {symbol}.")
+                        print(warn(f"No data found for {symbol}."))
                     else:
                         print()
                         print(_rule("─"))
@@ -1736,7 +1736,7 @@ def menu_nse_live() -> None:
                             print(f"  {cyan(f'{k:<20}')} {bold(str(v))}")
                         print(_rule("─"))
                 except Exception as exc:
-                    err(f"Price info query failed: {exc}")
+                    print(err(f"Price info query failed: {exc}"))
 
         elif sub == "3":
             _subheader("Index Constituents")
@@ -1770,20 +1770,20 @@ def menu_nse_live() -> None:
                     print(result[show_cols].head(20).to_string())
                     print(f"\n  {dim(f'{len(result)} constituents (showing 20)')}")
                 else:
-                    warn("No data returned for that index.")
+                    print(warn("No data returned for that index."))
             except Exception as exc:
-                err(f"Index query failed: {exc}")
+                print(err(f"Index query failed: {exc}"))
 
         elif sub == "4":
             _subheader("FII / DII Activity (Today)")
             try:
                 df_fii = nse.fii_dii_activity()
                 if df_fii.empty:
-                    warn("No FII/DII data returned.")
+                    print(warn("No FII/DII data returned."))
                 else:
                     print(df_fii.to_string(index=False))
             except Exception as exc:
-                err(f"FII/DII query failed: {exc}")
+                print(err(f"FII/DII query failed: {exc}"))
 
         elif sub == "5":
             _subheader("NSE Trading Holidays")
@@ -1793,7 +1793,7 @@ def menu_nse_live() -> None:
                 for h in holidays:
                     print(f"  {dim('·')} {h}")
             except Exception as exc:
-                err(f"Holidays query failed: {exc}")
+                print(err(f"Holidays query failed: {exc}"))
 
         elif sub == "6":
             _subheader("Check Holiday Status")
@@ -1804,16 +1804,16 @@ def menu_nse_live() -> None:
             try:
                 is_hol = nse.is_nse_trading_holiday(date_inp)
                 if is_hol is None:
-                    warn("Invalid date format provided.")
+                    print(warn("Invalid date format provided."))
                 elif is_hol:
-                    warn(f"{date_inp or 'Today'} is a NSE TRADING HOLIDAY.")
+                    print(warn(f"{date_inp or 'Today'} is a NSE TRADING HOLIDAY."))
                 else:
-                    ok(f"{date_inp or 'Today'} is a NORMAL TRADING DAY.")
+                    print(ok(f"{date_inp or 'Today'} is a NORMAL TRADING DAY."))
             except Exception as exc:
-                err(f"Holiday check failed: {exc}")
+                print(err(f"Holiday check failed: {exc}"))
 
         else:
-            warn(f"Invalid option '{sub}'.")
+            print(warn(f"Invalid option '{sub}'."))
 
         _pause()
 
@@ -1831,7 +1831,7 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         ).strip()
         n_estimators = int(n_est_in) if n_est_in else defaults.get("n_estimators", 100)
     except ValueError:
-        warn(f"Invalid number. Using default {defaults.get('n_estimators', 100)}.")
+        print(warn(f"Invalid number. Using default {defaults.get('n_estimators', 100)}."))
         n_estimators = defaults.get("n_estimators", 100)
 
     try:
@@ -1840,12 +1840,12 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         ).strip()
         max_depth = int(max_depth_in) if max_depth_in else defaults.get("max_depth", 5)
     except ValueError:
-        warn(f"Invalid number. Using default {defaults.get('max_depth', 5)}.")
+        print(warn(f"Invalid number. Using default {defaults.get('max_depth', 5)}."))
         max_depth = defaults.get("max_depth", 5)
 
     price_path = os.path.join(hist_dir, "1d", f"{symbol}.parquet")
     if not os.path.exists(price_path):
-        err(f"Historical Parquet file not found at: {price_path}")
+        print(err(f"Historical Parquet file not found at: {price_path}"))
         _pause()
         return
 
@@ -1853,16 +1853,16 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         print(f"\n  Loading price data for {symbol}...")
         df_prices = pd.read_parquet(price_path)
         if df_prices.empty or len(df_prices) < 20:
-            err(f"Insufficient history for {symbol} ({len(df_prices)} bars).")
+            print(err(f"Insufficient history for {symbol} ({len(df_prices)} bars)."))
             _pause()
             return
 
         print(f"  Scanning for delivery percentage data in {data_dir}/processed...")
         df_delivery = _get_delivery_history(os.path.join(data_dir, "processed"), symbol)
         if df_delivery is not None and not df_delivery.empty:
-            ok(f"Aggregated {len(df_delivery)} records of delivery percentage data.")
+            print(ok(f"Aggregated {len(df_delivery)} records of delivery percentage data."))
         else:
-            warn("No delivery percentage data found. Defaulting to 0.0.")
+            print(warn("No delivery percentage data found. Defaulting to 0.0."))
 
         print(
             f"  Training Random Forest (n_estimators={n_estimators}, "
@@ -1877,7 +1877,7 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         clf = MLClassifier(n_estimators=n_estimators, max_depth=max_depth)
         X, y = clf.prepare_features(df_prices, df_delivery)
         if len(X) < 10:
-            err("Not enough feature rows generated to train/test.")
+            print(err("Not enough feature rows generated to train/test."))
             _pause()
             return
 
@@ -1921,7 +1921,7 @@ def menu_backtest(hist_dir: str, data_dir: str) -> None:
         logger.info("backtest_completed", symbol=symbol, accuracy=acc)
 
     except Exception as exc:
-        err(f"Backtest execution failed: {exc}")
+        print(err(f"Backtest execution failed: {exc}"))
         logger.error("backtest_failed", symbol=symbol, error=str(exc))
 
     _pause()
@@ -1936,13 +1936,13 @@ def menu_fo_ban(data_dir: str) -> None:
         manager = FOBanManager(cache_dir=data_dir)
         ban_list = manager.fetch_fo_ban_list()
         if ban_list:
-            ok(f"Found {len(ban_list)} securities in F&O ban:")
+            print(ok(f"Found {len(ban_list)} securities in F&O ban:"))
             for sym in sorted(ban_list):
                 print(f"  {dim('·')} {bold(sym)}")
         else:
-            ok("No securities are currently in the F&O ban period.")
+            print(ok("No securities are currently in the F&O ban period."))
     except Exception as exc:
-        err(f"Failed to query F&O ban list: {exc}")
+        print(err(f"Failed to query F&O ban list: {exc}"))
         logger.error("fo_ban_failed", error=str(exc))
 
     _pause()
@@ -1956,8 +1956,8 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
         "Bhavcopy Incremental Sync",
         "Downloads 1 ZIP per missing trading day — far faster than per-symbol API",
     )
-    tip("Only updates symbols that already have a local Parquet (incremental path).")
-    tip("New symbols with no history still need 'Sync Historical' first.")
+    print(tip("Only updates symbols that already have a local Parquet (incremental path)."))
+    print(tip("New symbols with no history still need 'Sync Historical' first."))
 
     raw_dir = os.path.join(data_dir, "raw")
     defaults = Config.SYNC_DEFAULTS
@@ -1968,7 +1968,7 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
     try:
         days_back = int(days_back_str)
     except ValueError:
-        warn(f"Invalid number — using {defaults['default_days_back']}.")
+        print(warn(f"Invalid number — using {defaults['default_days_back']}."))
         days_back = defaults["default_days_back"]
 
     recompute = _confirm("Recompute TA indicators after sync? (recommended)")
@@ -1982,7 +1982,7 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
         else "",
     )
     if not zip_path or not os.path.exists(zip_path):
-        err("No Bhavcopy ZIP found in data/raw. Run 'Build Master' first.")
+        print(err("No Bhavcopy ZIP found in data/raw. Run 'Build Master' first."))
         _pause()
         return
 
@@ -1995,13 +1995,13 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
     )
     symbols = dl.get_eq_symbols(raw_bytes)
     if not symbols:
-        err("Could not extract symbols from Bhavcopy ZIP.")
+        print(err("Could not extract symbols from Bhavcopy ZIP."))
         _pause()
         return
 
     print(f"\n  {dim('Symbols loaded:')}  {bold(str(len(symbols)))}")
     if not _confirm(f"Start Bhavcopy sync for {len(symbols)} symbols?"):
-        warn("Cancelled.")
+        print(warn("Cancelled."))
         _pause()
         return
 
@@ -2016,14 +2016,14 @@ def menu_bhavcopy_sync(data_dir: str, hist_dir: str) -> None:
 
     ok_count = sum(v for v in results.values())
     needs_refresh = [s for s, v in results.items() if not v]
-    ok(f"Sync complete  {ok_count}/{len(symbols)} symbols updated.")
+    print(ok(f"Sync complete  {ok_count}/{len(symbols)} symbols updated."))
     if needs_refresh:
         limit = Config.DISPLAY_LIMITS["symbol_preview"]
-        warn(
+        print(warn(
             f"{len(needs_refresh)} need full refresh (run Sync Historical): "
             + ", ".join(needs_refresh[:limit])
             + (" …" if len(needs_refresh) > limit else "")
-        )
+        ))
 
     logger.info(
         "bhavcopy_sync_completed", succeeded=ok_count, failed=len(needs_refresh)
@@ -2063,7 +2063,7 @@ def menu_fyers_token() -> None:
         if pick.isdigit() and 1 <= int(pick) <= len(hist_keys):
             chosen = hist_keys[int(pick) - 1]
             dsm.active_historical_source = chosen
-            ok(f"Active historical source switched to: {DATA_SOURCES[chosen].name}")
+            print(ok(f"Active historical source switched to: {DATA_SOURCES[chosen].name}"))
     elif sub_choice == "2":
         print("\n  Available Live Providers:")
         live_keys = [k for k, v in DATA_SOURCES.items() if v.supports_live]
@@ -2073,12 +2073,12 @@ def menu_fyers_token() -> None:
         if pick.isdigit() and 1 <= int(pick) <= len(live_keys):
             chosen = live_keys[int(pick) - 1]
             dsm.active_live_source = chosen
-            ok(f"Active live source switched to: {DATA_SOURCES[chosen].name}")
+            print(ok(f"Active live source switched to: {DATA_SOURCES[chosen].name}"))
     elif sub_choice == "3":
         api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
         api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
         if not api_key or not api_secret:
-            err("FYERS_API_KEY/BROKER_API_KEY and Secret must be set in .env.")
+            print(err("FYERS_API_KEY/BROKER_API_KEY and Secret must be set in .env."))
             _pause()
             return
 
@@ -2096,10 +2096,10 @@ def menu_fyers_token() -> None:
             token = exchange_auth_code(code, api_key, api_secret)
             if token:
                 fetcher.set_token(token)
-                ok(f"Token saved to {fetcher.token_cache}")
-                tip("This token is valid for the rest of the trading day.")
+                print(ok(f"Token saved to {fetcher.token_cache}"))
+                print(tip("This token is valid for the rest of the trading day."))
             else:
-                err("Failed to exchange code for token. Check credentials.")
+                print(err("Failed to exchange code for token. Check credentials."))
     _pause()
 
 
@@ -2120,7 +2120,7 @@ def menu_ml_anomaly(hist_dir: str, data_dir: str) -> None:
     try:
         cmd_ml_anomaly(args)
     except Exception as exc:
-        err(f"ML Anomaly detection failed: {exc}")
+        print(err(f"ML Anomaly detection failed: {exc}"))
     finally:
         _pause()
 
@@ -2145,7 +2145,7 @@ def menu_strategy_inspector(hist_dir: str) -> None:
         glob.glob(os.path.join(hist_dir, "top_250_analyzed_*.csv")), reverse=True
     )
     if not analyzed_files:
-        err("No analyzed CSV found. Run the Technical Screener (option 4) first.")
+        print(err("No analyzed CSV found. Run the Technical Screener (option 4) first."))
         _pause()
         return
 
@@ -2159,7 +2159,7 @@ def menu_strategy_inspector(hist_dir: str) -> None:
 
     symbol = input(f"  {dim('Enter NSE Symbol')} (e.g. TCS): ").strip().upper()
     if not symbol:
-        warn("No symbol entered.")
+        print(warn("No symbol entered."))
         _pause()
         return
 
@@ -2190,7 +2190,7 @@ def menu_consensus_leaderboard(hist_dir: str) -> None:
         glob.glob(os.path.join(hist_dir, "top_250_analyzed_*.csv")), reverse=True
     )
     if not analyzed_files:
-        err("No analyzed CSV found. Run the Technical Screener (option 4) first.")
+        print(err("No analyzed CSV found. Run the Technical Screener (option 4) first."))
         _pause()
         return
 
@@ -2219,23 +2219,23 @@ def menu_configure_alerts() -> None:
         "Set your bot token and chat ID for push notifications",
     )
 
-    tip("Create a bot via @BotFather on Telegram to get your token.")
-    tip("Get your chat ID by messaging @userinfobot or @RawDataBot.")
+    print(tip("Create a bot via @BotFather on Telegram to get your token."))
+    print(tip("Get your chat ID by messaging @userinfobot or @RawDataBot."))
 
     current_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     current_chat = os.getenv("TELEGRAM_CHAT_ID", "")
 
     if current_token:
-        ok(f"Current token: ...{current_token[-8:]} (from env)")
+        print(ok(f"Current token: ...{current_token[-8:]} (from env)"))
     else:
-        warn("TELEGRAM_BOT_TOKEN not set in environment.")
+        print(warn("TELEGRAM_BOT_TOKEN not set in environment."))
     if current_chat:
-        ok(f"Current chat ID: {current_chat} (from env)")
+        print(ok(f"Current chat ID: {current_chat} (from env)"))
     else:
-        warn("TELEGRAM_CHAT_ID not set in environment.")
+        print(warn("TELEGRAM_CHAT_ID not set in environment."))
 
     print()
-    tip("Add these to your .env file:")
+    print(tip("Add these to your .env file:"))
     print(f"  {dim('TELEGRAM_BOT_TOKEN=<your_bot_token>')}")
     print(f"  {dim('TELEGRAM_CHAT_ID=<your_chat_id>')}")
     print()
@@ -2244,22 +2244,22 @@ def menu_configure_alerts() -> None:
         _pause()
         return
 
-    tip("Make sure you have sent /start to your bot in Telegram before testing.")
+    print(tip("Make sure you have sent /start to your bot in Telegram before testing."))
     svc = TelegramService()
     if svc.test_connection():
-        ok("Telegram bot connected successfully!")
+        print(ok("Telegram bot connected successfully!"))
         if _confirm("Send a test message?"):
             sent = svc.send_message(
                 "\U0001f680 <b>NSE Pipeline</b> \u2014 Telegram alerts are configured and working!"
             )
             if sent:
-                ok("Test message sent. Check your Telegram chat.")
+                print(ok("Test message sent. Check your Telegram chat."))
             else:
-                err("Message failed (400 Bad Request).")
-                warn("The bot cannot send you a message until you initiate a chat.")
-                tip("Open Telegram \u2192 search your bot \u2192 tap /start \u2192 then retry.")
+                print(err("Message failed (400 Bad Request)."))
+                print(warn("The bot cannot send you a message until you initiate a chat."))
+                print(tip("Open Telegram \u2192 search your bot \u2192 tap /start \u2192 then retry."))
     else:
-        err("Could not connect. Check your TELEGRAM_BOT_TOKEN in .env.")
+        print(err("Could not connect. Check your TELEGRAM_BOT_TOKEN in .env."))
 
 
     _pause()
@@ -2274,8 +2274,8 @@ def menu_send_alerts(hist_dir: str) -> None:
 
     svc = TelegramService()
     if not svc.bot_token or not svc.chat_id:
-        err("Telegram not configured. Run option [27] first.")
-        tip("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your .env file.")
+        print(err("Telegram not configured. Run option [27] first."))
+        print(tip("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your .env file."))
         _pause()
         return
 
@@ -2286,7 +2286,7 @@ def menu_send_alerts(hist_dir: str) -> None:
         _glob.glob(os.path.join(hist_dir, "final_list_*.csv")), reverse=True
     )
     if not final_files:
-        err("No screener results found. Run the Technical Screener (option 4) first.")
+        print(err("No screener results found. Run the Technical Screener (option 4) first."))
         _pause()
         return
 
@@ -2301,15 +2301,15 @@ def menu_send_alerts(hist_dir: str) -> None:
         which += [s["file_prefix"] for s in SCREENER_STRATEGIES]
 
     if not _confirm(f"Send {len(which)} file(s) via Telegram?"):
-        warn("Cancelled.")
+        print(warn("Cancelled."))
         _pause()
         return
 
     success = svc.send_screener_results(hist_dir, date_str, lists=which)
     if success:
-        ok("Screener results sent successfully to Telegram!")
+        print(ok("Screener results sent successfully to Telegram!"))
     else:
-        err("Failed to send results. Check your credentials and network.")
+        print(err("Failed to send results. Check your credentials and network."))
 
     _pause()
 
@@ -2334,7 +2334,7 @@ def menu_query_engine(hist_dir: str, data_dir: str) -> None:
             else:
                 print("No results or empty DataFrame returned.")
         except Exception as e:
-            err(f"Query error: {e}")
+            print(err(f"Query error: {e}"))
     _pause()
 
 
@@ -2359,7 +2359,7 @@ def menu_nifty_ki_dukan(hist_dir: str, data_dir: str) -> None:
     try:
         run_nifty_ki_dukan(data_dir, hist_dir)
     except Exception as e:
-        err(f"Error running Nifty Ki Dukan: {e}")
+        print(err(f"Error running Nifty Ki Dukan: {e}"))
     _pause()
 
 
@@ -2408,7 +2408,7 @@ def menu_lux_regimes(hist_dir: str) -> None:
 
     files = sorted(glob.glob(os.path.join(hist_dir, "*.parquet")))
     if not files:
-        err("No Parquet files found in hist_dir.")
+        print(err("No Parquet files found in hist_dir."))
         _pause()
         return
 
@@ -2454,7 +2454,7 @@ def menu_llm_dossier(hist_dir: str) -> None:
 
     symbol = input(f"  {dim('Enter NSE Symbol')} (e.g. RELIANCE, TCS, INFY): ").strip().upper()
     if not symbol:
-        warn("No symbol entered.")
+        print(warn("No symbol entered."))
         _pause()
         return
 
@@ -2467,12 +2467,12 @@ def menu_llm_dossier(hist_dir: str) -> None:
     report_file = out_dir / f"{symbol}_LLM_DOSSIER.md"
     report_file.write_text(dossier_text, encoding="utf-8")
 
-    print(f"\n  {ok('Dossier generated successfully!')}")
+    print(ok('Dossier generated successfully!'))
     print(f"  Saved to file: {cyan(str(report_file))}\n")
     print(_rule("═"))
     print(dossier_text)
     print(_rule("═"))
-    print(f"\n  {tip(f'You can copy the text above or share the markdown file at: {report_file}')}\n")
+    print(tip(f'You can copy the text above or share the markdown file at: {report_file}'))
     _pause()
 
 
@@ -2552,6 +2552,6 @@ def interactive_menu(
         if handler:
             handler()
         else:
-            warn(f"'{choice}' is not a valid option — enter 0-37.")
+            print(warn(f"'{choice}' is not a valid option — enter 0-37."))
 
 

@@ -339,17 +339,25 @@ class DataRepository:
     Now supports multiple timeframes (1m, 5m, 15m, 1h, 1d, 1wk)
     """
 
-    def __init__(self, timeframe="1d"):
+    def __init__(self, timeframe: str = "1d", base_path: Path | str | None = None):
         """
         Initialize DataRepository with timeframe support
 
         Args:
             timeframe: Timeframe for data ('1m', '5m', '15m', '1h', '1d', '1wk')
+            base_path: Optional explicit base directory. Defaults to Config.get_hist_dir() / timeframe.
         """
         self.timeframe = timeframe
-        self.base_path = (
-            Path("user_data/stock_data") / timeframe
-        )  # Separate by timeframe
+        if base_path is not None:
+            self.base_path = Path(base_path)
+        else:
+            from src.core.config import Config
+            hist_dir = (
+                Config.get_hist_dir()
+                if hasattr(Config, "get_hist_dir")
+                else getattr(Config, "DEFAULT_HIST_DIR", "data/historical")
+            )
+            self.base_path = Path(hist_dir) / timeframe
         self.base_path.mkdir(parents=True, exist_ok=True)
         self._db_con = None
 

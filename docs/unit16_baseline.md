@@ -254,6 +254,30 @@ Scan executed over 2,694 symbols:
 1. **Market Regime Classification (`consensus_engine.py:224-234`):**
    `cmp > dma_200 and cmp < dma_50` currently falls through to `"SIDEWAYS"`. Recommended for sign-off: classify as `"BULLISH_PULLBACK"` in Phase 3.
 
+---
+
+## 9. Phase 3 Results: Scanner, CLI Formatters, DataRepository, Dashboard Order, and Lookahead Fixes
+
+### Summary of Fixes
+
+| Component | Issue | Before | After | Regression Test |
+| :--- | :--- | :--- | :--- | :--- |
+| `src/engine/scanner.py:726-764` | Fake ATR and hardcoded long SL/TP | `High.rolling(14).mean() - Low.rolling(14).mean()` | Wilder ATR(14) (`talib.ATR` with true range fallback); directional SL/TP (BUY, SELL, NEUTRAL) | `tests/test_scanner.py` (5 tests) |
+| `src/engine/scanner.py:881-885` | Bus emission misclassified NEUTRAL as SHORT | `"LONG" if "BUY" in signal else "SHORT"` | `"LONG"` for BUY, `"SHORT"` for SELL, `None` for NEUTRAL | `test_emit_to_bus_neutral_is_not_short` |
+| `src/cli/formatters.py:136-154` | `ok/warn/err/tip` print and return `None` | `print(...)` and returns `None` (leading to `"None: ..."` f-strings) | Returns formatted string; statements wrapped in `print()` | `tests/test_cli_formatters.py` (5 tests) |
+| `src/data/storage.py:349-361` | Hardcoded `user_data/stock_data` default | Hardcoded `Path("user_data/stock_data") / timeframe` | Defaults `base_path=None` to `Config.get_hist_dir() / timeframe` (`data/historical`) | `tests/test_storage.py` (2 tests) |
+| `src/dashboard/pages/01_daily_signals.py:89` | Inverted CSV file priority | `analyzed_files if analyzed_files else enriched_files` | `enriched_files if enriched_files else analyzed_files` | `tests/test_dashboard_file_selection.py` (1 test) |
+| `src/dashboard/pages/01_daily_signals.py:107` | Redundant inline scoring block | `ScoringEngine().score(df)` called inline | Removed redundant inline block (enriched CSVs already carry 9 composite factors) | Code inspection & unit test |
+| `src/analysis/patterns.py:79-126` | Lookahead in order block detection | `next_close = data["Close"].shift(-1)` | Same-bar confirmation at bar i vs prior close (i-1) | `test_order_blocks_no_lookahead` |
+| `src/analysis/patterns.py:129-163` | Lookahead in FVG detection | `shift(-1)` in `n_low` and `n_high` | Strict 3-bar past window `(i-2, i-1, i)` with no negative shifts | `test_fvg_3bar_past_window` |
+| `src/analysis/patterns.py:243-269` | Lookahead in Williams Fractals | `shift(-1)` and `shift(-2)` written at peak bar i | 5-bar fractal confirmed and recorded at confirmation bar `i+2`, zero lookahead | `test_williams_fractals_last_2_rows_unconfirmed` |
+
+### SMC Scan Universe Call Counts (Phase 3 Post-Verification)
+Full universe scan over 2,694 symbols:
+- Output calls: **108** (31 `OB_DEMAND_TAP`, 21 `OB_SUPPLY_TAP`, 51 `FVG_BUY`, 5 `FVG_SELL`).
+- Exactly matches Phase 2B call count (108). Zero downstream regressions.
+- Test Suite: **255 passed** in 62.54s (`uv run pytest -q`).
+
 
 
 

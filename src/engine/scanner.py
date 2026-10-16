@@ -202,7 +202,7 @@ class UltraOptimizedMultiTimeframeScanner:
             signal, confidence = self._generate_signal(score)
 
             # Risk management
-            risk_mgmt = self._calculate_risk_management(data, indicators)
+            risk_mgmt = self._calculate_risk_management(data, indicators, signal)
 
             # Criteria Validation
             passed_criteria = True
@@ -726,20 +726,58 @@ class UltraOptimizedMultiTimeframeScanner:
         else:
             return "NEUTRAL", 50
 
-    def _calculate_risk_management(self, data, indicators):
-        """Calculate risk management levels"""
-        current_price = data["Close"].iloc[-1]
-        atr = (
-            data["High"].rolling(14).mean().iloc[-1]
-            - data["Low"].rolling(14).mean().iloc[-1]
-        )
+    def _calculate_risk_management(self, data, indicators, signal: str = "NEUTRAL"):
+        """Calculate risk management levels with Wilder ATR(14) and directional SL/TP."""
+        current_price = float(data["Close"].iloc[-1])
 
-        stop_loss = current_price - (2 * atr)
-        take_profit = current_price + (3 * atr)
+        # Wilder ATR(14) via talib with manual True Range fallback
+        try:
+            import talib
 
-        risk_percent = ((current_price - stop_loss) / current_price) * 100
-        reward_percent = ((take_profit - current_price) / current_price) * 100
-        risk_reward = reward_percent / risk_percent if risk_percent > 0 else 0
+            atr_series = talib.ATR(
+                data["High"].values.astype(float),
+                data["Low"].values.astype(float),
+                data["Close"].values.astype(float),
+                timeperiod=14,
+            )
+            atr = float(atr_series[-1])
+            if pd.isna(atr) or atr <= 0:
+                raise ValueError("Invalid ATR")
+        except Exception:
+            high = data["High"].astype(float)
+            low = data["Low"].astype(float)
+            close = data["Close"].astype(float)
+            prev_close = close.shift(1)
+            tr = pd.concat([
+                high - low,
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ], axis=1).max(axis=1)
+            atr_series = tr.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+            atr = (
+                float(atr_series.iloc[-1])
+                if len(atr_series) >= 14 and not pd.isna(atr_series.iloc[-1])
+                else float(high.iloc[-1] - low.iloc[-1])
+            )
+
+        if "BUY" in signal:
+            stop_loss = current_price - (2 * atr)
+            take_profit = current_price + (3 * atr)
+            risk_percent = ((current_price - stop_loss) / current_price) * 100
+            reward_percent = ((take_profit - current_price) / current_price) * 100
+            risk_reward = reward_percent / risk_percent if risk_percent > 0 else 0.0
+        elif "SELL" in signal:
+            stop_loss = current_price + (2 * atr)
+            take_profit = current_price - (3 * atr)
+            risk_percent = ((stop_loss - current_price) / current_price) * 100
+            reward_percent = ((current_price - take_profit) / current_price) * 100
+            risk_reward = reward_percent / risk_percent if risk_percent > 0 else 0.0
+        else:
+            stop_loss = float("nan")
+            take_profit = float("nan")
+            risk_percent = float("nan")
+            reward_percent = float("nan")
+            risk_reward = float("nan")
 
         return {
             "current_price": current_price,
@@ -843,7 +881,7 @@ class UltraOptimizedMultiTimeframeScanner:
             "signal_type": result.get("signal", "NEUTRAL"),
             "signal_direction": "LONG"
             if "BUY" in result.get("signal", "")
-            else "SHORT",
+            else ("SHORT" if "SELL" in result.get("signal", "") else None),
             "signal_score": result.get("score", 0),
             "signal_confidence": result.get("confidence", 0),
             "timeframe": ",".join(timeframes),
