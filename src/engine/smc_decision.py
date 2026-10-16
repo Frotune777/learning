@@ -146,4 +146,34 @@ def generate_smc_call(symbol: str, smc_res: SMCResult, current_df: pd.DataFrame)
                                 notes=f"Bearish OB ({ob.bar_low:.1f}-{ob.bar_high:.1f}) | Risk: {risk:.2f}"
                             )
 
+        # B. Bearish FVG Fill
+        for fvg in reversed(active_fvgs):
+            if fvg.bias == BEARISH and fvg.bar_index >= recent_bar_cutoff:
+                # Proximity check: Gap bottom is within 1.5x ATR of CMP
+                gap_distance = abs(cmp - fvg.bottom)
+                if gap_distance <= (1.5 * atr) and fvg.bottom * 0.99 <= cmp <= fvg.top:
+                    sl = round(fvg.top + (0.15 * atr), 2)
+                    risk = sl - cmp
+                    max_allowed_risk = cmp * 0.06
+
+                    if 0 < risk <= max_allowed_risk:
+                        tp1 = round(smc_res.discount_zone[0] if not pd.isna(smc_res.discount_zone[0]) else cmp - (2.5 * risk), 2)
+                        tp1 = min(tp1, round(cmp - (2.0 * risk), 2))
+                        tp2 = round(tp1 - (1.5 * risk), 2)
+                        rr = round((cmp - tp1) / risk, 2)
+
+                        if rr >= 1.8:
+                            return TradingCall(
+                                symbol=symbol,
+                                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                direction="SELL",
+                                setup_type="FVG_FILL",
+                                entry_price=round(cmp, 2),
+                                stop_loss=sl,
+                                target_1=tp1,
+                                target_2=tp2,
+                                risk_reward=rr,
+                                notes=f"Bearish FVG ({fvg.bottom:.1f}-{fvg.top:.1f}) | Risk: {risk:.2f}"
+                            )
+
     return None

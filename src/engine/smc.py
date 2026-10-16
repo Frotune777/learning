@@ -273,18 +273,18 @@ def calculate_smc(
         # Order Block Mitigation Check
         surviving_obs = []
         for ob in active_order_blocks:
-            # Bullish OB (Demand): Mitigated when price taps into the zone
+            # Bullish OB (Demand): Mitigated when price violates the floor (bar_low)
             if ob.bias == BULLISH:
-                touch_price = c if close_mitigation else l
-                if touch_price <= ob.bar_high:
+                breached = (c < ob.bar_low) if close_mitigation else (l < ob.bar_low)
+                if breached:
                     ob.mitigated = True
                     ob.mitigated_bar_index = i
                 else:
                     surviving_obs.append(ob)
-            # Bearish OB (Supply): Mitigated when price taps into the zone
+            # Bearish OB (Supply): Mitigated when price violates the ceiling (bar_high)
             else:
-                touch_price = c if close_mitigation else h
-                if touch_price >= ob.bar_low:
+                breached = (c > ob.bar_high) if close_mitigation else (h > ob.bar_high)
+                if breached:
                     ob.mitigated = True
                     ob.mitigated_bar_index = i
                 else:
