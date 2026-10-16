@@ -224,6 +224,18 @@ def calculate_technical_score(row: pd.Series) -> dict[str, Any]:
     bb_lower = row.get("BB_LOWER")
     adx = row.get("ADX_14")
 
+    # Prevents misleading STRONG SELL rating on stale/incomplete TA parquets (see Unit 16 Phase 3F).
+    key_indicators = [
+        rsi,
+        ema_20,
+        sma_50,
+        sma_200,
+        adx,
+    ]
+    nan_count = sum(1 for v in key_indicators if pd.isna(v))
+    if nan_count >= len(key_indicators) / 2:
+        return {"score": 0, "rating": "INSUFFICIENT DATA"}
+
     # 1. Trend Analysis (Max 35 points)
     if not pd.isna(close) and not pd.isna(ema_20) and close > float(ema_20):
         score += 5

@@ -645,3 +645,33 @@ def cmd_smc_calls(args: argparse.Namespace) -> None:
     console.print()
     console.print(table)
     print()
+
+
+def cmd_repair_ta(args: argparse.Namespace) -> None:
+    """Walk hist_dir/1d, detect Parquets whose last row has NaN RSI_14, and re-run add_ta_indicators in-place."""
+    from pathlib import Path
+    target_dir = getattr(args, "hist_dir", Config.DEFAULT_HIST_DIR)
+    p1d = Path(target_dir) / "1d" if (Path(target_dir) / "1d").is_dir() else Path(target_dir)
+    files = sorted(p1d.glob("*.parquet"))
+
+    print(f"\nScanning {len(files)} Parquet files in {p1d} for stale/NaN TA indicators...")
+    checked_count = len(files)
+    repaired_count = 0
+    from src.nse_bhavcopy.ta_indicators import add_ta_indicators
+
+    for f in files:
+        try:
+            df = pd.read_parquet(f)
+            if df.empty or len(df) < 15:
+                continue
+            if "RSI_14" not in df.columns or pd.isna(df["RSI_14"].iloc[-1]):
+                base_cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in df.columns]
+                if len(base_cols) >= 4:
+                    df_fixed = add_ta_indicators(df[base_cols])
+                    df_fixed.to_parquet(f)
+                    repaired_count += 1
+        except Exception as e:
+            LOGGER.warning("Failed TA repair for %s: %s", f.stem, e)
+
+    print(f"\n  Checked: {checked_count} files | Repaired: {repaired_count} files.")
+    print(ok(f"TA backfill complete. {repaired_count}/{checked_count} files updated in-place."))

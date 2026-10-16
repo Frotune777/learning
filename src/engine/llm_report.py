@@ -7,6 +7,7 @@ setup review, and trade validation.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -24,6 +25,19 @@ from src.engine.lux_weinstein import calculate_weinstein_stage
 from src.engine.smc import calculate_smc
 from src.engine.smc_decision import generate_smc_call
 from src.nse_bhavcopy.ta_indicators import add_ta_indicators, calculate_technical_score
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _needs_ta_recompute(df: pd.DataFrame) -> bool:
+    """Check if required TA indicators are missing or NaN on the trailing row."""
+    req_indicators = ("RSI_14", "ADX_14", "ATR_14", "MACD_HIST", "SMA_50", "SMA_200")
+    if df.empty or len(df) < 2:
+        return False
+    for col in req_indicators:
+        if col not in df.columns or pd.isna(df[col].iloc[-1]):
+            return True
+    return False
 
 
 def generate_symbol_llm_dossier(
@@ -75,11 +89,11 @@ def generate_symbol_llm_dossier(
         if cl in ("open", "high", "low", "close", "volume"):
             cap_map[c] = cl.capitalize()
     df_cap = df.rename(columns=cap_map)
-    if "RSI_14" not in df_cap.columns:
+    if _needs_ta_recompute(df_cap):
         try:
             df_cap = add_ta_indicators(df_cap)
-        except Exception:
-            pass
+        except Exception as exc:
+            LOGGER.warning("Could not calculate TA indicators for %s: %s", sym, exc)
 
     last_row = df_cap.iloc[-1]
     cmp = float(last_row.get("Close", 0.0))

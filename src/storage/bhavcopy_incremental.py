@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
+from src.nse_bhavcopy.ta_indicators import add_ta_indicators
 from src.storage.downloader import BhavcopyDownloader
 from src.storage.sync_registry import SyncRegistry, _last_trading_day
 
@@ -152,6 +153,17 @@ class BhavcopyIncrementalSync:
         if df.empty:
             return
         df = df[~df.index.duplicated(keep="last")].sort_index()
+
+        # Ensure all technical indicators (RSI, MACD, EMAs, ATR, ADX, etc.) are up-to-date
+        # Check if indicators need calculation or re-calculation due to new trailing bars with NaNs
+        try:
+            req_cols = {"Close", "High", "Low"}
+            if req_cols.issubset(set(df.columns)):
+                if "RSI_14" not in df.columns or pd.isna(df["RSI_14"].iloc[-1]):
+                    df = add_ta_indicators(df)
+        except Exception as exc:
+            LOGGER.warning("Could not calculate TA indicators for %s during save: %s", symbol, exc)
+
         path = self._parquet_path(symbol)
         try:
             df.to_parquet(path)

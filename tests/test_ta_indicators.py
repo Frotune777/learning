@@ -155,3 +155,39 @@ def test_calculate_technical_score_neutral() -> None:
     result = calculate_technical_score(row)
     assert 40 <= result["score"] < 60
     assert result["rating"] == "NEUTRAL"
+
+
+def test_score_returns_insufficient_data_on_all_nan() -> None:
+    """When key indicators are all NaN, calculate_technical_score must return INSUFFICIENT DATA."""
+    row = pd.Series(
+        {
+            "Close": 100.0,
+            "EMA_20": np.nan,
+            "SMA_50": np.nan,
+            "SMA_200": np.nan,
+            "RSI_14": np.nan,
+            "ADX_14": np.nan,
+        }
+    )
+    result = calculate_technical_score(row)
+    assert result["score"] == 0
+    assert result["rating"] == "INSUFFICIENT DATA"
+
+
+def test_score_proceeds_when_at_least_half_indicators_present() -> None:
+    """When at least half of the key indicators are present (non-NaN), calculate_technical_score proceeds."""
+    # 3 present out of 5 key indicators (RSI_14, EMA_20, SMA_50)
+    row = pd.Series(
+        {
+            "Close": 150.0,
+            "EMA_20": 140.0,
+            "SMA_50": 130.0,
+            "SMA_200": np.nan,
+            "RSI_14": 60.0,
+            "ADX_14": np.nan,
+        }
+    )
+    result = calculate_technical_score(row)
+    assert result["rating"] != "INSUFFICIENT DATA"
+    assert result["score"] > 0
+

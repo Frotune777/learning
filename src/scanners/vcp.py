@@ -31,12 +31,12 @@ class VCPStrategy(BaseStrategy):
             current_price = data["Close"].iloc[-1]
             ema_50 = (
                 data["SMA_50"].iloc[-1]
-                if "SMA_50" in data.columns
+                if "SMA_50" in data.columns and not pd.isna(data["SMA_50"].iloc[-1])
                 else data["Close"].rolling(50).mean().iloc[-1]
             )
             ema_200 = (
                 data["SMA_200"].iloc[-1]
-                if "SMA_200" in data.columns
+                if "SMA_200" in data.columns and not pd.isna(data["SMA_200"].iloc[-1])
                 else data["Close"].rolling(200).mean().iloc[-1]
             )
 

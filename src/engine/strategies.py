@@ -395,12 +395,12 @@ def calc_vcp(
         current_price = float(data["Close"].iloc[-1])
         sma_50 = (
             float(data["SMA_50"].iloc[-1])
-            if "SMA_50" in data.columns
+            if "SMA_50" in data.columns and not pd.isna(data["SMA_50"].iloc[-1])
             else float(data["Close"].rolling(50).mean().iloc[-1])
         )
         sma_200 = (
             float(data["SMA_200"].iloc[-1])
-            if "SMA_200" in data.columns
+            if "SMA_200" in data.columns and not pd.isna(data["SMA_200"].iloc[-1])
             else float(data["Close"].rolling(200).mean().iloc[-1])
         )
 

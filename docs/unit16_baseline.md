@@ -278,6 +278,37 @@ Full universe scan over 2,694 symbols:
 - Exactly matches Phase 2B call count (108). Zero downstream regressions.
 - Test Suite: **255 passed** in 62.54s (`uv run pytest -q`).
 
+---
+
+## 10. Phase 3F Results: Stale TA on Incremental Append & Score-on-NaN Guards
+
+### Summary of Fixes
+
+| Component | Issue | Before | After | Regression Test |
+| :--- | :--- | :--- | :--- | :--- |
+| `src/storage/bhavcopy_incremental.py:162` | Appending OHLCV left TA indicators as NaN | Saved without recomputing TA | Recomputes `add_ta_indicators(df)` if `RSI_14` is missing or trailing row is NaN | `test_update_symbol_recomputes_stale_ta` |
+| `src/engine/llm_report.py:30-45, 92-97` | Dossier skipped TA recompute if column present | Checked only `if "RSI_14" not in df_cap.columns:` | Added `_needs_ta_recompute(df_cap)` checking last row non-NaN across 6 key indicators | `tests/engine/test_llm_report.py` |
+| `src/nse_bhavcopy/ta_indicators.py:226-236` | Misleading `STRONG SELL` on NaN TA | Score defaulted to 0 -> `STRONG SELL` | Returns `{"score": 0, "rating": "INSUFFICIENT DATA"}` if >= half of key indicators are NaN | `test_score_returns_insufficient_data_on_all_nan`, `test_score_proceeds_when_at_least_half_indicators_present` |
+| `src/scanners/vcp.py:32-41`, `src/engine/strategies.py:396-405` | SMA guards only checked column presence | Returned NaN for SMA when trailing row was NaN | Added `not pd.isna(...)` fallback to rolling mean | Full test suite |
+| `src/cli/actions.py`, `main.py` | Need CLI tool for in-place TA backfill | None | Added `repair-ta` CLI command (`cmd_repair_ta`) to walk `data/historical/1d` | Verified via `--help` |
+
+### TCS LLM Dossier Evidence Post-Fix
+- **Section 1 Rating:** Composite Score **78/100 (`BUY`)** (previously `0/100 (STRONG SELL)`).
+- **Section 6 Indicators:**
+  ```markdown
+  | Indicator | Value | Reference / Benchmark | Reading |
+  | :--- | :--- | :--- | :--- |
+  | RSI (14) | 67.28 | 30 / 70 Thresholds | Neutral/Bullish |
+  | ADX (14) | 25.05 | 25.0 Trend Filter | Strong Trend Active |
+  | ATR (14) | ₹70.37 | Daily Volatility | 2.99% of price |
+  | EMA (20) | ₹2,176.93 | Short-term Momentum | Price Above (Bullish) |
+  | SMA (50) | ₹2,240.58 | Intermediate Trend | Price Above (Bullish) |
+  | SMA (200) | ₹2,419.77 | Secular Macro Trend | Price Below (Secular Bear) |
+  | MACD (12,26,9) | Line: 8.95, Sig: -27.02 | Histogram: 35.98 | Bullish Crossover |
+  ```
+- **Test Suite Status:** **259 passed** in 58.23s (`uv run pytest -q`).
+
+
 
 
 

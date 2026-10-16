@@ -15,6 +15,7 @@ from src.cli.actions import (
     cmd_fyers_login,
     cmd_fyers_token,
     cmd_ml_anomaly,
+    cmd_repair_ta,
     cmd_run_optimizer,
     cmd_screen,
     cmd_smc_calls,
@@ -166,6 +167,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Filter calls by execution status",
     )
     p_smc_calls.set_defaults(func=cmd_smc_calls)
+
+    # repair-ta
+    sub.add_parser(
+        "repair-ta", help="Backfill stale/NaN TA indicators in-place across Parquets."
+    ).set_defaults(func=cmd_repair_ta)
 
     # menu (default)
     sub.add_parser("menu", help="Launch interactive menu.").set_defaults(

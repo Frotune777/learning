@@ -391,6 +391,44 @@ class TestUpdateSymbol:
         result = syncer.update_symbol(symbol, {date(2026, 5, 29): empty_df})
         assert result is True
 
+    def test_update_symbol_recomputes_stale_ta(
+        self, syncer: BhavcopyIncrementalSync
+    ) -> None:
+        """Parquet with stale RSI_14 must have RSI_14 recomputed (not NaN) after new row is appended."""
+        symbol = "TCS"
+        n_rows = 50
+        dates = pd.date_range(end="2026-05-26", periods=n_rows, freq="B")
+        df = pd.DataFrame(
+            {
+                "Open": [3500.0] * n_rows,
+                "High": [3550.0] * n_rows,
+                "Low": [3450.0] * n_rows,
+                "Close": [3500.0] * n_rows,
+                "Volume": [500_000.0] * n_rows,
+                "RSI_14": [55.0] * n_rows,
+            },
+            index=dates,
+        )
+        df.to_parquet(syncer._parquet_path(symbol))
+
+        new_date = date(2026, 5, 27)
+        new_row = pd.DataFrame(
+            {
+                "Symbol": [symbol],
+                "Date": [pd.Timestamp(new_date)],
+                "Open": [3500.0],
+                "High": [3550.0],
+                "Low": [3450.0],
+                "Close": [3510.0],
+                "Volume": [600_000.0],
+            }
+        )
+        result = syncer.update_symbol(symbol, {new_date: new_row})
+        assert result is True
+
+        saved = pd.read_parquet(syncer._parquet_path(symbol))
+        assert not pd.isna(saved["RSI_14"].iloc[-1])
+
 
 # ---------------------------------------------------------------------------
 # download_bhavcopies tests
