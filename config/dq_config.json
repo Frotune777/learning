@@ -1,0 +1,8 @@
+{
+  "min_coverage_pct": 0.85,
+  "max_stale_days": 3,
+  "fail_on_stale_ta": true,
+  "halt_if_failure_pct": 0.05,
+  "audit_dir": "logs/dq",
+  "retention_days": 90
+}

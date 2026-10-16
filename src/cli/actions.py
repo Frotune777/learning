@@ -675,3 +675,36 @@ def cmd_repair_ta(args: argparse.Namespace) -> None:
 
     print(f"\n  Checked: {checked_count} files | Repaired: {repaired_count} files.")
     print(ok(f"TA backfill complete. {repaired_count}/{checked_count} files updated in-place."))
+
+
+def cmd_dq_check(args: argparse.Namespace) -> None:
+    """Run Data Quality Gate assertions across historical Parquet files."""
+    from pathlib import Path
+
+    from src.storage.dq_gate import DataQualityGate, DataQualityHalt
+
+    target_dir = getattr(args, "hist_dir", Config.DEFAULT_HIST_DIR)
+    p1d = Path(target_dir) / "1d" if (Path(target_dir) / "1d").is_dir() else Path(target_dir)
+    files = sorted(p1d.glob("*.parquet"))
+    symbols = [f.stem for f in files]
+
+    gate = DataQualityGate()
+    batch_result = gate.check_batch(
+        symbols,
+        hist_dir=p1d,
+        stage="cli.dq-check",
+        halt_on_breach=False,
+    )
+
+    total = batch_result.total_symbols
+    healthy = batch_result.passed_count
+    stale = sum(1 for r in batch_result.symbol_results if r.failure_reason == "DATA_STALE")
+    missing_ta = sum(1 for r in batch_result.symbol_results if r.has_stale_ta or r.failure_reason == "STALE_TA")
+    runs_log = gate.audit_dir / "runs.jsonl"
+
+    print(f"DQ: {total} symbols checked, {healthy} healthy, {stale} stale, {missing_ta} missing TA. Log: {runs_log}")
+
+    if batch_result.halt_triggered:
+        raise DataQualityHalt(
+            f"Failure rate {batch_result.failure_pct:.1%} exceeded threshold {gate.halt_if_failure_pct:.1%}"
+        )

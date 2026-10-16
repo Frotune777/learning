@@ -375,6 +375,18 @@ class HistoricalSync:
             return True
 
         self._save(symbol, df)
+        try:
+            from src.storage.dq_gate import DataQualityGate
+
+            gate = DataQualityGate()
+            gate.check_batch(
+                [symbol],
+                hist_dir=self.data_dir,
+                stage="historical_sync.sync_one",
+                halt_on_breach=False,
+            )
+        except Exception as exc:
+            LOGGER.warning("DQ gate check failed for %s: %s", symbol, exc)
         return True
 
     def sync(
@@ -466,6 +478,19 @@ class HistoricalSync:
             len(results),
             len(skipped),
         )
+
+        touched_symbols = [s for s, ok_val in results.items() if ok_val and s not in skipped]
+        if touched_symbols:
+            from src.storage.dq_gate import DataQualityGate
+
+            gate = DataQualityGate()
+            gate.check_batch(
+                touched_symbols,
+                hist_dir=self.data_dir,
+                stage="historical_sync.sync",
+                halt_on_breach=True,
+            )
+
         return results
 
     def _load_failed_symbols(self) -> set[str]:

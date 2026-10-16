@@ -212,6 +212,8 @@ class SyncRegistry:
         - Persistence: Parquet columnar store — O(N) full scan for batch filters.
     """
 
+    _estimate_trading_days = SyncRecord._estimate_trading_days
+
     def __init__(
         self,
         registry_dir: str = "data",

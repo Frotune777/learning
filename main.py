@@ -11,6 +11,7 @@ from src.cli.actions import (
     cmd_backtest,
     cmd_bhavcopy_sync,
     cmd_build_master,
+    cmd_dq_check,
     cmd_fo_ban,
     cmd_fyers_login,
     cmd_fyers_token,
@@ -26,6 +27,7 @@ from src.cli.actions import (
 from src.cli.formatters import red
 from src.cli.menus import interactive_menu
 from src.core.config import Config, setup_logging
+from src.storage.dq_gate import DataQualityHalt
 
 setup_logging()
 logger = logging.getLogger("nse_pipeline")
@@ -173,6 +175,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "repair-ta", help="Backfill stale/NaN TA indicators in-place across Parquets."
     ).set_defaults(func=cmd_repair_ta)
 
+    # dq-check
+    sub.add_parser(
+        "dq-check", help="Run Data Quality Gate assertions across historical Parquet files."
+    ).set_defaults(func=cmd_dq_check)
+
     # menu (default)
     sub.add_parser("menu", help="Launch interactive menu.").set_defaults(
         func=lambda args: interactive_menu(args.data_dir, args.hist_dir)
@@ -204,6 +211,10 @@ def main() -> None:
     if hasattr(args, "func"):
         try:
             args.func(args)
+        except DataQualityHalt as e:
+            logger.error("data_quality_halt: %s", str(e))
+            print(f"\n  {red('Data Quality Halt:')} {e!s}\n")
+            sys.exit(1)
         except Exception as e:
             logger.error("command_failed: command=%s error=%s", args.command, str(e))
             print(f"\n  {red('Error:')} {e!s}\n")

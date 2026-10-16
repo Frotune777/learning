@@ -308,6 +308,41 @@ Full universe scan over 2,694 symbols:
   ```
 - **Test Suite Status:** **259 passed** in 58.23s (`uv run pytest -q`).
 
+---
+
+## 11. Unit 17 Results: Data Quality Gate and Audit Log
+
+### Overview
+Unit 17 introduces an automated, deterministic verification checkpoint between data ingestion/mutation stages and downstream quantitative consumers (`DataQualityGate`).
+
+### What the Gate Covers
+1. **6 Atomic Assertions per Symbol:**
+   - `file_exists`: Parquet file exists on disk.
+   - `first_bar_present`: Non-empty DataFrame with valid `DatetimeIndex`.
+   - `recency`: `last_bar_date >= last_trading_day - max_stale_days` (default 3 days, holiday-aware).
+   - `coverage`: Historical bar count >= `min_coverage_pct` (default 85%) of expected trading days.
+   - `ohlcv_validity`: `Open`, `High`, `Low`, `Close`, `Volume` present with no NaNs on the latest bar.
+   - `canonical_ta`: `RSI_14` present and non-NaN on the latest bar (for symbols with ≥15 bars).
+2. **Durable Audit Trail (`logs/dq/`):**
+   - `runs.jsonl`: One entry per gate invocation (run ID, stage, timestamp, symbol counts, breach status, duration).
+   - `symbols.jsonl`: One entry per symbol inspected, joinable with DuckDB on `run_id`.
+3. **Configurable Halt-on-Breach Policy (`config/dq_config.json`):**
+   - Single-symbol writes log structured warnings without aborting batch pipelines.
+   - Batch runs halt execution with `DataQualityHalt` if the failure percentage exceeds `halt_if_failure_pct` (default 5.0%).
+4. **Mutating Pipeline Call Sites Wired:**
+   - `src/storage/historical_sync.py :: sync_one()` (per-symbol warning/audit).
+   - `src/storage/historical_sync.py :: sync()` (batch halt check).
+   - `src/storage/bhavcopy_incremental.py :: run()` (batch halt check).
+5. **Operator Subcommand:**
+   - `main.py dq-check`: Audits historical storage and outputs concise one-line status.
+
+### What the Gate Does NOT Cover (Explicit Exclusions)
+1. **Raw ZIP Integrity:** Handled during download/extraction in BhavcopyDownloader; corrupt ZIPs are rejected at ingestion before reaching Parquet.
+2. **Source-API Response Shape:** Fyers/Kite adapter response parsing and broker token auth are handled in `src/core/data_sources.py` and dedicated fetchers.
+3. **Corporate-Action Correctness:** Splits, bonuses, and dividend price adjustments are handled by ratio detection logic in `historical_sync.py` and `bhavcopy_incremental.py`.
+4. **Intraday / Tick Granularity:** The gate is scoped to the canonical 1d historical storage layer.
+
+
 
 
 

@@ -547,4 +547,18 @@ class BhavcopyIncrementalSync:
                 ", ".join(needs_full_refresh[:20]),
             )
 
+        updated_symbols = [s for s, ok_val in results.items() if ok_val]
+        if updated_symbols:
+            from src.storage.dq_gate import DataQualityGate
+
+            gate = DataQualityGate()
+            ref_date = max(missing_days) if missing_days else None
+            gate.check_batch(
+                updated_symbols,
+                hist_dir=self._tf_dir,
+                stage="bhavcopy_incremental.run",
+                halt_on_breach=True,
+                ref_date=ref_date,
+            )
+
         return results
