@@ -7,8 +7,8 @@ name: Data Quality Gate
 on:
   workflow_dispatch:
   schedule:
-    # 02:00 IST nightly = 20:30 UTC previous day
-    - cron: "30 20 * * *"
+    # 19:00 IST Monday-Friday (13:30 UTC), after evening bhavcopy sync window
+    - cron: "30 13 * * 1-5"
 
 jobs:
   dq-check:
