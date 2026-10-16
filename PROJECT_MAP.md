@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-15 (Unit 12)_
+_Last updated on 2026-10-16 (Unit 13)_
 
 ## Canonical package: `src/`
 
@@ -66,6 +66,14 @@ _Last updated on 2026-10-15 (Unit 12)_
 - Regression test: `tests/test_no_circular_imports.py` spawns fresh subprocesses
   for 16 import statements to verify cold-start behavior.
 
+## Real Pipeline Validation
+
+- `build-master` fetches real NSE equity master (2,699 securities) and all
+  Nifty indices.
+- `sync-history` fetches real OHLCV via Fyers → YFinance fallback.
+- `screen` reads real Parquet files and produces technical-analysis CSVs.
+- End-to-end validated in Unit 13 (real data, no mocks, Rule 11 compliant).
+
 ## Archived (do NOT delete — reference only)
 - `_archive/merge_this/`                 — old Screeni-py copy (imports `screeni.*`)
 - `_archive/scratch/`                    — old experiments
@@ -83,6 +91,7 @@ _Last updated on 2026-10-15 (Unit 12)_
 - `_archive/audits/pytest_unit10_postfix.txt` — pytest baseline after Unit 10 UP+I changes
 - `_archive/audits/pytest_unit11_postfix.txt` — pytest baseline after Unit 11 (222 tests)
 - `_archive/audits/pytest_unit12_postfix.txt` — pytest baseline after Unit 12 (222 tests, 0 F401, 0 UP)
+- `_archive/audits/pytest_unit13_postfix.txt` — pytest baseline after Unit 13 (226 tests, CLI regression tests)
 - `_archive/audits/pyproject_before_unit7.toml` — pre-Unit-7 config snapshot
 - `_archive/exports/`                    — Exported_Grouped_Strategies_*.csv (3 files)
 - `_archive/debug/`                      — nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt
@@ -111,8 +120,10 @@ _Last updated on 2026-10-15 (Unit 12)_
 - [x] Unit 12 — F401 cleanup complete (0 remaining)
 - [x] Unit 12 — Shims protected with __all__ (15 files)
 - [x] Unit 12 — Residual UP038 + UP031 fixes applied
-- [ ] Unit 13 — Real pipeline smoke test
+- [x] Unit 13 — Real pipeline smoke test passed
+- [x] Unit 13 — CLI bugs (--resume, --processed-dir) fixed
 - [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
+- [ ] Ongoing — Any issues found during real usage
 
 ## Credentials policy
 - All secrets live in `.env` (gitignored).

@@ -151,7 +151,7 @@ def cmd_screen(args: argparse.Namespace) -> None:
     """
     LOGGER.info("=== PHASE 3: STOCK SCREENING ===")
 
-    processed_dir: str = args.processed_dir
+    processed_dir = args.processed_dir or os.path.join(args.data_dir, "processed")
     csv_pattern = os.path.join(processed_dir, "*.csv")
     csv_files = sorted(glob.glob(csv_pattern), reverse=True)
     if not csv_files:

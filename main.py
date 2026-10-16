@@ -5,7 +5,6 @@ Purpose: Unified CLI entry point for the NSE data pipeline.
 
 import argparse
 import logging
-import os
 import sys
 
 from src.cli.actions import (
@@ -85,12 +84,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument("--limit", type=int)
     p_sync.add_argument("--delay", type=float, default=0.5)
     p_sync.add_argument("--source", default="bhavcopy", choices=["bhavcopy", "master"])
+    p_sync.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help="Resume from registry (skip already-current symbols)",
+    )
     p_sync.set_defaults(func=cmd_sync_history)
 
     # screen
     p_screen = sub.add_parser("screen", help="Run technical screener.")
     p_screen.add_argument(
-        "--processed-dir", default=os.path.join(Config.DEFAULT_DATA_DIR, "processed")
+        "--processed-dir", default=None
     )
     p_screen.add_argument("--cap-filter", choices=["Large", "Mid", "Small", "Other"])
     p_screen.add_argument("--index-filter")

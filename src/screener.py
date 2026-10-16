@@ -228,6 +228,13 @@ class StockScreener:
 
                             if target_date not in cached_df.index:
                                 price = today_prices[ticker]
+                                if price <= 0:
+                                    LOGGER.warning(
+                                        "Skipping in-memory insert for %s: invalid close %s",
+                                        ticker,
+                                        price,
+                                    )
+                                    continue  # skip to next ticker
                                 new_row = pd.DataFrame(
                                     {
                                         "Open": [price],

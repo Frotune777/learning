@@ -1,6 +1,6 @@
 # Project Continuation State
 
-**Last updated:** 2026-10-15 (after Unit 12)
+**Last updated:** 2026-10-16 (after Unit 13)
 **Repo root:** /mnt/Data/Python Project/learning
 **Canonical package:** `src/`
 
@@ -34,31 +34,35 @@
 | 10 | `da1b0d5` | Ruff UP+I modernization — 85 files, 2933-line diff, 0 imports deleted |
 | 11 | `77bfe06` | Fix src.ui ↔ src.data circular import; add cold-start regression test (16 tests); encode Rule 11 |
 | 12 | (see git log HEAD) | Harden 15 shims with __all__; F401 cleanup (120 findings → 0); UP038+UP031 fixes (10 manual) |
+| 13 | (see git log HEAD) | Fix sync-history --resume, screen --processed-dir, screener CLOSE<=0 guard; add 4 CLI regression tests |
 
 ## Current Status
 
-- **Completed:** Units 1–12
-- **Current unit:** 12 — commit pending (Stage B)
-- **Next unit:** 13 — Real pipeline smoke test (build-master + sync-history on real NSE data, sandboxed)
-- **Project health:** ✅ 222/222 tests pass · ✅ 0 F401 · ✅ 0 UP findings · ✅ 0 F821 · ✅ 0 warnings · ✅ 15 shims hardened with __all__ · ⚠️ E501 line-length (341) intentionally left as-is
+- **Completed:** Units 1–13
+- **Current unit:** 13 — commit pending (Stage B)
+- **Next unit:** 14 (optional) — Whitespace / line-length cleanup OR fyers/ revival (user preference)
+- **Project health:** ✅ 226/226 tests pass · ✅ 0 F401 · ✅ 0 UP · ✅ 0 F821 · ✅ 0 warnings · ✅ Real pipeline validated end-to-end · ⚠️ E501/W29* cosmetic (skipped by choice)
 
-## Next Unit Plan (Unit 13 Preview)
+## Next Unit Plan (Unit 14 — Options)
 
-**Goal:** First end-to-end run against **real** NSE data (Rule 11 compliance — no magic numbers).
+**The project is functionally complete.** Three candidate tracks for Unit 14:
 
-**Scope:**
-- Sandbox at `/tmp/learning_unit13_sandbox/`
-- `python main.py --data-dir /tmp/learning_unit13_sandbox build-master --delay 0.5`
-  (real NSE equity master fetch, ~30-60s)
-- `python main.py --data-dir ... --hist-dir /tmp/learning_unit13_sandbox/hist sync-history --limit 3 --delay 0.5`
-  (real OHLCV fetch for 3 symbols)
-- `python main.py --data-dir ... screen` (uses the freshly downloaded data)
-- Verify: parquet files created, screener output valid, no runtime errors
-- If Fyers token present, additionally test a live quote
-- **No dummy data.** All results come from NSE network + real Parquet files.
+**Track A — Cosmetic cleanup (low value, safe):**
+- W291/W293 trailing whitespace
+- W292 (missing newline at EOF)
+- Skip E501 (line length) — pure churn
 
-**Then Unit 14 (optional):**
-- Port/revive pieces of archived `fyers/` if any specific functionality is needed (order routing, HSM streaming) — currently archived, not required.
+**Track B — Revive pieces of `_archive/legacy_root/fyers/`:**
+- Only if a specific feature (order routing, HSM streaming) is needed
+- Requires porting OpenAlgo scaffolding (broker/, database/, utils/)
+- Estimated 1-2 days
+
+**Track C — New feature / real usage:**
+- Start using the pipeline for real analysis
+- Any bugs found become new units
+
+**Recommendation:** Stop here. Project is clean, tested, and validated.
+Add new units only in response to real usage discoveries.
 
 ## Key Decisions Log
 
@@ -104,6 +108,10 @@
 - **Unit 12:** UP035 (47 findings) auto-resolved as a side effect of F401 — they were all on unused typing imports left over from Unit 10's UP006/007 modernization.
 - **Unit 12:** Fixed UP038 (isinstance tuple → `|` syntax, 5 instances) and UP031 (% format → f-string, 5 instances). No remaining UP findings.
 - **Unit 12:** Shims now have `__all__` = same pattern as `__init__.py` files. Future ruff runs will never strip them.
+- **Unit 13:** Real pipeline validated end-to-end with live NSE + Yahoo data. build-master fetched 2,699 securities + 25 Nifty indices; YFinanceFetcher pulled 2 years of daily OHLCV for RELIANCE/TCS/INFY; StockScreener produced real TA signals and 9 output CSVs.
+- **Unit 13:** Fixed 3 real runtime bugs found by the live smoke test: sync-history CLI missing --resume arg (HIGH), screen --processed-dir ignoring --data-dir (MED), and ZeroDivisionError on CLOSE=0 in the in-memory candle insert (LOW). All three passed import tests, all three failed at runtime with real data.
+- **Unit 13:** Added `tests/test_cli_args.py` with 4 subprocess-based tests that spawn the real `main.py` and inspect actual output. No mocks. Rule 11 compliant. Test count 222 → 226.
+- **Unit 13:** CLI defaults now derive from `--data-dir` instead of hardcoded project paths. This makes sandbox runs actually isolated.
 
 ## Archive Layout
 
@@ -121,7 +129,7 @@ test_fyers.py
 .env copy.example
 legacy_shims/ (Momentum.py, Trend.py)
 legacy_tests/ (empty — reserved for future)
-audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt, pytest_unit7_postfix.txt, pyproject_before_unit7.toml, pytest_unit8_postfix.txt, pytest_unit9_postfix.txt, pytest_unit10_postfix.txt, pytest_unit11_postfix.txt, pytest_unit12_postfix.txt)
+audits/ (project_audit.txt, project_backup.txt, project_bundle.txt, pytest_unit5_baseline.txt, pytest_unit6_postfix.txt, pytest_unit7_postfix.txt, pyproject_before_unit7.toml, pytest_unit8_postfix.txt, pytest_unit9_postfix.txt, pytest_unit10_postfix.txt, pytest_unit11_postfix.txt, pytest_unit12_postfix.txt, pytest_unit13_postfix.txt)
 exports/ (Exported_Grouped_Strategies*.csv)
 debug/ (nse_charting_response_TCS.json, scan_profile.prof, tests_baseline.txt)
 fix_scripts/ (fix_unit1.py)
@@ -154,6 +162,10 @@ See `docs/session/RESUME_PROMPT.md` — paste its contents at the start of any n
 - [x] Unit 12 — 15 shims hardened with `__all__`
 - [x] Unit 12 — UP038 + UP031 residual fixes (10 manual)
 - [x] Unit 12 — UP035 auto-resolved via F401
-- [ ] Unit 13 — Real pipeline smoke test (`build-master` + `sync-history` + `screen`)
-- [ ] Unit 14 (optional) — Revive parts of `_archive/legacy_root/fyers/` if needed
+- [x] Unit 13 — `sync-history --resume` fixed (CLI no longer crashes)
+- [x] Unit 13 — `screen --processed-dir` derives from `--data-dir`
+- [x] Unit 13 — `screener.py` guards CLOSE<=0 in in-memory candle insert
+- [x] Unit 13 — Real pipeline smoke test passed (2,699 symbols, 3 real OHLCV files, StockScreener output)
+- [ ] Unit 14 (optional) — Whitespace cleanup OR fyers revival
+- [ ] Ongoing — Any issues found during real usage
 - [ ] `.gitignore` has duplicated `.env` / `.env.*` / `data/**` entries (cosmetic)
