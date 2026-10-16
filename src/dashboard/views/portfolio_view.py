@@ -1,6 +1,6 @@
 """
 File: src/dashboard/views/portfolio_view.py
-Purpose: Simulated Portfolio manager, exposure gauges & position sizing calculator.
+Purpose: Simulated Portfolio manager, exposure gauges, sector allocation charts & position sizing calculator.
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def render_portfolio_view():
                     st.success(f"Successfully closed position in {exit_sym}!")
                     st.rerun()
         else:
-            st.info("No open simulated positions. Add positions using the Trade Panel on the right.")
+            st.info("No open simulated positions. Add positions using the Trade Panel on the right or from the Screener view.")
 
     with col_add:
         st.markdown("#### Quick Allocation Entry")
@@ -137,3 +137,27 @@ def render_portfolio_view():
                     st.rerun()
                 else:
                     st.error("Failed to add position.")
+
+    # Sector Allocation Visualization (Migrated from 02_portfolio)
+    st.markdown("---")
+    st.markdown("<div class='section-hdr'><h3>Sector Exposure & Risk Allocation</h3><div class='line'></div></div>", unsafe_allow_html=True)
+    sectors = port.get_sector_exposure_percentages()
+    if sectors:
+        sec_df = pd.DataFrame(list(sectors.items()), columns=["Sector", "Allocation %"])
+        sec_df["Allocation %"] = sec_df["Allocation %"] * 100.0
+
+        col_chart, col_limits = st.columns(2)
+        with col_chart:
+            st.bar_chart(sec_df.set_index("Sector"))
+        with col_limits:
+            st.markdown("##### Allocation Policy Controls")
+            st.write(f"- Maximum exposure per sector: **{port.max_sector_exposure_pct:.1%}**")
+            st.write(f"- Maximum allocation per position: **{port.max_single_position_pct:.1%}**")
+            st.write(f"- Maximum simultaneous positions: **{port.max_positions}**")
+            for sect, val in sectors.items():
+                if val > port.max_sector_exposure_pct:
+                    st.error(f"⚠️ Sector **{sect}** ({val:.1%}) breaches the {port.max_sector_exposure_pct:.1%} exposure limit!")
+                else:
+                    st.success(f"✔ Sector **{sect}** ({val:.1%}) is within safety limits.")
+    else:
+        st.info("No active allocations to display sector breakdown.")
