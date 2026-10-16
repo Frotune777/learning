@@ -1,6 +1,6 @@
 # Project Map
 
-_Last updated on 2026-10-16 (Unit 13)_
+_Last updated on 2026-10-16 (Unit 15)_
 
 ## Canonical package: `src/`
 
@@ -122,7 +122,9 @@ _Last updated on 2026-10-16 (Unit 13)_
 - [x] Unit 12 — Residual UP038 + UP031 fixes applied
 - [x] Unit 13 — Real pipeline smoke test passed
 - [x] Unit 13 — CLI bugs (--resume, --processed-dir) fixed
-- [ ] Unit 14 — Revive parts of _archive/legacy_root/fyers/ if needed
+- [x] Unit 14 — Data quality audit of all 2,699 Parquet files (read-only)
+- [x] Unit 15 — Add holidays config, fix health fallback, fix SyncRegistry date typing, incremental 1d bhavcopy sync
+- [ ] Unit 16 — Revive parts of _archive/legacy_root/fyers/ if needed
 - [ ] Ongoing — Any issues found during real usage
 
 ## Credentials policy

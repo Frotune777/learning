@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -6,6 +7,8 @@ from pathlib import Path
 import pandas as pd
 
 from src.data.PersistenceService import PersistenceService
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DataHealthCheck:
@@ -36,13 +39,19 @@ class DataHealthCheck:
                     holidays = config.get("holidays_2026", [])
                     return [pd.to_datetime(d) for d in holidays]
             else:
-                print(
-                    "⚠️  Warning: config/holidays.json not found. Using empty holiday list."
+                LOGGER.warning(
+                    "config/holidays.json not found. Falling back to default NSE holidays."
                 )
-                return []
+                from src.analysis.TAValidator import TAValidator
+
+                return TAValidator()._get_fallback_holidays()
         except Exception as e:
-            print(f"⚠️  Error loading holidays: {e}")
-            return []
+            LOGGER.warning(
+                "Error loading holidays: %s. Falling back to default NSE holidays.", e
+            )
+            from src.analysis.TAValidator import TAValidator
+
+            return TAValidator()._get_fallback_holidays()
 
     def is_trading_day(self, date: pd.Timestamp) -> bool:
         """Check if date is a trading day (not weekend/holiday)"""

@@ -34,14 +34,15 @@
 | 10 | `da1b0d5` | Ruff UP+I modernization — 85 files, 2933-line diff, 0 imports deleted |
 | 11 | `77bfe06` | Fix src.ui ↔ src.data circular import; add cold-start regression test (16 tests); encode Rule 11 |
 | 12 | (see git log HEAD) | Harden 15 shims with __all__; F401 cleanup (120 findings → 0); UP038+UP031 fixes (10 manual) |
-| 13 | (see git log HEAD) | Fix sync-history --resume, screen --processed-dir, screener CLOSE<=0 guard; add 4 CLI regression tests |
+| 13 | `00aa7d0` | Fix sync-history --resume, screen --processed-dir, screener CLOSE<=0 guard; add 4 CLI regression tests |
+| 14 | (audit) | Data quality audit across all 2,699 Parquet files (read-only) |
+| 15 | (see git log HEAD) | Add holidays config, fix health fallback/date typing, sync 1d data |
 
 ## Current Status
 
-- **Completed:** Units 1–13
-- **Current unit:** 13 — commit pending (Stage B)
-- **Next unit:** 14 (optional) — Whitespace / line-length cleanup OR fyers/ revival (user preference)
-- **Project health:** ✅ 226/226 tests pass · ✅ 0 F401 · ✅ 0 UP · ✅ 0 F821 · ✅ 0 warnings · ✅ Real pipeline validated end-to-end · ⚠️ E501/W29* cosmetic (skipped by choice)
+- **Completed:** Units 1–15
+- **Current unit:** 15 — commit pending (Stage B)
+- **Project health:** ✅ 228/228 tests pass · ✅ 0 F401 · ✅ 0 UP · ✅ 0 F821 · ✅ 0 warnings · ✅ Incremental 1d sync verified (2,293 current files) · ⚠️ E501/W29* cosmetic (skipped by choice)
 
 ## Next Unit Plan (Unit 14 — Options)
 
@@ -112,6 +113,8 @@ Add new units only in response to real usage discoveries.
 - **Unit 13:** Fixed 3 real runtime bugs found by the live smoke test: sync-history CLI missing --resume arg (HIGH), screen --processed-dir ignoring --data-dir (MED), and ZeroDivisionError on CLOSE=0 in the in-memory candle insert (LOW). All three passed import tests, all three failed at runtime with real data.
 - **Unit 13:** Added `tests/test_cli_args.py` with 4 subprocess-based tests that spawn the real `main.py` and inspect actual output. No mocks. Rule 11 compliant. Test count 222 → 226.
 - **Unit 13:** CLI defaults now derive from `--data-dir` instead of hardcoded project paths. This makes sandbox runs actually isolated.
+- **Unit 14:** Data quality audit across all 2,699 Parquet files found 95.96% ending at 2026-06-08 due to raw bhavcopy cache boundary.
+- **Unit 15:** Added `config/holidays.json` (source of truth from TAValidator) and wired DataHealthCheck fallback + warning. Fixed `SyncRegistry` mixed-date TypeError on sort/max with `pd.to_datetime`. Added regression test suite `tests/test_sync_registry.py` (test count 226 → 228). Ran `bhavcopy-sync --days 135` pulling all missing daily Bhavcopy ZIPs from NSE archives, updating 2,423 symbols and bringing 2,293 1d parquet files and 100% of Nifty 50/100/200 symbols to 2026-10-15.
 
 ## Archive Layout
 
@@ -166,6 +169,8 @@ See `docs/session/RESUME_PROMPT.md` — paste its contents at the start of any n
 - [x] Unit 13 — `screen --processed-dir` derives from `--data-dir`
 - [x] Unit 13 — `screener.py` guards CLOSE<=0 in in-memory candle insert
 - [x] Unit 13 — Real pipeline smoke test passed (2,699 symbols, 3 real OHLCV files, StockScreener output)
-- [ ] Unit 14 (optional) — Whitespace cleanup OR fyers revival
+- [x] Unit 14 — Data quality audit of all 2,699 Parquet files (read-only)
+- [x] Unit 15 — Add holidays config, fix health fallback, fix SyncRegistry date typing, incremental 1d bhavcopy sync
+- [ ] Unit 16 (optional) — Whitespace cleanup OR fyers revival
 - [ ] Ongoing — Any issues found during real usage
 - [ ] `.gitignore` has duplicated `.env` / `.env.*` / `data/**` entries (cosmetic)

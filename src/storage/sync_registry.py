@@ -287,6 +287,9 @@ class SyncRegistry:
         ]
         try:
             df = pd.DataFrame(rows)
+            if not df.empty:
+                df["first_bar_date"] = pd.to_datetime(df["first_bar_date"])
+                df["last_bar_date"] = pd.to_datetime(df["last_bar_date"])
             df.to_parquet(tmp_path, index=False)
             os.replace(tmp_path, path)
             LOGGER.info("Registry saved: %d symbols → %s", len(rows), path)
@@ -401,6 +404,9 @@ class SyncRegistry:
             for r in self._store.values()
         ]
         df = pd.DataFrame(rows)
+        if not df.empty:
+            df["first_bar_date"] = pd.to_datetime(df["first_bar_date"])
+            df["last_bar_date"] = pd.to_datetime(df["last_bar_date"])
         return df.sort_values(
             ["status", "last_bar_date"], na_position="first"
         ).reset_index(drop=True)
