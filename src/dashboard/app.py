@@ -5,7 +5,8 @@ Features:
   - Top Horizontal Header Navigation (No clumsy left sidebar).
   - Modern Glassmorphism Styling, Inter Typography & Dark Terminal Aesthetics.
   - Complete feature suite: SMC Studio, Multi-Strategy Screener, Portfolio Risk Manager,
-    Strategy Backtesting, Quantitative Intelligence, and Fyers Broker Gateway.
+    Strategy Backtesting, Quantitative Intelligence, Data Quality Gate, LLM Dossier,
+    and Fyers Broker Gateway.
 """
 
 from __future__ import annotations
@@ -33,6 +34,8 @@ except Exception:
 
 from src.dashboard.theme import CSS_THEME, NAV_STYLES
 from src.dashboard.views.backtest_view import render_backtest_view
+from src.dashboard.views.dossier_view import render_dossier_view
+from src.dashboard.views.dq_view import render_dq_view
 from src.dashboard.views.fyers_view import render_fyers_view
 from src.dashboard.views.portfolio_view import render_portfolio_view
 from src.dashboard.views.quantitative_view import render_quantitative_view
@@ -65,6 +68,8 @@ selected_tab = option_menu(
         "Portfolio Risk",
         "Backtest Explorer",
         "Quantitative / Macro",
+        "Data Quality",
+        "LLM Dossier",
         "Data Sources & Gateway",
     ],
     icons=[
@@ -73,6 +78,8 @@ selected_tab = option_menu(
         "briefcase",
         "graph-down",
         "pie-chart",
+        "shield-check",
+        "file-text",
         "database-gear",
     ],
     menu_icon="cast",
@@ -92,6 +99,9 @@ elif selected_tab == "Backtest Explorer":
     render_backtest_view()
 elif selected_tab == "Quantitative / Macro":
     render_quantitative_view()
+elif selected_tab == "Data Quality":
+    render_dq_view()
+elif selected_tab == "LLM Dossier":
+    render_dossier_view()
 elif selected_tab == "Data Sources & Gateway":
     render_fyers_view()
-
