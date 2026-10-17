@@ -144,6 +144,7 @@ CONSUMERS: Streamlit Dashboard Views, CLI Screeners, Strategy Backtesters, LLM D
 ### Layer 4: Marts (`data/marts/` & `marts.*` in DuckDB)
 - Read-only aggregated analytical tables built for instantaneous UI dashboard loading (< 50ms) and screener operations.
 - Stored as both registered DuckDB views/tables and exported Parquet files for external zero-copy tools.
+- **Default Universe Filtering:** All analytical marts in Phase C filter to `is_current = TRUE AND is_tradable = TRUE` by default. Delisted entities (`is_active = FALSE`) and SME series (`listing_board = 'SME'`) are excluded from operational marts unless an explicit backtesting context requests survivorship-bias-free full-history inclusion.
 - **Marts defined:**
   1. `marts.enriched_daily`: Daily full-universe view uniting unadjusted & split-adjusted price, delivery percentages, and core indicators (Weinstein stage, 10W MA slope, SMC status, ADX, RSI, ATR).
   2. `marts.consensus_daily`: Pre-calculated scoring matrix across technical strategies (Buy Low, ETF Shop, Nifty Shop, RDX, Momentum).

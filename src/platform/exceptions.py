@@ -7,6 +7,10 @@ class PlatformError(Exception):
     """Base exception for all platform errors."""
 
 
+class IngestionError(PlatformError):
+    """Raised when source ingestion or downloading fails."""
+
+
 class SchemaValidationError(PlatformError):
     """Raised when data or file schema violates contract specifications."""
 

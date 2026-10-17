@@ -6,7 +6,7 @@ import csv
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pandas as pd
 
@@ -139,3 +139,203 @@ class StagingLoader:
         if (df["high"] < df["low"]).any() or (df["close"] <= 0).any():
             return False
         return True
+
+    def stage_equity_master(self, batch_id: str | None = None) -> int:
+        """Parse landed EQUITY_L.csv into canonical staging/equity_master Parquet."""
+        if batch_id:
+            batch_dir = self._find_batch_dir(batch_id)
+        else:
+            candidates = sorted(self.landing_root.glob("nse_equity_l/*/*"))
+            if not candidates:
+                raise PlatformError("No landed nse_equity_l batches found")
+            batch_dir = candidates[-1]
+
+        csv_file = batch_dir / "equity_l.csv"
+        manifest_file = batch_dir / "manifest.json"
+        if not csv_file.is_file():
+            raise PlatformError(f"Missing equity_l.csv in {batch_dir}")
+
+        trade_date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+        if manifest_file.is_file():
+            with open(manifest_file, encoding="utf-8") as f:
+                manifest = json.load(f)
+                trade_date_str = manifest.get("trade_date", trade_date_str)
+                batch_id = manifest.get("batch_id", batch_dir.name)
+        else:
+            batch_id = batch_dir.name
+
+        rows: list[dict[str, Any]] = []
+        with open(csv_file, encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for raw_row in reader:
+                row = {k.strip(): (v.strip() if v else "") for k, v in raw_row.items() if k}
+                sym = row.get("SYMBOL", "").upper()
+                if not sym:
+                    continue
+                srs = row.get("SERIES", "EQ").upper()
+                rows.append({
+                    "symbol": sym,
+                    "isin": row.get("ISIN NUMBER", ""),
+                    "company_name": row.get("NAME OF COMPANY", sym),
+                    "series": srs,
+                    "sector": None,
+                    "macro_sector": None,
+                    "is_active": True,
+                    "classification": "HEALTHY",
+                    "as_of_date": trade_date_str,
+                    "batch_id": batch_id,
+                })
+
+        df = pd.DataFrame(rows)
+        out_dir = self.staging_root / "equity_master" / f"dt={trade_date_str}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{batch_id}.parquet"
+        df.to_parquet(out_path, index=False)
+        return len(df)
+
+    def stage_index_membership(self, batch_id: str | None = None) -> int:
+        """Parse landed index constituent CSVs into canonical staging/index_membership Parquet."""
+        if batch_id:
+            batch_dir = self._find_batch_dir(batch_id)
+        else:
+            candidates = sorted(self.landing_root.glob("nse_index_constituents/*/*"))
+            if not candidates:
+                raise PlatformError("No landed nse_index_constituents batches found")
+            batch_dir = candidates[-1]
+
+        manifest_file = batch_dir / "manifest.json"
+        trade_date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+        if manifest_file.is_file():
+            with open(manifest_file, encoding="utf-8") as f:
+                manifest = json.load(f)
+                trade_date_str = manifest.get("trade_date", trade_date_str)
+                batch_id = manifest.get("batch_id", batch_dir.name)
+        else:
+            batch_id = batch_dir.name
+
+        rows: list[dict[str, Any]] = []
+        for csv_path in sorted(batch_dir.glob("*.csv")):
+            index_code = csv_path.stem.upper()
+            with open(csv_path, encoding="utf-8", errors="ignore") as f:
+                reader = csv.DictReader(f)
+                for raw_row in reader:
+                    row = {k.strip(): (v.strip() if v else "") for k, v in raw_row.items() if k}
+                    sym = row.get("Symbol", "").upper()
+                    if not sym:
+                        continue
+                    rows.append({
+                        "index_code": index_code,
+                        "symbol": sym,
+                        "isin": row.get("ISIN Code", ""),
+                        "weight": None,
+                        "valid_from": trade_date_str,
+                        "valid_to": None,
+                        "batch_id": batch_id,
+                    })
+
+        df = pd.DataFrame(rows)
+        out_dir = self.staging_root / "index_membership" / f"dt={trade_date_str}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{batch_id}.parquet"
+        df.to_parquet(out_path, index=False)
+        return len(df)
+
+    def stage_fo_flags(self, batch_id: str | None = None) -> int:
+        """Parse landed F&O market lots CSV into staging Parquet."""
+        if batch_id:
+            batch_dir = self._find_batch_dir(batch_id)
+        else:
+            candidates = sorted(self.landing_root.glob("nse_fo_mktlots/*/*"))
+            if not candidates:
+                raise PlatformError("No landed nse_fo_mktlots batches found")
+            batch_dir = candidates[-1]
+
+        csv_file = batch_dir / "fo_mktlots.csv"
+        trade_date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+        batch_id = batch_dir.name
+
+        rows: list[dict[str, Any]] = []
+        if csv_file.is_file():
+            with open(csv_file, encoding="utf-8", errors="ignore") as f:
+                reader = csv.reader(f)
+                for parts in reader:
+                    if len(parts) >= 2 and parts[1].strip():
+                        sym = parts[1].strip().upper()
+                        if sym != "SYMBOL":
+                            rows.append({
+                                "symbol": sym,
+                                "is_fo": True,
+                                "batch_id": batch_id,
+                            })
+
+        df = pd.DataFrame(rows).drop_duplicates(subset=["symbol"])
+        out_dir = self.staging_root / "fo_mktlots" / f"dt={trade_date_str}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(out_dir / f"{batch_id}.parquet", index=False)
+        return len(df)
+
+    def stage_delivery_daily(self, batch_id: str | None = None) -> int:
+        """Parse sec_bhavdata_full into canonical staging/delivery_daily Parquet."""
+        if batch_id:
+            batch_dir = self._find_batch_dir(batch_id)
+        else:
+            candidates = sorted(self.landing_root.glob("nse_sec_bhavdata_full/*/*"))
+            if not candidates:
+                raise PlatformError("No landed nse_sec_bhavdata_full batches found")
+            batch_dir = candidates[-1]
+
+        csv_file = batch_dir / "sec_bhavdata_full.csv"
+        manifest_file = batch_dir / "manifest.json"
+        trade_date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+        if manifest_file.is_file():
+            with open(manifest_file, encoding="utf-8") as f:
+                manifest = json.load(f)
+                trade_date_str = manifest.get("trade_date", trade_date_str)
+                batch_id = manifest.get("batch_id", batch_dir.name)
+        else:
+            batch_id = batch_dir.name
+
+        rows: list[dict[str, Any]] = []
+        with open(csv_file, encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for raw_row in reader:
+                row = {k.strip(): (v.strip() if v else "") for k, v in raw_row.items() if k}
+                sym = row.get("SYMBOL", "").upper()
+                if not sym:
+                    continue
+                srs = row.get("SERIES", "EQ").upper()
+                d_str = row.get("DATE1", trade_date_str)
+                try:
+                    t_date = pd.to_datetime(d_str).strftime("%Y-%m-%d")
+                except Exception:
+                    t_date = trade_date_str
+
+                def _parse_int(val: str) -> int | None:
+                    try:
+                        return int(float(val)) if val and val != "-" else None
+                    except Exception:
+                        return None
+
+                def _parse_float(val: str) -> float | None:
+                    try:
+                        return float(val) if val and val != "-" else None
+                    except Exception:
+                        return None
+
+                rows.append({
+                    "trade_date": t_date,
+                    "symbol": sym,
+                    "series": srs,
+                    "traded_qty": _parse_int(row.get("TTL_TRD_QNTY", "0")) or 0,
+                    "deliverable_qty": _parse_int(row.get("DELIV_QTY", "")),
+                    "delivery_pct": _parse_float(row.get("DELIV_PER", "")),
+                    "batch_id": batch_id,
+                })
+
+        df = pd.DataFrame(rows)
+        out_dir = self.staging_root / "delivery_daily" / f"dt={trade_date_str}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{batch_id}.parquet"
+        df.to_parquet(out_path, index=False)
+        return len(df)
+

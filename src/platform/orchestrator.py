@@ -52,6 +52,22 @@ class PlatformOrchestrator:
         """Backfill data quality run logs."""
         return self.warehouse_loader.backfill_dq_from_logs(runs_log)
 
+    def enrich_master(self, tiers: list[int] | None = None) -> dict[str, Any]:
+        """Run Tier 1 & 2 master enrichment via SCD2."""
+        return self.warehouse_loader.enrich_master(tiers)
+
+    def backfill_delivery(self, raw_dir: Path | str = "data/raw") -> int:
+        """Backfill daily security delivery metrics."""
+        return self.warehouse_loader.backfill_delivery_from_raw(raw_dir)
+
+    def backfill_surveillance(self) -> int:
+        """Backfill surveillance measures (ASM, GSM, ESM) snapshot."""
+        return self.warehouse_loader.backfill_surveillance_today()
+
+    def backfill_symbol_health(self) -> int:
+        """Backfill symbol health assessment snapshot."""
+        return self.warehouse_loader.backfill_symbol_health()
+
 
 def main(argv: list[str] | None = None) -> int:
     """CLI dispatcher for platform commands."""
@@ -90,6 +106,24 @@ def main(argv: list[str] | None = None) -> int:
     # Backfill DQ command
     dq_p = subparsers.add_parser("backfill-dq", help="Backfill Data Quality logs into fact_dq_run")
     dq_p.add_argument("--runs-log", default="logs/dq/runs.jsonl", help="Path to runs.jsonl log")
+
+    # Enrich master command
+    enrich_p = subparsers.add_parser("enrich-master", help="Enrich master universe via SCD2")
+    enrich_p.add_argument(
+        "--tiers", nargs="+", type=int, default=[1, 2], help="Enrichment tiers to execute"
+    )
+
+    # Backfill delivery command
+    delivery_p = subparsers.add_parser("backfill-delivery", help="Backfill fact_delivery_daily")
+    delivery_p.add_argument(
+        "--raw-dir", default="data/raw", help="Directory containing raw Bhavcopies"
+    )
+
+    # Backfill surveillance command
+    subparsers.add_parser("backfill-surveillance", help="Backfill fact_symbol_surveillance")
+
+    # Backfill symbol health command
+    subparsers.add_parser("backfill-symbol-health", help="Backfill fact_symbol_health")
 
     args = parser.parse_args(argv)
     orchestrator = PlatformOrchestrator()
@@ -133,6 +167,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Backfilling DQ logs from {args.runs_log}...")
         res = orchestrator.backfill_dq(args.runs_log)
         print(f"DQ backfill complete: {res}")
+        return 0
+
+    if args.command == "enrich-master":
+        print(f"Enriching master universe for tiers={args.tiers}...")
+        res = orchestrator.enrich_master(args.tiers)
+        print(f"Master enrichment complete: {res}")
+        return 0
+
+    if args.command == "backfill-delivery":
+        print(f"Backfilling delivery from {args.raw_dir}...")
+        rows = orchestrator.backfill_delivery(args.raw_dir)
+        print(f"Delivery backfill complete: {rows} rows")
+        return 0
+
+    if args.command == "backfill-surveillance":
+        print("Backfilling symbol surveillance snapshot...")
+        rows = orchestrator.backfill_surveillance()
+        print(f"Surveillance backfill complete: {rows} rows")
+        return 0
+
+    if args.command == "backfill-symbol-health":
+        print("Backfilling symbol health snapshot...")
+        rows = orchestrator.backfill_symbol_health()
+        print(f"Symbol health backfill complete: {rows} rows")
         return 0
 
     return 0
