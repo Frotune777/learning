@@ -1,0 +1,14 @@
+name: delivery_daily
+description: Daily security settlement delivery statistics from NSE Bhavcopy
+target_table: fact_delivery_daily
+primary_key:
+  - symbol
+  - trade_date
+columns:
+  trade_date: date
+  symbol: string
+  series: string
+  traded_qty: int64
+  deliverable_qty: int64
+  delivery_pct: float
+  batch_id: string

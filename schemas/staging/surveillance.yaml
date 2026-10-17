@@ -1,0 +1,15 @@
+name: surveillance
+description: Daily surveillance actions (ASM, GSM, ESM) from NSE circulars
+target_table: fact_symbol_surveillance
+primary_key:
+  - symbol
+  - trade_date
+  - surveillance_type
+columns:
+  trade_date: date
+  symbol: string
+  isin: string
+  surveillance_type: string
+  stage: string
+  effective_date: date
+  batch_id: string

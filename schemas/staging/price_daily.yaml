@@ -1,0 +1,21 @@
+name: price_daily
+description: Authoritative daily unadjusted OHLCV price bars from Bhavcopy
+target_table: fact_price_daily
+primary_key:
+  - symbol
+  - trade_date
+columns:
+  trade_date: date
+  symbol: string
+  series: string
+  open: float
+  high: float
+  low: float
+  close: float
+  last: float
+  prev_close: float
+  volume: int64
+  turnover: float
+  trades: int64
+  isin: string
+  batch_id: string

@@ -1,0 +1,18 @@
+name: equity_master
+description: Canonical equity master identity, ISIN, and sector classifications
+target_table: dim_symbol
+primary_key:
+  - symbol
+  - isin
+  - series
+columns:
+  symbol: string
+  isin: string
+  company_name: string
+  series: string
+  sector: string
+  macro_sector: string
+  is_active: boolean
+  classification: string
+  as_of_date: date
+  batch_id: string

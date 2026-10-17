@@ -3,7 +3,7 @@ name = "learning"
 version = "1.0.0"
 description = "Download and process NSE Bhavcopy data locally in English"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "pandas==2.2.3",
     "requests==2.32.3",
@@ -29,6 +29,7 @@ dependencies = [
     "polars>=2.0.0",
     "streamlit-option-menu>=0.4.0",
     "scipy>=1.17.1",
+    "powernse>=0.7.0",
 ]
 
 [dependency-groups]
@@ -42,7 +43,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-norecursedirs = ["_archive", "data", ".venv"]
+norecursedirs = ["_archive", "data", ".venv", "vendor"]
 # Silence third-party warnings that we cannot fix from our code.
 # Module-scoped so we don't accidentally hide the same warning from our
 # own modules in the future.

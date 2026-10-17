@@ -1,0 +1,15 @@
+name: index_membership
+description: Historical index constituent membership and weights
+target_table: fact_index_membership
+primary_key:
+  - index_code
+  - symbol
+  - valid_from
+columns:
+  index_code: string
+  symbol: string
+  isin: string
+  weight: float
+  valid_from: date
+  valid_to: date
+  batch_id: string

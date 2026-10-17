@@ -1,0 +1,14 @@
+name: corporate_actions
+description: Detected or officially recorded corporate actions (splits, bonuses)
+target_table: corporate_actions
+primary_key:
+  - symbol
+  - ex_date
+columns:
+  symbol: string
+  ex_date: date
+  observed_ratio: float
+  factor: float
+  inferred: string
+  source: string
+  batch_id: string
