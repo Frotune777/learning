@@ -12,6 +12,7 @@ import duckdb
 import pandas as pd
 
 from src.platform.exceptions import PlatformError
+from src.platform.loaders.calendar_backfill import populate_full_nse_calendar
 from src.platform.loaders.master_enrichment import MasterEnrichmentLoader
 from src.platform.loaders.staging import StagingLoader
 from src.platform.loaders.surveillance import fetch_asm_list, fetch_esm_list, fetch_gsm_list
@@ -126,56 +127,13 @@ class WarehouseLoader:
             )
             counts["dim_strategy"] = len(strategies)
 
-            # 3. dim_date (2000-01-01 to today+365)
-            h_path = Path(holidays_path)
-            holidays: set[str] = set()
-            if h_path.is_file():
-                h_data = json.loads(h_path.read_text(encoding="utf-8"))
-                for v in h_data.values():
-                    if isinstance(v, list):
-                        holidays.update(v)
-
-            start_d = date(1990, 1, 1)
-            end_d = date.today() + timedelta(days=365)
-            curr = start_d
-            date_rows: list[tuple[Any, ...]] = []
-            while curr <= end_d:
-                d_sk = int(curr.strftime("%Y%m%d"))
-                dow = curr.isoweekday()  # 1=Mon, 7=Sun
-                is_weekday = dow <= 5
-                d_str = curr.isoformat()
-                is_holiday = d_str in holidays
-                is_trading = is_weekday and not is_holiday
-                holiday_name = "NSE Holiday" if is_holiday else None
-
-                date_rows.append((
-                    d_sk,
-                    curr,
-                    curr.year,
-                    (curr.month - 1) // 3 + 1,
-                    curr.month,
-                    curr.isocalendar()[1],
-                    dow,
-                    is_weekday,
-                    is_trading,
-                    holiday_name,
-                    "T+1",
-                ))
-                curr += timedelta(days=1)
-
-            conn.executemany(
-                """
-                INSERT INTO dim_date (
-                    date_sk, calendar_date, year, quarter, month, week_of_year,
-                    day_of_week, is_weekday, is_trading_day, holiday_name, settlement_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (date_sk) DO UPDATE SET
-                    is_trading_day = excluded.is_trading_day,
-                    holiday_name = excluded.holiday_name
-                """,
-                date_rows,
+            # 3. dim_date (2000-01-01 to 2030-12-31 via XNSE calendar)
+            counts["dim_date"] = populate_full_nse_calendar(
+                start_date=date(2000, 1, 1),
+                end_date=date(2030, 12, 31),
+                conn=conn,
+                holidays_path=holidays_path,
             )
-            counts["dim_date"] = len(date_rows)
 
             # 4. dim_index (from master columns)
             index_codes = [

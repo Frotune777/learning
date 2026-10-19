@@ -86,6 +86,52 @@ class PlatformOrchestrator:
         """Backfill symbol health assessment snapshot."""
         return self.warehouse_loader.backfill_symbol_health()
 
+    def populate_calendar(
+        self,
+        start_date: date = date(2000, 1, 1),
+        end_date: date = date(2030, 12, 31),
+    ) -> int:
+        """Populate dim_date using pandas_market_calendars XNSE."""
+        from src.platform.loaders.calendar_backfill import populate_full_nse_calendar
+
+        return populate_full_nse_calendar(
+            start_date=start_date,
+            end_date=end_date,
+            db_path=self.warehouse_loader.db_path,
+        )
+
+    def rebuild_price(
+        self,
+        start_date: date = date(2020, 1, 1),
+        end_date: date = date(2026, 10, 16),
+        cache_dir: str = "data/raw/delivery",
+    ) -> dict[str, int]:
+        """Rebuild fact_price_daily for 2020+ from official NSE sec_bhavdata."""
+        from src.platform.loaders.price_rebuilder import rebuild_price_from_sec_bhavdata
+
+        return rebuild_price_from_sec_bhavdata(
+            start_date=start_date,
+            end_date=end_date,
+            cache_dir=cache_dir,
+            warehouse_loader=self.warehouse_loader,
+        )
+
+    def rebuild_ta(
+        self,
+        start_date: date = date(2020, 1, 1),
+        end_date: date = date(2026, 10, 16),
+        max_workers: int = 8,
+    ) -> dict[str, int]:
+        """Rebuild fact_ta_daily from fact_price_daily."""
+        from src.platform.loaders.ta_rebuilder import rebuild_ta_from_warehouse
+
+        return rebuild_ta_from_warehouse(
+            start_date=start_date,
+            end_date=end_date,
+            warehouse_loader=self.warehouse_loader,
+            max_workers=max_workers,
+        )
+
 
 def main(argv: list[str] | None = None) -> int:
     """CLI dispatcher for platform commands."""
@@ -154,6 +200,23 @@ def main(argv: list[str] | None = None) -> int:
 
     # Backfill symbol health command
     subparsers.add_parser("backfill-symbol-health", help="Backfill fact_symbol_health")
+
+    # Populate calendar command
+    subparsers.add_parser("populate-calendar", help="Populate dim_date using full XNSE calendar")
+
+    # Rebuild price command
+    reb_price_p = subparsers.add_parser("rebuild-price", help="Rebuild fact_price_daily from sec_bhavdata")
+    reb_price_p.add_argument("--start", default="2020-01-01", help="Start date (YYYY-MM-DD)")
+    reb_price_p.add_argument("--end", default="2026-10-16", help="End date (YYYY-MM-DD)")
+    reb_price_p.add_argument("--source", default="sec_bhavdata", help="Source type (sec_bhavdata)")
+    reb_price_p.add_argument("--cache-dir", default="data/raw/delivery", help="Cache directory")
+
+    # Rebuild TA command
+    reb_ta_p = subparsers.add_parser("rebuild-ta", help="Rebuild fact_ta_daily from fact_price_daily")
+    reb_ta_p.add_argument("--start", default="2020-01-01", help="Start date (YYYY-MM-DD)")
+    reb_ta_p.add_argument("--end", default="2026-10-16", help="End date (YYYY-MM-DD)")
+    reb_ta_p.add_argument("--source", default="warehouse", help="Source type (warehouse)")
+    reb_ta_p.add_argument("--workers", type=int, default=8, help="Max worker threads")
 
     args = parser.parse_args(argv)
     orchestrator = PlatformOrchestrator()
@@ -242,6 +305,51 @@ def main(argv: list[str] | None = None) -> int:
         print("Backfilling symbol health snapshot...")
         rows = orchestrator.backfill_symbol_health()
         print(f"Symbol health backfill complete: {rows} rows")
+        return 0
+
+    if args.command == "populate-calendar":
+        print("Populating full NSE calendar into dim_date...")
+        count = orchestrator.populate_calendar()
+        print(f"Calendar populated: {count} dates updated/inserted.")
+        return 0
+
+    if args.command == "rebuild-price":
+        try:
+            start_d = date.fromisoformat(args.start)
+            end_d = date.fromisoformat(args.end)
+        except ValueError as exc:
+            print(f"Error: Invalid date format: {exc}", file=sys.stderr)
+            return 1
+        print(f"Starting price rebuild from {start_d} to {end_d} via {args.source}...")
+        res = orchestrator.rebuild_price(
+            start_date=start_d,
+            end_date=end_d,
+            cache_dir=args.cache_dir,
+        )
+        print("Price rebuild complete:")
+        print(f"  Files parsed: {res['files_parsed']}")
+        print(f"  Rows deleted: {res['rows_deleted']}")
+        print(f"  Rows inserted: {res['rows_inserted']}")
+        print(f"  Dates processed: {res['dates_processed']}")
+        return 0
+
+    if args.command == "rebuild-ta":
+        try:
+            start_d = date.fromisoformat(args.start)
+            end_d = date.fromisoformat(args.end)
+        except ValueError as exc:
+            print(f"Error: Invalid date format: {exc}", file=sys.stderr)
+            return 1
+        print(f"Starting TA rebuild from {start_d} to {end_d} via {args.source}...")
+        res = orchestrator.rebuild_ta(
+            start_date=start_d,
+            end_date=end_d,
+            max_workers=args.workers,
+        )
+        print("TA rebuild complete:")
+        print(f"  Symbols processed: {res['symbols_processed']}")
+        print(f"  Rows deleted: {res['rows_deleted']}")
+        print(f"  Rows inserted: {res['rows_inserted']}")
         return 0
 
     return 0

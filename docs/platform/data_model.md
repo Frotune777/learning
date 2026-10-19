@@ -137,6 +137,8 @@ Populated from `config/holidays.json` and official NSE settlement holiday schedu
 | `vwap` | `DOUBLE` | YES | NULL | Official Volume Weighted Average Price |
 | `source_sk` | `SMALLINT` | NO | — | FK -> `dim_source.source_sk` |
 | `batch_id` | `VARCHAR` | NO | — | Ingestion Batch Identifier (Lineage) |
+| `price_semantics` | `VARCHAR(20)` | YES | `'unadjusted'` | Price adjustment model (`'unadjusted'`, `'split_only'`, `'total_return'`) |
+| `source_ref` | `VARCHAR(50)` | YES | NULL | Specific raw archive source reference (e.g. `'sec_bhavdata_20261016'`) |
 | `created_at` | `TIMESTAMP` | NO | `CURRENT_TIMESTAMP`| Ingestion timestamp |
 
 - **Primary Key:** `PRIMARY KEY (symbol_sk, date_sk)`

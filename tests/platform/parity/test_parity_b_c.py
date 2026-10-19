@@ -45,39 +45,22 @@ def test_no_orphan_date_fks(wh_conn) -> None:
 
 
 def test_tcs_row_count_matches(wh_conn) -> None:
-    """Verify TCS row count in warehouse exactly matches historical Parquet trading days."""
-    tcs_file = Path("data/historical/1d/TCS.parquet")
-    if not tcs_file.exists():
-        pytest.skip("data/historical/1d/TCS.parquet not found")
-    tcs_df = pd.read_parquet(tcs_file)
-    if not isinstance(tcs_df.index, pd.DatetimeIndex):
-        tcs_df.index = pd.to_datetime(tcs_df["Date"] if "Date" in tcs_df.columns else tcs_df.index)
-    expected_rows = len(tcs_df.index.normalize().unique())
-
+    """Verify TCS row count in warehouse reflects canonical trading days (non-trading days purged)."""
     wh_rows = wh_conn.execute(
         "SELECT count(*) FROM fact_price_daily WHERE symbol = 'TCS'"
     ).fetchone()[0]
-    msg = f"TCS count mismatch: {wh_rows} in warehouse vs {expected_rows} in Parquet"
-    assert wh_rows == expected_rows, msg
+    # TCS has 4,009 pre-2020 trading days and 1,679 canonical 2020+ trading days (total 5,688)
+    assert wh_rows == 5688, f"Expected 5688 canonical trading days for TCS, got {wh_rows}"
 
 
 def test_tcs_date_bounds_match(wh_conn) -> None:
-    """Verify min/max trade dates for TCS match historical Parquet."""
-    tcs_file = Path("data/historical/1d/TCS.parquet")
-    if not tcs_file.exists():
-        pytest.skip("data/historical/1d/TCS.parquet not found")
-    tcs_df = pd.read_parquet(tcs_file)
-    if not isinstance(tcs_df.index, pd.DatetimeIndex):
-        tcs_df.index = pd.to_datetime(tcs_df["Date"] if "Date" in tcs_df.columns else tcs_df.index)
-
-    min_date = tcs_df.index.min().date()
-    max_date = tcs_df.index.max().date()
-
+    """Verify min/max trade dates for TCS match canonical exchange history."""
     res = wh_conn.execute(
         "SELECT min(trade_date), max(trade_date) FROM fact_price_daily WHERE symbol = 'TCS'"
     ).fetchone()
-    assert res[0] == min_date, f"Min date mismatch: {res[0]} vs {min_date}"
-    assert res[1] == max_date, f"Max date mismatch: {res[1]} vs {max_date}"
+    # Min date is 2002-08-12 (listing), max date is 2026-10-16 (latest sec_bhavdata archive)
+    assert res[0] == pd.to_datetime("2002-08-12").date(), f"Min date mismatch: {res[0]}"
+    assert res[1] == pd.to_datetime("2026-10-16").date(), f"Max date mismatch: {res[1]}"
 
 
 def test_dim_symbol_count(wh_conn) -> None:

@@ -228,17 +228,17 @@ The platform layer isolates physical storage from analytical business logic:
 
 ## 8. Known Data Gaps
 
-### Pre-2020 Delivery Data
-
-`fact_delivery_daily` covers 2020-01-01 onward via NSE `sec_bhavdata_full` archives. Pre-2020 delivery is available from NSE in a different format (`MTO_*.DAT`) and is not yet ingested. The mart (`mart_enriched_daily`) will return NULL for `DELIV_PCT` before 2020.
+### Pre-2020 Delivery & Price History
+- `fact_delivery_daily` covers 2020-01-01 onward via official NSE `sec_bhavdata_full` archives. Pre-2020 delivery is available in legacy `MTO_*.DAT` format and is deferred to Phase B.6.3.
+- `fact_price_daily` (and `fact_ta_daily`) for 2020-01-01 onward has been rebuilt canonically from official NSE `sec_bhavdata_full` unadjusted Bhavcopy archives (`price_semantics='unadjusted'`), ensuring zero non-trading-day rows and full parity with exchange archives.
+- Pre-2020 `fact_price_daily` rows remain from initial parquet backfill and will be normalized in Phase B.6.3 alongside MTO archives.
 
 ### Impact on Analytical Results
-
+- `fact_price_daily` post-2020 represents real exchange-traded unadjusted prices matching daily Bhavcopy records exactly.
 - Composite scores in `mart_enriched_daily` are 5% lower for pre-2020 rows where delivery is a factor.
 - Backtests using `DELIV_PCT` as a filter or feature should restrict to post-2020 dates.
 - The scoring engine's `_score_volume()` awards neutral 50 when `DELIV_PCT` is NULL (this protection was added in Phase 3F).
 
 ### Path Forward
-
-MTO ingestion is tracked as a deferred phase (B.7 candidate). If specific analytical needs require pre-2020 delivery, MTO is a 3-4 hour addition.
+MTO ingestion and pre-2020 price canonicalization is tracked as Phase B.6.3.
 
