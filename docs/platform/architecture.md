@@ -223,3 +223,22 @@ The platform layer isolates physical storage from analytical business logic:
 2. **Corporate Action Adjustment Strategy:**
    - *Option A (Recommended):* Store strictly **unadjusted raw OHLCV** in `fact_price_daily` and apply split/bonus multipliers dynamically in `marts.enriched_daily` or via DAL helper views. (Preserves audit integrity against official NSE Bhavcopy).
    - *Option B:* Store both unadjusted columns (`open`, `high`, `low`, `close`) and pre-adjusted columns (`adj_open`, `adj_high`, `adj_low`, `adj_close`) directly in `fact_price_daily`.
+
+---
+
+## 8. Known Data Gaps
+
+### Pre-2020 Delivery Data
+
+`fact_delivery_daily` covers 2020-01-01 onward via NSE `sec_bhavdata_full` archives. Pre-2020 delivery is available from NSE in a different format (`MTO_*.DAT`) and is not yet ingested. The mart (`mart_enriched_daily`) will return NULL for `DELIV_PCT` before 2020.
+
+### Impact on Analytical Results
+
+- Composite scores in `mart_enriched_daily` are 5% lower for pre-2020 rows where delivery is a factor.
+- Backtests using `DELIV_PCT` as a filter or feature should restrict to post-2020 dates.
+- The scoring engine's `_score_volume()` awards neutral 50 when `DELIV_PCT` is NULL (this protection was added in Phase 3F).
+
+### Path Forward
+
+MTO ingestion is tracked as a deferred phase (B.7 candidate). If specific analytical needs require pre-2020 delivery, MTO is a 3-4 hour addition.
+

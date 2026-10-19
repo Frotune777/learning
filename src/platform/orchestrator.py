@@ -56,9 +56,27 @@ class PlatformOrchestrator:
         """Run Tier 1 & 2 master enrichment via SCD2."""
         return self.warehouse_loader.enrich_master(tiers)
 
-    def backfill_delivery(self, raw_dir: Path | str = "data/raw") -> int:
-        """Backfill daily security delivery metrics."""
-        return self.warehouse_loader.backfill_delivery_from_raw(raw_dir)
+    def backfill_delivery(self) -> int:
+        """Backfill daily security delivery metrics from staging."""
+        return self.warehouse_loader.backfill_delivery_from_staging()
+
+    def backfill_delivery_history(
+        self,
+        start_date: date,
+        end_date: date,
+        cache_dir: str = "data/raw/delivery",
+        rate_delay: float = 1.0,
+    ) -> dict[str, int]:
+        """Backfill historical delivery data from official NSE archives (2020+)."""
+        from src.platform.loaders.delivery_backfill import backfill_delivery_history
+
+        return backfill_delivery_history(
+            start_date=start_date,
+            end_date=end_date,
+            warehouse_loader=self.warehouse_loader,
+            cache_dir=cache_dir,
+            rate_delay=rate_delay,
+        )
 
     def backfill_surveillance(self) -> int:
         """Backfill surveillance measures (ASM, GSM, ESM) snapshot."""
@@ -113,10 +131,22 @@ def main(argv: list[str] | None = None) -> int:
         "--tiers", nargs="+", type=int, default=[1, 2], help="Enrichment tiers to execute"
     )
 
-    # Backfill delivery command
-    delivery_p = subparsers.add_parser("backfill-delivery", help="Backfill fact_delivery_daily")
-    delivery_p.add_argument(
-        "--raw-dir", default="data/raw", help="Directory containing raw Bhavcopies"
+    # Backfill delivery command (from staging)
+    subparsers.add_parser("backfill-delivery", help="Backfill fact_delivery_daily from staging")
+
+    # Backfill delivery history command (from official NSE archives)
+    deliv_hist_p = subparsers.add_parser(
+        "backfill-delivery-history", help="Backfill fact_delivery_daily from NSE sec_bhavdata archives"
+    )
+    deliv_hist_p.add_argument("--start", default="2020-01-01", help="Start date (YYYY-MM-DD)")
+    deliv_hist_p.add_argument(
+        "--end", default=date.today().isoformat(), help="End date (YYYY-MM-DD)"
+    )
+    deliv_hist_p.add_argument(
+        "--cache-dir", default="data/raw/delivery", help="Cache directory for raw files"
+    )
+    deliv_hist_p.add_argument(
+        "--delay", type=float, default=1.0, help="Rate delay between requests in seconds"
     )
 
     # Backfill surveillance command
@@ -176,9 +206,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "backfill-delivery":
-        print(f"Backfilling delivery from {args.raw_dir}...")
-        rows = orchestrator.backfill_delivery(args.raw_dir)
+        print("Backfilling delivery from staging...")
+        rows = orchestrator.backfill_delivery()
         print(f"Delivery backfill complete: {rows} rows")
+        return 0
+
+    if args.command == "backfill-delivery-history":
+        try:
+            start_d = date.fromisoformat(args.start)
+            end_d = date.fromisoformat(args.end)
+        except ValueError as exc:
+            print(f"Error: Invalid date format: {exc}", file=sys.stderr)
+            return 1
+        print(f"Starting delivery history backfill from {start_d} to {end_d}...")
+        res = orchestrator.backfill_delivery_history(
+            start_date=start_d,
+            end_date=end_d,
+            cache_dir=args.cache_dir,
+            rate_delay=args.delay,
+        )
+        print("Delivery history backfill complete:")
+        print(f"  Downloaded: {res['downloaded']} files")
+        print(f"  Parsed: {res['parsed']} files")
+        print(f"  Inserted: {res['inserted']} rows")
+        print(f"  Skipped (unknown symbols): {res['skipped_unknown_symbol']}")
         return 0
 
     if args.command == "backfill-surveillance":

@@ -251,7 +251,8 @@ Populated from `config/holidays.json` and official NSE settlement holiday schedu
 
 - **Primary Key:** `PRIMARY KEY (symbol_sk, date_sk)`
 - **Constraints:** `CHECK (delivery_pct >= 0.0 AND delivery_pct <= 100.0)`
-- **Estimated Row Count:** ~10,000,000 rows.
+- **Coverage Scope:** Complete for 2020-01-01 onward (via `sec_bhavdata_full`). Pre-2020 delivery is NULL (MTO format deferred).
+- **Estimated Row Count:** ~4,800,000 rows (2020+).
 
 ---
 
@@ -338,6 +339,9 @@ JOIN dim_date dt ON f.date_sk = dt.date_sk
 LEFT JOIN fact_delivery_daily d ON f.symbol_sk = d.symbol_sk AND f.date_sk = d.date_sk
 LEFT JOIN fact_ta_daily ta ON f.symbol_sk = ta.symbol_sk AND f.date_sk = ta.date_sk;
 ```
+
+> [!NOTE]
+> `DELIV_PCT` is populated from `fact_delivery_daily` for trade dates from 2020-01-01 onward. For pre-2020 dates, `DELIV_PCT` is `NULL`. Downstream analytical models, screeners, and composite scorers treat `NULL` as neutral (default 50) rather than penalizing historical records.
 
 ---
 

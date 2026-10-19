@@ -1076,7 +1076,7 @@ class WarehouseLoader:
             conn.close()
             self.release_lock()
 
-    def backfill_delivery_from_raw(self, raw_dir: Path | str = "data/raw") -> int:
+    def backfill_delivery_from_staging(self) -> int:
         """Backfill fact_delivery_daily from staged delivery data (e.g. sec_bhavdata_full)."""
         self.acquire_lock()
         conn = self._get_conn()
