@@ -111,7 +111,7 @@ def _make_session() -> requests.Session:
     retry = Retry(
         total=3,
         backoff_factor=0.5,
-        status_forcelist=(403, 429, 500, 502, 503, 504),
+        status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=["GET"],
     )
     adapter = HTTPAdapter(max_retries=retry)
@@ -171,6 +171,10 @@ class NSEEquityMasterBuilder:
         Internal: None
     """
 
+    DEFAULT_REFERER: str = (
+        "https://www.nseindia.com/market-data/live-equity-market"
+    )
+
     def __init__(
         self,
         output_dir: str = "data",
@@ -210,6 +214,7 @@ class NSEEquityMasterBuilder:
         os.makedirs(cache_dir, exist_ok=True)
         self.session: requests.Session = _make_session()
         self._cookies_ready: bool = False
+        self._last_warmed_url: str | None = None
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -249,8 +254,9 @@ class NSEEquityMasterBuilder:
         try:
             LOGGER.info("Warming up NSE cookies...")
             self.session.cookies.clear()
+            url_home = "https://www.nseindia.com"
             self.session.get(
-                "https://www.nseindia.com",
+                url_home,
                 timeout=15,
                 headers={
                     "Accept": (
@@ -259,9 +265,11 @@ class NSEEquityMasterBuilder:
                     )
                 },
             )
+            self._last_warmed_url = url_home
             time.sleep(0.5)
+            url_market = "https://www.nseindia.com/market-data/live-equity-market"
             self.session.get(
-                "https://www.nseindia.com/market-data/live-equity-market",
+                url_market,
                 timeout=15,
                 headers={
                     "Accept": (
@@ -271,6 +279,7 @@ class NSEEquityMasterBuilder:
                     "Referer": "https://www.nseindia.com/",
                 },
             )
+            self._last_warmed_url = url_market
             self._cookies_ready = True
             time.sleep(0.5)
             LOGGER.info("NSE cookies ready.")
@@ -310,6 +319,9 @@ class NSEEquityMasterBuilder:
         """
         LOGGER.info("Fetching sec_list.csv from NSE Archives...")
         try:
+            # SEC_LIST_URL points to nsearchives.nseindia.com (static archive file)
+            # which does not require session cookies or dynamic Referer headers,
+            # so this request intentionally bypasses the _get dispatcher.
             resp = self.session.get(SEC_LIST_URL, timeout=30)
             if resp.status_code != 200:
                 LOGGER.error("sec_list.csv HTTP %d", resp.status_code)
@@ -340,14 +352,36 @@ class NSEEquityMasterBuilder:
             LOGGER.error("sec_list fetch error: %s", exc)
             return pd.DataFrame()
 
+    def _get(self, url: str, **kwargs: Any) -> requests.Response:
+        """Execute GET request with dynamic Referer/Origin headers and 403 diagnostics."""
+        referer = (
+            os.environ.get("NSE_REFERER")
+            or getattr(self, "_last_warmed_url", None)
+            or self.DEFAULT_REFERER
+        )
+        if referer:
+            self.session.headers["Referer"] = referer
+            self.session.headers["Origin"] = "https://www.nseindia.com"
+
+        resp = self.session.get(url, **kwargs)
+        if resp.status_code == 403:
+            LOGGER.warning(
+                "NSE returned 403 for %s. If this persists, set NSE_REFERER "
+                "to the last page you loaded in a real browser. "
+                "Current referer: %r",
+                url,
+                referer,
+            )
+        return resp
+
     def _fetch_index(self, index_name: str) -> tuple[list[str], list[dict[str, Any]]]:
         """
         Fetch constituent symbols and enriched data for one NSE index.
 
         Logic:
             Step 1: Ensure cookies are ready.
-            Step 2: GET /api/equity-stock-indices?index=<name>.
-            Step 3: Retry once with fresh cookies on 401/403.
+            Step 2: GET /api/equity-stock-indices?index=<name> using _get.
+            Step 3: Retry once with fresh cookies on 401.
             Step 4: Extract symbol list and price/ffmc record per constituent.
 
         Parameters:
@@ -369,35 +403,32 @@ class NSEEquityMasterBuilder:
             Space Complexity: O(K)
 
         Edge Cases Handled:
-            - Re-warms cookies on 403 and retries once.
-            - Returns empty lists on any failure.
+            - Re-warms cookies on 401 and retries once.
+            - Returns empty lists on any failure (including 403).
         """
         if not self._warmup_cookies():
             return [], []
 
-        hdrs = {
-            "Referer": ("https://www.nseindia.com/market-data/live-equity-market"),
-            "Accept": "application/json, text/plain, */*",
-        }
-
-        def _do_get() -> requests.Response:
-            return self.session.get(
+        try:
+            resp = self._get(
                 INDEX_API_URL,
                 params={"index": index_name},
-                headers=hdrs,
                 timeout=30,
             )
-
-        try:
-            resp = _do_get()
-            if resp.status_code in (401, 403):
+            # 403 blocks indicate referer or IP blocking and are deliberately NOT
+            # retried here to avoid rate-limit loops (unlike 401 cookie expiry).
+            # Retrying 403 would also conflict with removing 403 from adapter Retry.
+            if resp.status_code == 401:
                 LOGGER.warning(
-                    "Got %d for %s — re-warming cookies...",
-                    resp.status_code,
+                    "Got 401 for %s — re-warming cookies...",
                     index_name,
                 )
                 self._warmup_cookies(force=True)
-                resp = _do_get()
+                resp = self._get(
+                    INDEX_API_URL,
+                    params={"index": index_name},
+                    timeout=30,
+                )
 
             if resp.status_code != 200:
                 LOGGER.warning("Index API %d for %s", resp.status_code, index_name)
