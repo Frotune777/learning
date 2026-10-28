@@ -17,13 +17,17 @@ Classes:
 
 import logging
 import os
+import sqlite3
+import tempfile
 import time
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 
 from src.data.fetcher.prices.base import AbstractPriceFetcher
+from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
+from src.nse_bhavcopy.fyers_fetcher import FyersAuthError
 from src.nse_bhavcopy.ta_indicators import add_ta_indicators
 from src.storage.sync_registry import SyncRegistry, _last_trading_day
 
@@ -103,12 +107,29 @@ class HistoricalSync:
         except Exception as exc:
             LOGGER.warning("Could not calculate TA indicators for %s during save: %s", symbol, exc)
 
-        path = self._parquet_path(symbol)
+        final_path = self._parquet_path(symbol)
+        dir_name = os.path.dirname(final_path)
+        os.makedirs(dir_name, exist_ok=True)
+
+        tmp_path = None
         try:
-            df.to_parquet(path)
-            LOGGER.debug("Saved %d rows → %s", len(df), path)
+            with tempfile.NamedTemporaryFile(
+                dir=dir_name, prefix=f".{symbol}_", suffix=".tmp", delete=False
+            ) as tmp:
+                tmp_path = tmp.name
+            df.to_parquet(tmp_path)
+            os.replace(tmp_path, final_path)
+            tmp_path = None
+            LOGGER.debug("Saved %d rows → %s", len(df), final_path)
         except Exception as exc:
             LOGGER.error("Failed to save Parquet for %s: %s", symbol, exc)
+            raise
+        finally:
+            if tmp_path is not None and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
     def _estimate_expected_rows(self, first_date: date, last_date: date) -> int:
         """Rough estimate of trading days between two dates."""
@@ -157,6 +178,16 @@ class HistoricalSync:
 
         return False
 
+    def _trip_circuit_breaker(self, symbol: str) -> None:
+        """Switch active fetcher to YFinance across the entire sync session on auth failure."""
+        LOGGER.critical(
+            "Fyers auth failure on %s. Tripping session circuit breaker: "
+            "switching all remaining symbols to YFinanceFetcher.",
+            symbol,
+        )
+        from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
+        self.fetcher = YFinanceFetcher()
+
     def _fetch_full(self, symbol: str) -> pd.DataFrame:
         """Download complete history from start_date to today."""
         from_dt = datetime.strptime(self.start_date, "%Y-%m-%d")
@@ -164,12 +195,24 @@ class HistoricalSync:
 
         LOGGER.info("Full history download: %s from %s", symbol, self.start_date)
 
-        df = self.fetcher.fetch(
-            symbol,
-            timeframe=self.timeframe,
-            from_date=int(from_dt.timestamp()),
-            to_date=int(to_dt.timestamp()),
-        )
+        try:
+            df = self.fetcher.fetch(
+                symbol,
+                timeframe=self.timeframe,
+                from_date=int(from_dt.timestamp()),
+                to_date=int(to_dt.timestamp()),
+            )
+        except FyersAuthError:
+            self._trip_circuit_breaker(symbol)
+            df = self.fetcher.fetch(
+                symbol,
+                timeframe=self.timeframe,
+                from_date=int(from_dt.timestamp()),
+                to_date=int(to_dt.timestamp()),
+            )
+
+        if getattr(self.fetcher, "access_token", "not_fyers") is None:
+            self._trip_circuit_breaker(symbol)
 
         if df.empty:
             LOGGER.warning("No data fetched for %s", symbol)
@@ -184,20 +227,13 @@ class HistoricalSync:
         )
         return df
 
-    def _incremental_update(self, symbol: str, existing: pd.DataFrame) -> pd.DataFrame:
-        """Fetch only missing bars since the last saved date and merge them."""
-        last_date: datetime = existing.index.max().to_pydatetime()
-        from_dt = last_date - timedelta(days=5)
-        to_dt = datetime.now().replace(hour=23, minute=59, second=59)
-
-        LOGGER.info("Incremental update %s from %s", symbol, from_dt.date())
-        new_data = self.fetcher.fetch(
-            symbol,
-            timeframe=self.timeframe,
-            from_date=int(from_dt.timestamp()),
-            to_date=int(to_dt.timestamp()),
-        )
-
+    def _merge_and_adjust(
+        self, symbol: str, existing: pd.DataFrame, new_data: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Merge newly fetched bars into existing DataFrame,
+        handling splits and bonus adjustments.
+        """
         if new_data.empty:
             LOGGER.info("%s is already up to date.", symbol)
             return existing
@@ -291,6 +327,76 @@ class HistoricalSync:
         )
         return merged
 
+    def _incremental_update(self, symbol: str, existing: pd.DataFrame) -> pd.DataFrame:
+        """Fetch only missing bars since the last saved date and merge them."""
+        last_date: datetime = existing.index.max().to_pydatetime()
+        from_dt = last_date - timedelta(days=5)
+        to_dt = datetime.now().replace(hour=23, minute=59, second=59)
+
+        LOGGER.info("Incremental update %s from %s", symbol, from_dt.date())
+        try:
+            new_data = self.fetcher.fetch(
+                symbol,
+                timeframe=self.timeframe,
+                from_date=int(from_dt.timestamp()),
+                to_date=int(to_dt.timestamp()),
+            )
+        except FyersAuthError:
+            self._trip_circuit_breaker(symbol)
+            new_data = self.fetcher.fetch(
+                symbol,
+                timeframe=self.timeframe,
+                from_date=int(from_dt.timestamp()),
+                to_date=int(to_dt.timestamp()),
+            )
+
+        if getattr(self.fetcher, "access_token", "not_fyers") is None:
+            self._trip_circuit_breaker(symbol)
+
+        return self._merge_and_adjust(symbol, existing, new_data)
+
+    def _extract_symbol_from_batch(
+        self, df_batch: pd.DataFrame, symbol: str
+    ) -> pd.DataFrame:
+        """Extract single-symbol OHLCV DataFrame from multi-ticker MultiIndex DataFrame."""
+        if df_batch.empty or not isinstance(df_batch.columns, pd.MultiIndex):
+            return pd.DataFrame()
+
+        sym_clean = symbol.strip().upper()
+        keys_to_try = [f"{sym_clean}.NS", sym_clean]
+
+        found_key = None
+        level_0 = df_batch.columns.get_level_values(0)
+        for k in keys_to_try:
+            if k in level_0:
+                found_key = k
+                break
+
+        if found_key is None:
+            return pd.DataFrame()
+
+        try:
+            df_sym = df_batch[found_key].dropna(how="all").copy()
+            if df_sym.empty:
+                return pd.DataFrame()
+            if "Close" in df_sym.columns:
+                df_sym = df_sym.dropna(subset=["Close"])
+            cols = [
+                c
+                for c in ["Open", "High", "Low", "Close", "Volume"]
+                if c in df_sym.columns
+            ]
+            if not cols:
+                return pd.DataFrame()
+            df_sym = df_sym[cols].astype(float)
+            df_sym.index.name = "Date"
+            if df_sym.index.tz is not None:
+                df_sym.index = df_sym.index.tz_convert(None)
+            return df_sym.sort_index()
+        except Exception as exc:
+            LOGGER.warning("Error extracting %s from bulk batch: %s", symbol, exc)
+            return pd.DataFrame()
+
     def sync_one(
         self, symbol: str, force: bool = False, registry: SyncRegistry | None = None
     ) -> bool:
@@ -303,6 +409,8 @@ class HistoricalSync:
             - Existing file, current, good coverage → incremental update
         """
         symbol = symbol.strip().upper()
+        if getattr(self.fetcher, "access_token", "not_fyers") is None:
+            self._trip_circuit_breaker(symbol)
         existing = self._load(symbol)
 
         # Check if full refresh was done recently (within last 15 days) to avoid rate limit loops
@@ -355,7 +463,8 @@ class HistoricalSync:
             else:
                 df = existing  # Keep what we have
         else:
-            # Case 3: Good data or recently full refreshed (fallback to incremental to avoid rate limit) → incremental
+            # Case 3: Good data or recently full refreshed
+            # (fallback to incremental to avoid rate limit) → incremental
             if recently_full_refreshed and self._needs_full_refresh(existing):
                 LOGGER.info(
                     "%s has low coverage but was recently full-refreshed. "
@@ -414,7 +523,7 @@ class HistoricalSync:
         else:
             queue = [s.strip().upper() for s in symbols]
 
-        # Load failed symbols from CSV and filter them out to prevent infinite retries
+        # Load failed symbols from quarantine and filter them out to prevent infinite retries
         failed_symbols = self._load_failed_symbols()
         if failed_symbols:
             pre_len = len(queue)
@@ -422,7 +531,7 @@ class HistoricalSync:
             skipped_failed_count = pre_len - len(queue)
             if skipped_failed_count > 0:
                 LOGGER.info(
-                    "Skipped %d symbols because they are listed in failed_symbols.csv",
+                    "Skipped %d symbols because they are in the failed-symbols registry",
                     skipped_failed_count,
                 )
 
@@ -442,35 +551,12 @@ class HistoricalSync:
             return {**skipped}
 
         results: dict[str, bool] = {**skipped}
+        batch_results = self.sync_batch(queue, chunk_size=save_every, registry=registry)
+        results.update(batch_results)
 
-        for i, sym in enumerate(queue, 1):
-            LOGGER.info("[%d/%d] Syncing %s...", i, total, sym)
-            ok = self.sync_one(sym, registry=registry)
-            results[sym] = ok
+        if registry:
+            registry.save()
 
-            if ok:
-                df = self._load(sym)
-                if not df.empty:
-                    registry.mark_done(
-                        sym,
-                        first_bar=df.index.min().date(),
-                        last_bar=df.index.max().date(),
-                        row_count=len(df),
-                    )
-                    self._remove_failed_symbol(sym)
-            else:
-                registry.mark_failed(sym)
-                self._record_failed_symbol(
-                    sym, reason="Fyers sync failed or returned empty"
-                )
-
-            if i % save_every == 0:
-                registry.save()
-                LOGGER.info("Registry checkpoint saved at symbol %d.", i)
-
-            time.sleep(self.rate_delay)
-
-        registry.save()
         ok_count = sum(v for v in results.values())
         LOGGER.info(
             "Sync complete: %d/%d symbols succeeded (%d skipped as current).",
@@ -493,54 +579,236 @@ class HistoricalSync:
 
         return results
 
+    def sync_batch(
+        self,
+        symbols: list[str],
+        chunk_size: int = 50,
+        registry: SyncRegistry | None = None,
+        pbar: Any = None,
+    ) -> dict[str, bool]:
+        """
+        Synchronise historical data for multiple symbols, leveraging YFinance bulk download.
+
+        For YFinance, groups up to 50 symbols per single HTTP request.
+        For non-bulk fetchers (e.g. Fyers), falls back to sequential sync_one.
+        """
+        results: dict[str, bool] = {}
+        total = len(symbols)
+        if total == 0:
+            return results
+
+        if getattr(self.fetcher, "access_token", "not_fyers") is None:
+            self._trip_circuit_breaker(symbols[0])
+
+        is_bulk = hasattr(self.fetcher, "fetch_batch") and (
+            isinstance(self.fetcher, YFinanceFetcher)
+            or "yfinance" in self.fetcher.__class__.__name__.lower()
+        )
+
+        if not is_bulk:
+            for s in symbols:
+                try:
+                    res = self.sync_one(s, registry=registry)
+                except FyersAuthError:
+                    self._trip_circuit_breaker(s)
+                    res = self.sync_one(s, registry=registry)
+                results[s] = res
+                if res:
+                    self._remove_failed_symbol(s)
+                else:
+                    self._record_failed_symbol(s, reason="Fetcher sync failed or empty")
+                if pbar is not None:
+                    pbar.update(1)
+                if self.rate_delay > 0:
+                    time.sleep(self.rate_delay)
+            return results
+
+        for i in range(0, total, chunk_size):
+            chunk = symbols[i : i + chunk_size]
+            needs_inc: list[str] = []
+            needs_full: list[str] = []
+            existing_map: dict[str, pd.DataFrame] = {}
+
+            for s in chunk:
+                sym = s.strip().upper()
+                ex = self._load(sym)
+                existing_map[sym] = ex
+                if ex.empty or self._needs_full_refresh(ex):
+                    needs_full.append(sym)
+                else:
+                    needs_inc.append(sym)
+
+            if needs_inc:
+                min_last = min(existing_map[s].index.max() for s in needs_inc)
+                from_dt = min_last.to_pydatetime() - timedelta(days=5)
+                to_dt = datetime.now().replace(hour=23, minute=59, second=59)
+
+                try:
+                    df_batch_inc = self.fetcher.fetch_batch(
+                        needs_inc,
+                        timeframe=self.timeframe,
+                        from_date=int(from_dt.timestamp()),
+                        to_date=int(to_dt.timestamp()),
+                        chunk_size=len(needs_inc),
+                    )
+                except Exception as exc:
+                    LOGGER.warning("Bulk incremental fetch failed: %s; falling back", exc)
+                    df_batch_inc = pd.DataFrame()
+
+                for sym in needs_inc:
+                    sym_new = self._extract_symbol_from_batch(df_batch_inc, sym)
+                    if sym_new.empty:
+                        res = self.sync_one(sym, registry=registry)
+                    else:
+                        merged = self._merge_and_adjust(sym, existing_map[sym], sym_new)
+                        self._save(sym, merged)
+                        if registry and not merged.empty:
+                            registry.mark_done(
+                                sym,
+                                first_bar=merged.index.min().date(),
+                                last_bar=merged.index.max().date(),
+                                row_count=len(merged),
+                            )
+                        self._remove_failed_symbol(sym)
+                        res = True
+                    results[sym] = res
+                    if pbar is not None:
+                        pbar.update(1)
+
+            if needs_full:
+                from_dt = pd.to_datetime(self.start_date)
+                to_dt = datetime.now().replace(hour=23, minute=59, second=59)
+
+                try:
+                    df_batch_full = self.fetcher.fetch_batch(
+                        needs_full,
+                        timeframe=self.timeframe,
+                        from_date=int(from_dt.timestamp()),
+                        to_date=int(to_dt.timestamp()),
+                        chunk_size=len(needs_full),
+                    )
+                except Exception as exc:
+                    LOGGER.warning("Bulk full fetch failed: %s; falling back", exc)
+                    df_batch_full = pd.DataFrame()
+
+                for sym in needs_full:
+                    sym_df = self._extract_symbol_from_batch(df_batch_full, sym)
+                    if sym_df.empty:
+                        res = self.sync_one(sym, registry=registry)
+                    else:
+                        self._save(sym, sym_df)
+                        if registry and not sym_df.empty:
+                            registry.mark_done(
+                                sym,
+                                first_bar=sym_df.index.min().date(),
+                                last_bar=sym_df.index.max().date(),
+                                row_count=len(sym_df),
+                            )
+                        self._remove_failed_symbol(sym)
+                        res = True
+                    results[sym] = res
+                    if pbar is not None:
+                        pbar.update(1)
+
+            if registry:
+                registry.save()
+
+            if self.rate_delay > 0:
+                time.sleep(self.rate_delay)
+
+        return results
+
+    def _get_failed_db(self) -> sqlite3.Connection:
+        db_path = os.path.join(self.data_dir, "failed_symbols.db")
+        os.makedirs(self.data_dir, exist_ok=True)
+        conn = sqlite3.connect(db_path, timeout=10.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS failed (
+                symbol     TEXT PRIMARY KEY,
+                first_seen TEXT NOT NULL,
+                reason     TEXT
+            )
+            """
+        )
+        csv_path = os.path.join(self.data_dir, "failed_symbols.csv")
+        if os.path.exists(csv_path):
+            try:
+                df = pd.read_csv(csv_path)
+                if "SYMBOL" in df.columns:
+                    now_utc = datetime.now(UTC).isoformat()
+                    rows = []
+                    for _, r in df.iterrows():
+                        sym = str(r.get("SYMBOL", "")).strip().upper()
+                        if not sym or sym == "NAN":
+                            continue
+                        last = r.get("LAST_ATTEMPT")
+                        seen = str(last) if pd.notna(last) else now_utc
+                        rsn = r.get("ERROR_REASON")
+                        reason = str(rsn) if pd.notna(rsn) else None
+                        rows.append((sym, seen, reason))
+                    if rows:
+                        conn.executemany(
+                            "INSERT OR REPLACE INTO failed (symbol, first_seen, reason) "
+                            "VALUES (?, ?, ?)",
+                            rows,
+                        )
+                        conn.commit()
+                os.rename(csv_path, f"{csv_path}.migrated")
+            except Exception as exc:
+                LOGGER.warning("Failed migrating failed_symbols.csv: %s", exc)
+        return conn
+
     def _load_failed_symbols(self) -> set[str]:
-        path = os.path.join(self.data_dir, "failed_symbols.csv")
-        if not os.path.exists(path):
+        db_path = os.path.join(self.data_dir, "failed_symbols.db")
+        csv_path = os.path.join(self.data_dir, "failed_symbols.csv")
+        if not os.path.exists(db_path) and not os.path.exists(csv_path):
             return set()
         try:
-            df = pd.read_csv(path)
-            if "SYMBOL" in df.columns:
-                return set(df["SYMBOL"].astype(str).str.strip().str.upper().unique())
+            conn = self._get_failed_db()
+            try:
+                cur = conn.execute("SELECT symbol FROM failed")
+                return {row[0].strip().upper() for row in cur.fetchall()}
+            finally:
+                conn.close()
         except Exception as exc:
-            LOGGER.warning("Failed to load failed_symbols.csv: %s", exc)
-        return set()
+            LOGGER.warning("Failed to load failed symbols: %s", exc)
+            return set()
 
     def _record_failed_symbol(self, symbol: str, reason: str = "Sync failed") -> None:
-        path = os.path.join(self.data_dir, "failed_symbols.csv")
         symbol = symbol.strip().upper()
-        new_row = {
-            "SYMBOL": symbol,
-            "LAST_ATTEMPT": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "ERROR_REASON": reason,
-        }
+        now_utc = datetime.now(UTC).isoformat()
         try:
-            if os.path.exists(path):
-                df = pd.read_csv(path)
-                df = df[df["SYMBOL"] != symbol]
-                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            else:
-                df = pd.DataFrame([new_row])
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            df.to_csv(path, index=False)
-            LOGGER.info("Recorded %s in failed_symbols.csv", symbol)
+            conn = self._get_failed_db()
+            try:
+                with conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO failed (symbol, first_seen, reason) "
+                        "VALUES (?, ?, ?)",
+                        (symbol, now_utc, reason),
+                    )
+                LOGGER.info("Recorded %s in failed symbols quarantine", symbol)
+            finally:
+                conn.close()
         except Exception as exc:
             LOGGER.warning("Failed to record failed symbol %s: %s", symbol, exc)
 
     def _remove_failed_symbol(self, symbol: str) -> None:
-        path = os.path.join(self.data_dir, "failed_symbols.csv")
-        symbol = symbol.strip().upper()
-        if not os.path.exists(path):
+        db_path = os.path.join(self.data_dir, "failed_symbols.db")
+        if not os.path.exists(db_path):
             return
+        symbol = symbol.strip().upper()
         try:
-            df = pd.read_csv(path)
-            if symbol in df["SYMBOL"].values:
-                df = df[df["SYMBOL"] != symbol]
-                df.to_csv(path, index=False)
-                LOGGER.info("Removed %s from failed_symbols.csv", symbol)
+            conn = self._get_failed_db()
+            try:
+                with conn:
+                    conn.execute("DELETE FROM failed WHERE symbol = ?", (symbol,))
+                LOGGER.info("Removed %s from failed symbols quarantine", symbol)
+            finally:
+                conn.close()
         except Exception as exc:
-            LOGGER.warning(
-                "Failed to remove %s from failed_symbols.csv: %s", symbol, exc
-            )
+            LOGGER.warning("Failed to remove %s from failed symbols: %s", symbol, exc)
 
     def read(self, symbol: str) -> pd.DataFrame:
         return self._load(symbol)

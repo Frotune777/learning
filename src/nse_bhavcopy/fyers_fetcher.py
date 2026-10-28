@@ -53,6 +53,10 @@ _CHUNK_DAYS: dict[str, int] = {
 }
 
 
+class FyersAuthError(RuntimeError):
+    """Raised when Fyers returns 401 Unauthorized or 403 Forbidden."""
+
+
 def _load_token_from_cache(cache_path: str) -> str | None:
     """
     Load the Fyers access token from a local cache file.
@@ -388,9 +392,25 @@ class FyersFetcher(AbstractPriceFetcher):
                     headers=self._headers(),
                     timeout=_REQUEST_TIMEOUT,
                 )
+                if resp.status_code in (401, 403):
+                    LOGGER.critical(
+                        "Fyers auth failure (HTTP %d). Invalidating token and failing fast.",
+                        resp.status_code,
+                    )
+                    self.access_token = None
+                    if os.path.exists(self.token_cache):
+                        try:
+                            os.remove(self.token_cache)
+                        except OSError:
+                            pass
+                    raise FyersAuthError(
+                        f"Fyers API returned HTTP {resp.status_code} Unauthorized: {url}"
+                    )
                 resp.raise_for_status()
                 data: dict[str, object] = resp.json()
                 return data
+            except FyersAuthError:
+                raise
             except requests.RequestException as exc:
                 LOGGER.warning(
                     "Fyers GET attempt %d/%d failed: %s", attempt, max_retries, exc
@@ -507,6 +527,8 @@ class FyersFetcher(AbstractPriceFetcher):
                 len(candles),
             )
             return self._candles_to_df(candles)
+        except FyersAuthError:
+            raise
         except RuntimeError as exc:
             LOGGER.error("Chunk fetch failed: %s", exc)
             return pd.DataFrame()
@@ -627,14 +649,19 @@ class FyersFetcher(AbstractPriceFetcher):
         current = start_dt
         from datetime import timedelta
 
-        while current <= end_dt:
-            chunk_end = min(current + timedelta(days=chunk_days - 1), end_dt)
-            df_chunk = self._fetch_chunk(fyers_sym, resolution, current, chunk_end)
-            if not df_chunk.empty:
-                chunks.append(df_chunk)
-            current = chunk_end + timedelta(days=1)
-            if current <= end_dt:
-                time.sleep(self.rate_delay)
+        try:
+            while current <= end_dt:
+                chunk_end = min(current + timedelta(days=chunk_days - 1), end_dt)
+                df_chunk = self._fetch_chunk(fyers_sym, resolution, current, chunk_end)
+                if not df_chunk.empty:
+                    chunks.append(df_chunk)
+                current = chunk_end + timedelta(days=1)
+                if current <= end_dt:
+                    time.sleep(self.rate_delay)
+        except FyersAuthError:
+            if self.fallback_enabled:
+                return self._fallback_fetch(symbol, timeframe, from_date, to_date)
+            raise
 
         if not chunks:
             LOGGER.warning("Fyers: no data returned for %s.", symbol)

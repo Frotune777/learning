@@ -6,10 +6,13 @@ Last Modified: 2026-05-27
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
+from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
+from src.nse_bhavcopy.fyers_fetcher import FyersAuthError
 from src.storage.historical_sync import HistoricalSync
 
 
@@ -189,3 +192,157 @@ def test_historical_sync_corporate_action_gap(tmp_path: Path) -> None:
     assert adjusted_df.loc["2026-05-15", "Close"] == 100.0
     assert adjusted_df.loc["2026-05-15", "Volume"] == 5000.0
     assert adjusted_df.loc["2026-05-24", "Close"] == 100.0
+
+
+def test_historical_sync_circuit_breaker(tmp_path: Path) -> None:
+    sync_dir = tmp_path / "historical"
+    sync = HistoricalSync(data_dir=str(sync_dir))
+
+    mock_fyers = MagicMock()
+    mock_fyers.fetch.side_effect = FyersAuthError("401 Unauthorized")
+    sync.fetcher = mock_fyers
+
+    dates = pd.date_range("2026-01-01", periods=10)
+    fallback_df = pd.DataFrame(
+        {
+            "Close": [100.0] * 10,
+            "Open": [100.0] * 10,
+            "High": [105.0] * 10,
+            "Low": [95.0] * 10,
+            "Volume": [1000.0] * 10,
+        },
+        index=dates,
+    )
+
+    with patch.object(YFinanceFetcher, "fetch", return_value=fallback_df):
+        res = sync.sync_one("RELIANCE")
+        assert res is True
+        # Verify circuit breaker shifted fetcher instance to YFinanceFetcher
+        assert isinstance(sync.fetcher, YFinanceFetcher)
+
+
+def test_historical_sync_extract_symbol_from_batch(tmp_path: Path) -> None:
+    sync = HistoricalSync(data_dir=str(tmp_path))
+    dates = pd.date_range("2026-01-01", periods=5)
+    cols = pd.MultiIndex.from_tuples(
+        [
+            ("RELIANCE.NS", "Open"),
+            ("RELIANCE.NS", "High"),
+            ("RELIANCE.NS", "Low"),
+            ("RELIANCE.NS", "Close"),
+            ("RELIANCE.NS", "Volume"),
+            ("TCS.NS", "Close"),
+        ]
+    )
+    df_batch = pd.DataFrame(
+        [
+            [100.0, 105.0, 95.0, 102.0, 1000.0, 3000.0],
+            [102.0, 106.0, 101.0, 104.0, 1500.0, 3050.0],
+            [104.0, 107.0, 103.0, 105.0, 1200.0, 3020.0],
+            [105.0, 108.0, 104.0, 106.0, 1100.0, 3010.0],
+            [106.0, 109.0, 105.0, 107.0, 1300.0, 3040.0],
+        ],
+        index=dates,
+        columns=cols,
+    )
+
+    extracted = sync._extract_symbol_from_batch(df_batch, "RELIANCE")
+    assert not extracted.empty
+    assert list(extracted.columns) == ["Open", "High", "Low", "Close", "Volume"]
+    assert len(extracted) == 5
+    assert extracted.loc["2026-01-01", "Close"] == 102.0
+
+
+def test_historical_sync_batch_yfinance(tmp_path: Path) -> None:
+    from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
+
+    sync = HistoricalSync(data_dir=str(tmp_path))
+    mock_yf = MagicMock(spec=YFinanceFetcher)
+    dates = pd.date_range("2026-01-01", periods=5)
+    cols = pd.MultiIndex.from_tuples(
+        [
+            ("INFY.NS", "Open"),
+            ("INFY.NS", "High"),
+            ("INFY.NS", "Low"),
+            ("INFY.NS", "Close"),
+            ("INFY.NS", "Volume"),
+            ("WIPRO.NS", "Open"),
+            ("WIPRO.NS", "High"),
+            ("WIPRO.NS", "Low"),
+            ("WIPRO.NS", "Close"),
+            ("WIPRO.NS", "Volume"),
+        ]
+    )
+    batch_df = pd.DataFrame(
+        [
+            [100.0, 105.0, 95.0, 102.0, 1000.0, 50.0, 52.0, 48.0, 51.0, 500.0],
+            [102.0, 106.0, 101.0, 104.0, 1500.0, 51.0, 53.0, 49.0, 52.0, 600.0],
+            [104.0, 107.0, 103.0, 105.0, 1200.0, 52.0, 54.0, 50.0, 53.0, 550.0],
+            [105.0, 108.0, 104.0, 106.0, 1100.0, 53.0, 55.0, 51.0, 54.0, 700.0],
+            [106.0, 109.0, 105.0, 107.0, 1300.0, 54.0, 56.0, 52.0, 55.0, 800.0],
+        ],
+        index=dates,
+        columns=cols,
+    )
+    mock_yf.fetch_batch.return_value = batch_df
+    sync.fetcher = mock_yf
+
+    results = sync.sync_batch(["INFY", "WIPRO"])
+    assert results == {"INFY": True, "WIPRO": True}
+    assert os.path.exists(sync._parquet_path("INFY"))
+    assert os.path.exists(sync._parquet_path("WIPRO"))
+    df_infy = pd.read_parquet(sync._parquet_path("INFY"))
+    assert len(df_infy) == 5
+    assert "Close" in df_infy.columns
+
+
+def test_historical_sync_atomic_save_mid_write_failure(tmp_path: Path) -> None:
+    sync = HistoricalSync(data_dir=str(tmp_path))
+    symbol = "TESTSYM"
+    final_path = sync._parquet_path(symbol)
+    os.makedirs(os.path.dirname(final_path), exist_ok=True)
+
+    # Pre-populate an existing valid Parquet file
+    dates = pd.date_range("2026-01-01", periods=5)
+    orig_df = pd.DataFrame(
+        {
+            "Close": [100.0] * 5,
+            "Open": [100.0] * 5,
+            "High": [105.0] * 5,
+            "Low": [95.0] * 5,
+            "Volume": [1000.0] * 5,
+        },
+        index=dates,
+    )
+    orig_df.to_parquet(final_path)
+
+    # Prepare new data that fails mid-write
+    new_dates = pd.date_range("2026-01-01", periods=10)
+    new_df = pd.DataFrame(
+        {
+            "Close": [200.0] * 10,
+            "Open": [200.0] * 10,
+            "High": [205.0] * 10,
+            "Low": [195.0] * 10,
+            "Volume": [2000.0] * 10,
+        },
+        index=new_dates,
+    )
+
+    # Patch DataFrame.to_parquet to raise an error
+    with patch.object(pd.DataFrame, "to_parquet", side_effect=OSError("Disk write failed")):
+        with pytest.raises(OSError, match="Disk write failed"):
+            sync._save(symbol, new_df)
+
+    # Assert existing file is preserved and uncorrupted
+    assert os.path.exists(final_path)
+    preserved_df = pd.read_parquet(final_path)
+    assert len(preserved_df) == 5
+    assert preserved_df["Close"].iloc[0] == 100.0
+
+    # Assert no leftover temporary files in directory
+    parent_dir = os.path.dirname(final_path)
+    tmp_files = [f for f in os.listdir(parent_dir) if f.endswith(".tmp")]
+    assert len(tmp_files) == 0
+
+

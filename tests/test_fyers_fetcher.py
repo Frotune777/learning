@@ -11,6 +11,7 @@ import pytest
 
 from src.data.symbol_mapper import SymbolMapper
 from src.nse_bhavcopy.fyers_fetcher import (
+    FyersAuthError,
     FyersFetcher,
     exchange_auth_code,
 )
@@ -148,3 +149,54 @@ def test_get_quotes_success(mock_get, temp_cache):
     assert quotes["TCS"] == 3500.5
     assert quotes["INFY"] == 1400.0
     assert "INVALID" not in quotes
+
+
+@patch("src.nse_bhavcopy.fyers_fetcher.requests.get")
+def test_fyers_401_fast_fail(mock_get, temp_cache):
+    # Setup token on disk
+    with open(temp_cache, "w") as fh:
+        fh.write("expired_tok")
+
+    fetcher = FyersFetcher(
+        access_token="expired_tok", token_cache=temp_cache, fallback_enabled=False
+    )
+    fetcher.api_key = "test_key"
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+    mock_get.return_value = mock_resp
+
+    with pytest.raises(FyersAuthError):
+        fetcher._get("/data/history?symbol=NSE:TCS-EQ")
+
+    # Fast-fail check: exactly 1 attempt, zero retries
+    assert mock_get.call_count == 1
+    # Token must be invalidated
+    assert fetcher.access_token is None
+    # Cache file must be purged
+    assert not os.path.exists(temp_cache)
+
+
+@patch("src.nse_bhavcopy.fyers_fetcher.requests.get")
+def test_fyers_401_fallback(mock_get, temp_cache):
+    with open(temp_cache, "w") as fh:
+        fh.write("expired_tok")
+
+    fetcher = FyersFetcher(
+        access_token="expired_tok", token_cache=temp_cache, fallback_enabled=True
+    )
+    fetcher.api_key = "test_key"
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+    mock_get.return_value = mock_resp
+
+    with patch.object(fetcher, "_fallback_fetch") as mock_fb:
+        dummy_df = pd.DataFrame({"Close": [100.0]}, index=[datetime(2026, 1, 1)])
+        mock_fb.return_value = dummy_df
+
+        df = fetcher.fetch("TCS", timeframe="1d")
+        assert not df.empty
+        assert mock_fb.called
+        assert fetcher.access_token is None
+

@@ -1,0 +1,30 @@
+sources:
+  bhavcopy_legacy_2000_2011:
+    category: price
+    adapter_hint: bhavcopy_era_legacy
+    url_pattern: "https://nsearchives.nseindia.com/content/historical/EQUITIES/{YYYY}/{MMM}/cm{DDMMMYYYY}bhav.csv.zip"
+    url_date_format: "%d%b%Y"
+    rate_limit: 1.0
+    retry: {attempts: 3, backoff: 2.0}
+    required_canonical_columns: [symbol, trade_date, open, high, low, close, volume]
+    skip_series: ["IL", "GS", "GB", "SM", "ST"]
+
+  bhavcopy_modern_2012_2019:
+    category: price
+    adapter_hint: bhavcopy_era_modern
+    url_pattern: "https://nsearchives.nseindia.com/content/historical/EQUITIES/{YYYY}/{MMM}/cm{DDMMMYYYY}bhav.csv.zip"
+    url_date_format: "%d%b%Y"
+    rate_limit: 1.0
+    retry: {attempts: 3, backoff: 2.0}
+    required_canonical_columns: [symbol, trade_date, open, high, low, close, volume]
+    skip_series: ["IL", "GS", "GB", "SM", "ST"]
+
+  sec_bhavdata_full:
+    category: price_and_delivery
+    adapter_hint: sec_bhavdata
+    url_pattern: "https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{DDMMYYYY}.csv"
+    url_date_format: "%d%m%Y"
+    rate_limit: 1.0
+    retry: {attempts: 3, backoff: 2.0}
+    required_canonical_columns: [symbol, trade_date, open, high, low, close, volume, delivery_qty, delivery_pct]
+    skip_series: ["SM", "ST"]

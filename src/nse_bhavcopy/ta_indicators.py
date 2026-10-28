@@ -7,6 +7,7 @@ Last Modified: 2026-05-27
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import talib
 
@@ -112,78 +113,67 @@ def add_ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df["52W_HIGH"] = pd.Series(high.rolling(window=252).max(), index=df.index)
         df["52W_LOW"] = pd.Series(low.rolling(window=252).min(), index=df.index)
 
-    # Add RSI and MACD Divergences
-    df["RSI_Divergence"] = "None"
-    df["MACD_Divergence"] = "None"
+    return _calculate_vectorized_divergences(df)
 
-    lookback = 20
-    if len(df) >= lookback:
-        try:
-            # RSI Divergence detection
-            if "RSI_14" in df.columns:
-                recent = df.tail(lookback)
-                prices = recent["Close"].to_numpy(dtype=float)
-                rsi_vals = recent["RSI_14"].to_numpy(dtype=float)
 
-                p_min_idx = prices.argmin()
-                p_max_idx = prices.argmax()
+def _calculate_vectorized_divergences(
+    df: pd.DataFrame, lookback: int = 20
+) -> pd.DataFrame:
+    """
+    Calculate point-in-time divergences using pandas/numpy,
+    with TA-Lib RSI_14 and MACD_HIST inputs.
+    """
+    # B1: Always ensure both columns are initialized
+    rsi_div = pd.Series("None", index=df.index, dtype="object")
+    macd_div = pd.Series("None", index=df.index, dtype="object")
 
-                if p_min_idx > lookback // 2:
-                    prev_p = prices[:p_min_idx]
-                    prev_rsi = rsi_vals[:p_min_idx]
-                    if len(prev_p) > 0:
-                        prev_min_idx = prev_p.argmin()
-                        if (
-                            prices[p_min_idx] < prev_p[prev_min_idx]
-                            and rsi_vals[p_min_idx] > prev_rsi[prev_min_idx]
-                        ):
-                            df.loc[df.index[-1], "RSI_Divergence"] = "Bullish"
+    if len(df) < lookback:
+        return df.assign(RSI_Divergence=rsi_div, MACD_Divergence=macd_div)
 
-                if p_max_idx > lookback // 2:
-                    prev_p = prices[:p_max_idx]
-                    prev_rsi = rsi_vals[:p_max_idx]
-                    if len(prev_p) > 0:
-                        prev_max_idx = prev_p.argmax()
-                        if (
-                            prices[p_max_idx] > prev_p[prev_max_idx]
-                            and rsi_vals[p_max_idx] < prev_rsi[prev_max_idx]
-                        ):
-                            df.loc[df.index[-1], "RSI_Divergence"] = "Bearish"
+    # Note: Rolling window includes current bar [t - lookback + 1, t];
+    # comparing current bar to rolling extremum strictly looks backward without lookahead. (B4)
+    close = df["Close"].astype("float64")
+    roll_min_p = close.rolling(lookback, min_periods=lookback).min()
+    roll_max_p = close.rolling(lookback, min_periods=lookback).max()
 
-            # MACD Divergence detection
-            if "MACD_HIST" in df.columns:
-                recent = df.tail(lookback)
-                prices = recent["Close"].to_numpy(dtype=float)
-                macd_hist = recent["MACD_HIST"].to_numpy(dtype=float)
+    # RSI Divergence (TA-Lib RSI_14 input)
+    if "RSI_14" in df.columns:
+        rsi = df["RSI_14"].astype("float64")
+        roll_min_rsi = rsi.rolling(lookback, min_periods=lookback).min()
+        roll_max_rsi = rsi.rolling(lookback, min_periods=lookback).max()
 
-                p_min_idx = prices.argmin()
-                p_max_idx = prices.argmax()
+        bull_rsi = (close <= roll_min_p) & (rsi > roll_min_rsi)
+        bear_rsi = (close >= roll_max_p) & (rsi < roll_max_rsi)
+        # B2: Collision -> "None"
+        collision_rsi = bull_rsi & bear_rsi
+        bull_rsi = bull_rsi & (~collision_rsi)
+        bear_rsi = bear_rsi & (~collision_rsi)
 
-                if p_min_idx > lookback // 2:
-                    prev_p = prices[:p_min_idx]
-                    prev_macd = macd_hist[:p_min_idx]
-                    if len(prev_p) > 0:
-                        prev_min_idx = prev_p.argmin()
-                        if (
-                            prices[p_min_idx] < prev_p[prev_min_idx]
-                            and macd_hist[p_min_idx] > prev_macd[prev_min_idx]
-                        ):
-                            df.loc[df.index[-1], "MACD_Divergence"] = "Bullish"
+        rsi_condition = np.where(
+            bull_rsi, "Bullish", np.where(bear_rsi, "Bearish", "None")
+        )
+        rsi_div = pd.Series(rsi_condition, index=df.index, dtype="object")
 
-                if p_max_idx > lookback // 2:
-                    prev_p = prices[:p_max_idx]
-                    prev_macd = macd_hist[:p_max_idx]
-                    if len(prev_p) > 0:
-                        prev_max_idx = prev_p.argmax()
-                        if (
-                            prices[p_max_idx] > prev_p[prev_max_idx]
-                            and macd_hist[p_max_idx] < prev_macd[prev_max_idx]
-                        ):
-                            df.loc[df.index[-1], "MACD_Divergence"] = "Bearish"
-        except Exception as e:
-            LOGGER.warning("Error calculating divergences: %s", e)
+    # MACD Divergence (B5: TA-Lib MACD_HIST input)
+    if "MACD_HIST" in df.columns:
+        macd_hist = df["MACD_HIST"].astype("float64")
+        roll_min_macd = macd_hist.rolling(lookback, min_periods=lookback).min()
+        roll_max_macd = macd_hist.rolling(lookback, min_periods=lookback).max()
 
-    return df
+        bull_macd = (close <= roll_min_p) & (macd_hist > roll_min_macd)
+        bear_macd = (close >= roll_max_p) & (macd_hist < roll_max_macd)
+        # B2: Collision -> "None"
+        collision_macd = bull_macd & bear_macd
+        bull_macd = bull_macd & (~collision_macd)
+        bear_macd = bear_macd & (~collision_macd)
+
+        macd_condition = np.where(
+            bull_macd, "Bullish", np.where(bear_macd, "Bearish", "None")
+        )
+        macd_div = pd.Series(macd_condition, index=df.index, dtype="object")
+
+    # B3: assign() instead of .loc
+    return df.assign(RSI_Divergence=rsi_div, MACD_Divergence=macd_div)
 
 
 def calculate_technical_score(row: pd.Series) -> dict[str, Any]:

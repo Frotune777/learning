@@ -377,6 +377,134 @@ def menu_build_master(data_dir: str) -> None:
     _pause()
 
 
+def _pre_flight_check() -> str:
+    """Execute connection and auth pre-flight checks before syncing history."""
+    import time
+    import requests
+    from src.core.data_sources import get_data_source_manager
+    from src.nse_bhavcopy.fyers_fetcher import FyersAuthError, exchange_auth_code
+
+    print(f"\n  {bold('[PRE-FLIGHT CHECK]')}")
+
+    # 1. Ping yfinance
+    yf_ok = False
+    yf_ms = 0
+    t0 = time.perf_counter()
+    try:
+        r = requests.get(
+            "https://query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS?interval=1d&range=1d",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=3.0,
+        )
+        if r.status_code == 200:
+            yf_ok = True
+            yf_ms = int((time.perf_counter() - t0) * 1000)
+    except Exception:
+        pass
+
+    if yf_ok:
+        print(f"  {green('✓')} {bold('yfinance:')}  {green(f'OK (Latency {yf_ms}ms)')}")
+    else:
+        print(f"  {red('✗')} {bold('yfinance:')}  {red('FAILED (Unreachable)')}")
+
+    # 2. Check Fyers
+    fyers_status = "OK"
+    fyers_msg = ""
+    fyers = get_fyers_fetcher()
+    if not fyers.access_token:
+        fyers_status = "NO_TOKEN"
+        fyers_msg = "Token Expired / Missing"
+    else:
+        t0 = time.perf_counter()
+        try:
+            q = fyers.get_quotes(["NSE:NIFTY50-INDEX"])
+            if q:
+                fyers_ms = int((time.perf_counter() - t0) * 1000)
+                fyers_msg = f"Latency {fyers_ms}ms"
+            else:
+                fyers_status = "FAILED"
+                fyers_msg = "Empty response"
+        except FyersAuthError:
+            fyers_status = "EXPIRED"
+            fyers_msg = "HTTP 401 Unauthorized - Token Expired"
+        except Exception as exc:
+            if "401" in str(exc) or "Unauthorized" in str(exc):
+                fyers_status = "EXPIRED"
+                fyers_msg = "HTTP 401 Unauthorized - Token Expired"
+            else:
+                fyers_status = "FAILED"
+                fyers_msg = str(exc)[:35]
+
+    if fyers_status == "OK":
+        print(f"  {green('✓')} {bold('fyers:')}     {green(f'OK ({fyers_msg})')}")
+    else:
+        print(f"  {red('✗')} {bold('fyers:')}     {red(f'FAILED ({fyers_msg})')}")
+
+    # 3. Check Bhavcopy
+    bhav_ok = False
+    bhav_ms = 0
+    t0 = time.perf_counter()
+    try:
+        r = requests.head(
+            "https://archives.nseindia.com",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=3.0,
+        )
+        bhav_ok = True
+        bhav_ms = int((time.perf_counter() - t0) * 1000)
+    except Exception:
+        pass
+
+    if bhav_ok:
+        print(f"  {green('✓')} {bold('bhavcopy:')}  {green(f'OK (NSE server reachable, {bhav_ms}ms)')}\n")
+    else:
+        print(f"  {yellow('⚠')} {bold('bhavcopy:')}  {yellow('NSE server slow or unreachable')}\n")
+
+    dsm = get_data_source_manager()
+    if dsm.active_historical_source == "fyers" and fyers_status != "OK":
+        print(warn("Fyers token is expired. What would you like to do?"))
+        print("  [1] Re-authenticate Fyers now (Launch browser auth)")
+        print("  [2] Demote Fyers & use yfinance as primary for this run")
+        print("  [3] Use NSE Daily Bhavcopy archive")
+        print("  [4] Abort\n")
+
+        choice = input(f"  {dim('Select option')} [1-4]: ").strip()
+        if choice == "1":
+            api_key = os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")
+            api_secret = os.getenv("FYERS_API_SECRET") or os.getenv("BROKER_API_SECRET")
+            if not api_key or not api_secret:
+                print(err("FYERS_API_KEY and Secret not set in .env."))
+                _pause()
+                return "abort"
+            redirect = os.getenv("FYERS_REDIRECT_URI", "https://trade.fyers.in/api-login/redirect-uri/index.html")
+            url = fyers.login_url(redirect_uri=redirect)
+            print(f"\n  {bold('Step 1:')} Open this URL to login:\n  {cyan(url)}\n")
+            print(f"  {bold('Step 2:')} Copy the '?code=' value from the redirect URL.\n")
+            code = _ask("Enter the auth code (or press Enter to cancel)", "")
+            if code:
+                token = exchange_auth_code(code, api_key, api_secret)
+                if token:
+                    fyers.set_token(token)
+                    print(ok("Token saved. Fyers re-authenticated."))
+                    return "continue"
+                else:
+                    print(err("Failed to exchange code for token."))
+            return "abort"
+        elif choice == "2":
+            dsm.active_historical_source = "yfinance"
+            print(ok("Demoted Fyers: yfinance set as primary for this run.\n"))
+            return "continue"
+        elif choice == "3":
+            dsm.active_historical_source = "bhavcopy"
+            print(ok("Switched to NSE Daily Bhavcopy archive.\n"))
+            return "continue"
+        else:
+            print(warn("Sync cancelled by user.\n"))
+            return "abort"
+
+    return "continue"
+
+
 @dry_run_capable
 def menu_sync_history(
     data_dir: str,
@@ -387,6 +515,9 @@ def menu_sync_history(
     dry_run: bool = False,
 ) -> None:
     """Interactive handler for syncing historical Parquet data."""
+    if _pre_flight_check() == "abort":
+        return
+
     master_path = _find_latest_master(data_dir)
     symbols = _load_symbols(
         master_path, cap_filter=cap_filter, index_filter=index_filter, limit=limit
@@ -417,10 +548,9 @@ def menu_sync_history(
         data_dir=hist_dir, timeframe=tf, start_date=start, rate_delay=delay
     )
 
-    # Use tqdm for progress indication
-    results = {}
-    for symbol in tqdm(symbols, desc="Syncing symbols"):
-        results[symbol] = hs.sync_one(symbol)
+    # Use tqdm with sync_batch (enabling YFinance bulk downloading)
+    with tqdm(total=len(symbols), desc="Syncing symbols") as pbar:
+        results = hs.sync_batch(symbols, pbar=pbar)
 
     ok_count = sum(v for v in results.values())
     failed = [s for s, v in results.items() if not v]
