@@ -13,6 +13,13 @@ from typing import Any, ClassVar
 import structlog
 
 
+OFFLINE: bool = False
+
+
+class OfflineError(RuntimeError):
+    """Raised when a network operation is attempted in offline mode."""
+
+
 class Config:
     """
     Central configuration management for the NSE pipeline.
@@ -22,6 +29,7 @@ class Config:
         DEFAULT_HIST_DIR (str): Historical Parquet storage path. | "data/historical"
         DEFAULT_START_DATE (str): Default sync start date. | "2000-01-01"
         DEFAULT_TIMEFRAME (str): Default OHLCV timeframe. | "1d"
+        OFFLINE (bool): Global offline mode flag. | False
         SYNC_DEFAULTS (dict): Sync operation defaults.
         DISPLAY_LIMITS (dict): CLI table display limits.
         TECH_THRESHOLDS (dict): RSI/ADX/CCI threshold constants.
@@ -39,6 +47,7 @@ class Config:
     DEFAULT_MASTER_DIR: str = "data"
     DEFAULT_START_DATE: str = "2000-01-01"
     DEFAULT_TIMEFRAME: str = "1d"
+    OFFLINE: ClassVar[bool] = False
 
     # Sync defaults
     SYNC_DEFAULTS: ClassVar[dict[str, Any]] = {

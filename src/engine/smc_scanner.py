@@ -18,7 +18,7 @@ LOGGER = logging.getLogger(__name__)
 
 def run_smc_scan(
     hist_dir: str = "data/historical/1d",
-    db_path: str = "data/smc_calls.sqlite",
+    db_path: str = "data/signals.db",
     limit: int | None = None,
     symbols: list[str] | None = None,
 ) -> list[TradingCall]:

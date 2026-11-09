@@ -125,6 +125,10 @@ class NSEChartFetcher(AbstractPriceFetcher):
         Edge Cases Handled:
             - Catches remote exceptions, logging and bubble them out safely.
         """
+        import src.core.config as config
+        if config.OFFLINE or config.Config.OFFLINE:
+            raise config.OfflineError("NSEChart network fetch blocked: OFFLINE mode is active")
+
         try:
             return self.circuit_breaker.call(
                 self._fetch_raw, symbol, timeframe, period, from_date, to_date

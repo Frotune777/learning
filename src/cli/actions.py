@@ -147,9 +147,15 @@ def cmd_sync_history(args: argparse.Namespace) -> None:
 
 def cmd_screen(args: argparse.Namespace) -> None:
     """
-    Execute the 'screen' CLI subcommand.
+    Execute the 'screen' CLI subcommand with optional offline and fill-from-raw support.
     """
     LOGGER.info("=== PHASE 3: STOCK SCREENING ===")
+
+    if getattr(args, "offline", False):
+        import src.core.config as config
+        config.OFFLINE = True
+        config.Config.OFFLINE = True
+        LOGGER.info("Offline mode active: all network calls disabled.")
 
     processed_dir = args.processed_dir or os.path.join(args.data_dir, "processed")
     csv_pattern = os.path.join(processed_dir, "*.csv")
@@ -164,9 +170,96 @@ def cmd_screen(args: argparse.Namespace) -> None:
     top_csv: str = csv_files[0]
     LOGGER.info("Using Bhavcopy: %s", top_csv)
 
+    fill_from_raw_flag = getattr(args, "fill_from_raw", False)
+    strict_flag = getattr(args, "strict", False)
+
+    target_hist_dir = args.hist_dir
+    if os.path.exists(os.path.join(target_hist_dir, "1d")):
+        target_hist_dir = os.path.join(target_hist_dir, "1d")
+
+    raw_dir = os.path.join(args.data_dir, "raw")
+
+    if fill_from_raw_flag or strict_flag:
+        from src.analytics.data_availability import build_from_raw, check_coverage
+        df_top = pd.read_csv(top_csv)
+        sym_col = next(
+            (c for c in ["Symbol", "SYMBOL", "TckrSymb"] if c in df_top.columns), None
+        )
+        symbols = df_top[sym_col].dropna().astype(str).tolist() if sym_col else []
+        limit = getattr(args, "limit", None)
+        if limit:
+            symbols = symbols[:limit]
+
+        cov = check_coverage(symbols, hist_dir=target_hist_dir, raw_dir=raw_dir)
+
+        if fill_from_raw_flag and cov["loadable"]:
+            LOGGER.info(
+                "Building parquets from raw archives for %d loadable symbols...",
+                len(cov["loadable"]),
+            )
+            for s in cov["loadable"]:
+                build_from_raw(s, hist_dir=target_hist_dir, raw_dir=raw_dir)
+
+        if strict_flag and cov["missing"]:
+            msg = (
+                f"Strict offline check failed: missing data for "
+                f"{len(cov['missing'])} symbols: {cov['missing'][:10]}"
+            )
+            LOGGER.error(msg)
+            print(f"\n❌ {msg}")
+            sys.exit(1)
+
     screener = StockScreener(processed_dir=args.hist_dir)
     screener.screen_stocks(top_250_path=top_csv, date_obj=datetime.now())
     print(f"\n✔  Screening complete. Results saved to: {args.hist_dir}")
+
+
+def cmd_data_check(args: argparse.Namespace) -> None:
+    """
+    Check historical data coverage across specified symbols and output a table.
+    """
+    symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+    start_date = getattr(args, "start", "2026-01-01")
+    end_date = getattr(args, "end", None)
+
+    target_hist_dir = args.hist_dir
+    if os.path.exists(os.path.join(target_hist_dir, "1d")):
+        target_hist_dir = os.path.join(target_hist_dir, "1d")
+    raw_dir = os.path.join(args.data_dir, "raw")
+
+    from src.analytics.data_availability import check_coverage
+    cov = check_coverage(
+        symbols, start=start_date, end=end_date, hist_dir=target_hist_dir, raw_dir=raw_dir
+    )
+
+    console = Console()
+    table = Table(
+        title=f"📊 Historical Data Coverage ({len(symbols)} Symbols)",
+        header_style="bold cyan",
+    )
+    table.add_column("Category", style="bold")
+    table.add_column("Count", justify="right")
+    table.add_column("Symbols", style="dim")
+
+    for cat in ["available", "loadable", "partial", "missing"]:
+        items = cov.get(cat, [])
+        color = (
+            "green"
+            if cat == "available"
+            else "yellow"
+            if cat == "loadable"
+            else "magenta"
+            if cat == "partial"
+            else "red"
+        )
+        preview = ", ".join(items[:10]) + (
+            f" (+{len(items)-10} more)" if len(items) > 10 else ""
+        )
+        table.add_row(f"[{color}]{cat.upper()}[/{color}]", str(len(items)), preview)
+
+    console.print()
+    console.print(table)
+    console.print()
 
 
 def cmd_backtest(args: argparse.Namespace) -> None:
@@ -503,7 +596,8 @@ def cmd_smc_scan(args: argparse.Namespace) -> None:
     limit: int | None = getattr(args, "limit", None)
     symbol_filter: str | None = getattr(args, "symbol", None)
     data_dir = getattr(args, "data_dir", None) or Config.DEFAULT_DATA_DIR
-    db_path = os.path.join(data_dir, "smc_calls.sqlite")
+    db_path = os.path.join(data_dir, "signals.db")
+    run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_smc-scan"
 
     from src.engine.smc import calculate_smc
     from src.engine.smc_decision import generate_smc_call
@@ -543,7 +637,7 @@ def cmd_smc_scan(args: argparse.Namespace) -> None:
             call = generate_smc_call(sym, smc_res, df)
 
             if call:
-                call_id = db.create_call(call)
+                call_id = db.create_call(call, run_id=run_id)
                 generated_calls.append((call_id, call))
         except Exception as exc:
             LOGGER.debug("Skipping %s due to calculation error: %s", sym, exc)
@@ -594,7 +688,7 @@ def cmd_smc_calls(args: argparse.Namespace) -> None:
     List and filter Smart Money Concepts (SMC) calls saved in local SQLite database.
     """
     data_dir = getattr(args, "data_dir", None) or Config.DEFAULT_DATA_DIR
-    db_path = os.path.join(data_dir, "smc_calls.sqlite")
+    db_path = os.path.join(data_dir, "signals.db")
 
     from src.storage.smc_db import SMCDatabase
 

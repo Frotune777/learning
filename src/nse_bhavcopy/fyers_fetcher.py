@@ -382,6 +382,10 @@ class FyersFetcher(AbstractPriceFetcher):
         Example:
             >>> resp = fetcher._get("/data/quotes?symbols=NSE:TCS-EQ")
         """
+        import src.core.config as config
+        if config.OFFLINE or config.Config.OFFLINE:
+            raise config.OfflineError("Fyers network call blocked: OFFLINE mode is active")
+
         self._check_rate_limit()
         url = f"{_FYERS_BASE_URL}{endpoint}"
         max_retries = 3

@@ -257,7 +257,7 @@ def render_smc_view():
             st.info("Pick a call from the queue.")
 
 
-    st.markdown("<div class='section-hdr'><h3>Active Calls Ledger (`smc_calls.sqlite`)</h3><div class='line'></div></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-hdr'><h3>Active Calls Ledger (`signals.db`)</h3><div class='line'></div></div>", unsafe_allow_html=True)
     if not df_calls.empty:
         st.dataframe(df_calls, use_container_width=True, hide_index=True)
     else:

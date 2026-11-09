@@ -99,6 +99,10 @@ class YFinanceFetcher(AbstractPriceFetcher):
         Returns:
             pd.DataFrame: Clean OHLCV with tz-naive DatetimeIndex.
         """
+        import src.core.config as config
+        if config.OFFLINE or config.Config.OFFLINE:
+            raise config.OfflineError("YFinance network fetch blocked: OFFLINE mode is active")
+
         ticker_str = self._normalize_symbol(symbol)
         interval = self.INTERVAL_MAP.get(timeframe, "1d")
 

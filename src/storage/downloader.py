@@ -169,6 +169,10 @@ class BhavcopyDownloader:
         Notes:
             The official NSE archive domain used is nsearchives.nseindia.com.
         """
+        import src.core.config as config
+        if config.OFFLINE or config.Config.OFFLINE:
+            raise config.OfflineError("Bhavcopy download blocked: OFFLINE mode is active")
+
         date_str: str = date_obj.strftime("%Y%m%d")
         url: str = (
             f"https://nsearchives.nseindia.com/content/cm/"

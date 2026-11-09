@@ -1,0 +1,941 @@
+# CLI Audit
+Generated: 2026-10-28T15:58:19.757862+05:30
+Host: Linux pop-os 6.18.7-76061807-generic #202601231045~1769703228~24.04~cb87b5b SMP PREEMPT_DYNAMIC Thu J x86_64 x86_64 x86_64 GNU/Linux
+Python: Python 3.13.13
+Repo: /mnt/Data/Python Project/learning @ f83e6b0
+Entry point: python main.py
+Audit file: cli_audit_20261028_155819.txt
+
+============================================================
+SECTION 2 — ENVIRONMENT
+============================================================
+$ pwd
+/mnt/Data/Python Project/learning
+
+$ uname -a
+Linux pop-os 6.18.7-76061807-generic #202601231045~1769703228~24.04~cb87b5b SMP PREEMPT_DYNAMIC Thu J x86_64 x86_64 x86_64 GNU/Linux
+
+$ python --version
+Python 3.13.13
+
+$ uv --version
+uv 0.11.17 (x86_64-unknown-linux-gnu)
+
+$ git log --oneline -3
+f83e6b0 fix(audit): R-04 dynamic NSE referer + 403 diagnostics
+f726e88 feat(audit): fix R-01 atomic parquet write, R-02 vectorized divergence, and R-03 quarantine registry
+f290ef1 feat(phase-b6.2a): rebuild 2020+ prices from NSE unadjusted source
+
+$ git status --porcelain
+(clean working tree)
+
+$ ls -la data/
+total 2211080
+drwxrwxrwx 1 root root       4096 Oct 28 12:42 .
+drwxrwxrwx 1 root root      20480 Oct 28 15:32 ..
+drwxrwxrwx 1 root root       4096 Oct 28 13:13 cache
+drwxrwxrwx 1 root root       4096 Oct 28 15:09 corporate_cache
+drwxrwxrwx 1 root root      24576 Oct 17 14:19 historical
+drwxrwxrwx 1 root root          0 Jun  1 19:14 indices
+drwxrwxrwx 1 root root       4096 Oct 17 15:41 landing
+drwxrwxrwx 1 root root          0 Oct 16 13:09 llm_reports
+-rwxrwxrwx 1 root root     695143 May 27 12:56 nse_equity_master_20260527.csv
+-rwxrwxrwx 1 root root    3337488 May 27 05:45 nse_equity_master_20260527.json
+-rwxrwxrwx 1 root root     145867 May 27 12:56 nse_equity_master_20260527.parquet
+-rwxrwxrwx 1 root root     696131 May 30 17:45 nse_equity_master_20260530.csv
+-rwxrwxrwx 1 root root     145807 May 30 17:45 nse_equity_master_20260530.parquet
+-rwxrwxrwx 1 root root     756225 Oct 15 13:28 nse_equity_master_20261015.csv
+-rwxrwxrwx 1 root root     151370 Oct 15 13:28 nse_equity_master_20261015.parquet
+-rwxrwxrwx 1 root root     762942 Oct 28 12:42 nse_equity_master_20261028.csv
+-rwxrwxrwx 1 root root     152253 Oct 28 12:42 nse_equity_master_20261028.parquet
+drwxrwxrwx 1 root root       4096 Oct 28 15:15 processed
+drwxrwxrwx 1 root root          0 Oct 16 10:57 processed_test
+drwxrwxrwx 1 root root      36864 Oct 19 15:06 raw
+drwxrwxrwx 1 root root       4096 Oct 16 10:57 raw_test
+drwxrwxrwx 1 root root       4096 Oct 16 16:29 screener_output
+-rwxrwxrwx 1 root root      73728 Oct 16 13:34 smc_calls.sqlite
+drwxrwxrwx 1 root root       4096 Oct 17 15:41 staging
+-rwxrwxrwx 1 root root      12288 Oct 19 13:20 warehouse.db
+-rwxrwxrwx 1 root root 2257072128 Oct 19 14:38 warehouse.duckdb
+-rwxrwxrwx 1 root root      14605 Oct 17 15:47 warehouse_missing_historical.csv
+
+$ printenv | grep -iE '^(FYERS|BROKER|NSE)_[A-Z_]+=' | sed 's/=.*/=<REDACTED>/'
+(none set in current process environment)
+
+$ grep -A4 '^\[project\]' pyproject.toml
+[project]
+name = "learning"
+version = "1.0.0"
+description = "Download and process NSE Bhavcopy data locally in English"
+readme = "README.md"
+
+============================================================
+SECTION 3 — TOP-LEVEL HELP + VERSION
+============================================================
+--- python main.py --help (exit=0) ---
+usage: nse-pipeline [-h] [--data-dir DATA_DIR] [--hist-dir HIST_DIR]
+                    [--dry-run]
+                    {build-master,sync-history,screen,backtest,ml-anomaly,fo-ban,bhavcopy-sync,fyers-login,fyers-token,train-ml,optimize,smc-scan,smc-calls,repair-ta,dq-check,menu} ...
+
+NSE Data Pipeline: build master → sync history → screen stocks
+
+positional arguments:
+  {build-master,sync-history,screen,backtest,ml-anomaly,fo-ban,bhavcopy-sync,fyers-login,fyers-token,train-ml,optimize,smc-scan,smc-calls,repair-ta,dq-check,menu}
+    build-master        Build equity master table.
+    sync-history        Sync per-symbol OHLCV Parquet files.
+    screen              Run technical screener.
+    backtest            Run ML backtest.
+    ml-anomaly          Run ML anomaly detection for data quality.
+    fo-ban              Fetch F&O ban list.
+    bhavcopy-sync       Fast incremental OHLCV update.
+    fyers-login         Get Fyers login URL.
+    fyers-token         Exchange auth code for token.
+    train-ml            Train ML models interactively.
+    optimize            Run strategy optimizer interactively.
+    smc-scan            Run Smart Money Concepts (SMC) scanner across
+                        historical data.
+    smc-calls           View logged SMC trading calls from local SQLite
+                        database.
+    repair-ta           Backfill stale/NaN TA indicators in-place across
+                        Parquets.
+    dq-check            Run Data Quality Gate assertions across historical
+                        Parquet files.
+    menu                Launch interactive menu.
+
+options:
+  -h, --help            show this help message and exit
+  --data-dir DATA_DIR   Root data directory (default: data)
+  --hist-dir HIST_DIR   Historical Parquet directory (default:
+                        data/historical)
+  --dry-run             Simulate operations without making changes
+
+Use 'menu' command for interactive mode (default). Global flags (--data-dir,
+--hist-dir, --dry-run) must appear BEFORE the subcommand. Example: python
+main.py --data-dir /tmp/foo fo-ban python main.py --data-dir /tmp/foo smc-
+calls
+
+--- python main.py -h (exit=0) ---
+usage: nse-pipeline [-h] [--data-dir DATA_DIR] [--hist-dir HIST_DIR]
+                    [--dry-run]
+                    {build-master,sync-history,screen,backtest,ml-anomaly,fo-ban,bhavcopy-sync,fyers-login,fyers-token,train-ml,optimize,smc-scan,smc-calls,repair-ta,dq-check,menu} ...
+
+NSE Data Pipeline: build master → sync history → screen stocks
+
+positional arguments:
+  {build-master,sync-history,screen,backtest,ml-anomaly,fo-ban,bhavcopy-sync,fyers-login,fyers-token,train-ml,optimize,smc-scan,smc-calls,repair-ta,dq-check,menu}
+    build-master        Build equity master table.
+    sync-history        Sync per-symbol OHLCV Parquet files.
+    screen              Run technical screener.
+    backtest            Run ML backtest.
+    ml-anomaly          Run ML anomaly detection for data quality.
+    fo-ban              Fetch F&O ban list.
+    bhavcopy-sync       Fast incremental OHLCV update.
+    fyers-login         Get Fyers login URL.
+    fyers-token         Exchange auth code for token.
+    train-ml            Train ML models interactively.
+    optimize            Run strategy optimizer interactively.
+    smc-scan            Run Smart Money Concepts (SMC) scanner across
+                        historical data.
+    smc-calls           View logged SMC trading calls from local SQLite
+                        database.
+    repair-ta           Backfill stale/NaN TA indicators in-place across
+                        Parquets.
+    dq-check            Run Data Quality Gate assertions across historical
+                        Parquet files.
+    menu                Launch interactive menu.
+
+options:
+  -h, --help            show this help message and exit
+  --data-dir DATA_DIR   Root data directory (default: data)
+  --hist-dir HIST_DIR   Historical Parquet directory (default:
+                        data/historical)
+  --dry-run             Simulate operations without making changes
+
+Use 'menu' command for interactive mode (default). Global flags (--data-dir,
+--hist-dir, --dry-run) must appear BEFORE the subcommand. Example: python
+main.py --data-dir /tmp/foo fo-ban python main.py --data-dir /tmp/foo smc-
+calls
+
+--- python main.py --version (exit=2) ---
+usage: nse-pipeline [-h] [--data-dir DATA_DIR] [--hist-dir HIST_DIR]
+                    [--dry-run]
+                    {build-master,sync-history,screen,backtest,ml-anomaly,fo-ban,bhavcopy-sync,fyers-login,fyers-token,train-ml,optimize,smc-scan,smc-calls,repair-ta,dq-check,menu} ...
+nse-pipeline: error: unrecognized arguments: --version
+
+--- python main.py -V (exit=2) ---
+usage: nse-pipeline [-h] [--data-dir DATA_DIR] [--hist-dir HIST_DIR]
+                    [--dry-run]
+                    {build-master,sync-history,screen,backtest,ml-anomaly,fo-ban,bhavcopy-sync,fyers-login,fyers-token,train-ml,optimize,smc-scan,smc-calls,repair-ta,dq-check,menu} ...
+nse-pipeline: error: unrecognized arguments: -V
+
+NOTE: --version / -V are not configured as argparse arguments in main.py.
+Fallback version read from pyproject.toml: version = "1.0.0"
+
+============================================================
+SECTION 4 — SUBCOMMANDS SUMMARY
+============================================================
+* build-master — Build equity master table.
+* sync-history — Sync per-symbol OHLCV Parquet files.
+* screen — Run technical screener.
+* backtest — Run ML backtest.
+* ml-anomaly — Run ML anomaly detection for data quality.
+* fo-ban — Fetch F&O ban list.
+* bhavcopy-sync — Fast incremental OHLCV update.
+* fyers-login — Get Fyers login URL.
+* fyers-token — Exchange auth code for token.
+* train-ml — Train ML models interactively.
+* optimize — Run strategy optimizer interactively.
+* smc-scan — Run Smart Money Concepts (SMC) scanner across historical data.
+* smc-calls — View logged SMC trading calls from local SQLite database.
+* repair-ta — Backfill stale/NaN TA indicators in-place across Parquets.
+* dq-check — Run Data Quality Gate assertions across historical Parquet files.
+* menu — Launch interactive menu.
+
+Subcommand Detailed Help Catalog:
+------------------------------------------------------------
+### build-master --help
+usage: nse-pipeline build-master [-h] [--delay DELAY]
+
+options:
+  -h, --help     show this help message and exit
+  --delay DELAY  Seconds between index API calls
+
+### sync-history --help
+usage: nse-pipeline sync-history [-h] [--timeframe TIMEFRAME]
+                                 [--start-date START_DATE]
+                                 [--cap-filter {Large,Mid,Small,Other}]
+                                 [--index-filter INDEX_FILTER] [--limit LIMIT]
+                                 [--delay DELAY] [--source {bhavcopy,master}]
+                                 [--resume]
+
+options:
+  -h, --help            show this help message and exit
+  --timeframe TIMEFRAME
+  --start-date START_DATE
+  --cap-filter {Large,Mid,Small,Other}
+  --index-filter INDEX_FILTER
+  --limit LIMIT
+  --delay DELAY
+  --source {bhavcopy,master}
+  --resume              Resume from registry (skip already-current symbols)
+
+### screen --help
+usage: nse-pipeline screen [-h] [--processed-dir PROCESSED_DIR]
+                           [--cap-filter {Large,Mid,Small,Other}]
+                           [--index-filter INDEX_FILTER] [--limit LIMIT]
+
+options:
+  -h, --help            show this help message and exit
+  --processed-dir PROCESSED_DIR
+  --cap-filter {Large,Mid,Small,Other}
+  --index-filter INDEX_FILTER
+  --limit LIMIT
+
+### backtest --help
+usage: nse-pipeline backtest [-h] --symbol SYMBOL
+                             [--n-estimators N_ESTIMATORS]
+                             [--max-depth MAX_DEPTH]
+
+options:
+  -h, --help            show this help message and exit
+  --symbol SYMBOL
+  --n-estimators N_ESTIMATORS
+  --max-depth MAX_DEPTH
+
+### ml-anomaly --help
+usage: nse-pipeline ml-anomaly [-h] --symbol SYMBOL
+
+options:
+  -h, --help       show this help message and exit
+  --symbol SYMBOL
+
+### fo-ban --help
+usage: nse-pipeline fo-ban [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+### bhavcopy-sync --help
+usage: nse-pipeline bhavcopy-sync [-h] [--days DAYS] [--timeframe TIMEFRAME]
+                                  [--limit LIMIT] [--no-ta] [--delay DELAY]
+
+options:
+  -h, --help            show this help message and exit
+  --days DAYS
+  --timeframe TIMEFRAME
+  --limit LIMIT
+  --no-ta
+  --delay DELAY
+
+### fyers-login --help
+usage: nse-pipeline fyers-login [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+### fyers-token --help
+usage: nse-pipeline fyers-token [-h] --code CODE
+
+options:
+  -h, --help   show this help message and exit
+  --code CODE
+
+### train-ml --help
+usage: nse-pipeline train-ml [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+### optimize --help
+usage: nse-pipeline optimize [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+### smc-scan --help
+usage: nse-pipeline smc-scan [-h] [--limit LIMIT] [--symbol SYMBOL]
+
+options:
+  -h, --help       show this help message and exit
+  --limit LIMIT    Limit number of symbols to scan
+  --symbol SYMBOL  Scan a single specific symbol (e.g. RELIANCE)
+
+### smc-calls --help
+usage: nse-pipeline smc-calls [-h]
+                              [--status {PENDING,ACTIVE,TRIGGERED,CANCELLED,TARGET_HIT,STOPPED}]
+
+options:
+  -h, --help            show this help message and exit
+  --status {PENDING,ACTIVE,TRIGGERED,CANCELLED,TARGET_HIT,STOPPED}
+                        Filter calls by execution status
+
+### repair-ta --help
+usage: nse-pipeline repair-ta [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+### dq-check --help
+usage: nse-pipeline dq-check [-h] [--include-inactive]
+                             [--min-last-trade-days MIN_LAST_TRADE_DAYS]
+
+options:
+  -h, --help            show this help message and exit
+  --include-inactive    Include inactive/delisted symbols in the halt
+                        numerator.
+  --min-last-trade-days MIN_LAST_TRADE_DAYS
+                        Override the inactive threshold in days.
+
+### menu --help
+usage: nse-pipeline menu [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+============================================================
+SECTION 5 — PER-COMMAND OUTPUT
+============================================================
+============================================================
+COMMAND: python main.py build-master
+STARTED: 2026-10-28T15:59:26.749589+05:30
+============================================================
+SKIPPED build-master: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749589+05:30 -----
+
+============================================================
+COMMAND: python main.py sync-history
+STARTED: 2026-10-28T15:59:26.749600+05:30
+============================================================
+SKIPPED sync-history: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749600+05:30 -----
+
+============================================================
+COMMAND: python main.py screen
+STARTED: 2026-10-28T15:59:26.749606+05:30
+============================================================
+SKIPPED screen: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749606+05:30 -----
+
+============================================================
+COMMAND: python main.py backtest
+STARTED: 2026-10-28T15:59:26.749611+05:30
+============================================================
+SKIPPED backtest: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749611+05:30 -----
+
+============================================================
+COMMAND: python main.py ml-anomaly
+STARTED: 2026-10-28T15:59:26.749615+05:30
+============================================================
+SKIPPED ml-anomaly: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749615+05:30 -----
+
+============================================================
+COMMAND: python main.py fo-ban
+STARTED: 2026-10-28T15:59:26.749620+05:30
+============================================================
+SKIPPED fo-ban: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749620+05:30 -----
+
+============================================================
+COMMAND: python main.py bhavcopy-sync
+STARTED: 2026-10-28T15:59:26.749640+05:30
+============================================================
+SKIPPED bhavcopy-sync: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749640+05:30 -----
+
+============================================================
+COMMAND: python main.py fyers-login
+STARTED: 2026-10-28T15:59:26.749646+05:30
+============================================================
+SKIPPED fyers-login: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749646+05:30 -----
+
+============================================================
+COMMAND: python main.py fyers-token
+STARTED: 2026-10-28T15:59:26.749650+05:30
+============================================================
+SKIPPED fyers-token: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749650+05:30 -----
+
+============================================================
+COMMAND: python main.py train-ml
+STARTED: 2026-10-28T15:59:26.749654+05:30
+============================================================
+SKIPPED train-ml: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749654+05:30 -----
+
+============================================================
+COMMAND: python main.py optimize
+STARTED: 2026-10-28T15:59:26.749658+05:30
+============================================================
+SKIPPED optimize: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749658+05:30 -----
+
+============================================================
+COMMAND: python main.py smc-scan
+STARTED: 2026-10-28T15:59:26.749663+05:30
+============================================================
+SKIPPED smc-scan: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:26.749663+05:30 -----
+
+============================================================
+COMMAND: timeout 120 python main.py smc-calls 2>&1
+STARTED: 2026-10-28T15:59:26.749667+05:30
+============================================================
+📋 Stored SMC Trading Calls (409 Found)                     
+┏━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━┳━━━━━━━┳━━━━━━┳━━━━━━━┳━━━━━━┳━━━━━━━┳━━━━━━┓
+┃ ID  ┃ Date ┃ Sym… ┃ Dir… ┃ Set… ┃ Entry ┃   SL ┃  TP 1 ┃ TP 2 ┃   R:R ┃ Sta… ┃
+┡━━━━━╇━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━╇━━━━━━━╇━━━━━━╇━━━━━━━╇━━━━━━╇━━━━━━━╇━━━━━━┩
+│ 409 │ 202… │ VST… │ SELL │ FVG… │ 4,26… │ 4,3… │ 3,95… │ 3,8… │  3.21 │ PEN… │
+│ 408 │ 202… │ VID… │ BUY  │ FVG… │ 90.80 │ 86.… │ 99.72 │ 105… │  2.18 │ PEN… │
+│ 407 │ 202… │ VEN… │ SELL │ OB_… │ 1,65… │ 1,7… │ 1,35… │ 1,2… │  3.32 │ PEN… │
+│ 406 │ 202… │ USH… │ BUY  │ OB_… │ 482.… │ 461… │ 527.… │ 558… │  2.09 │ PEN… │
+│ 405 │ 202… │ UNI… │ BUY  │ OB_… │ 1,46… │ 1,3… │ 1,77… │ 1,8… │  4.08 │ PEN… │
+│ 404 │ 202… │ UNI… │ BUY  │ FVG… │ 1,38… │ 1,3… │ 1,56… │ 1,5… │ 12.81 │ PEN… │
+│ 403 │ 202… │ UMI… │ BUY  │ FVG… │ 92.31 │ 90.… │ 109.… │ 112… │  8.18 │ PEN… │
+│ 402 │ 202… │ TNP… │ BUY  │ FVG… │ 119.… │ 116… │ 146.… │ 151… │  9.40 │ PEN… │
+│ 401 │ 202… │ TIN… │ BUY  │ FVG… │ 923.… │ 895… │ 1,32… │ 1,3… │ 14.27 │ PEN… │
+│ 400 │ 202… │ TECH │ SELL │ OB_… │ 33.59 │ 34.… │ 28.00 │ 25.… │  4.17 │ PEN… │
+│ 399 │ 202… │ SWA… │ BUY  │ OB_… │ 3,52… │ 3,4… │ 3,76… │ 3,9… │  2.00 │ PEN… │
+│ 398 │ 202… │ SUP… │ SELL │ OB_… │ 3,61… │ 3,7… │ 3,27… │ 3,1… │  3.17 │ PEN… │
+│ 397 │ 202… │ SUN… │ BUY  │ OB_… │ 653.… │ 641… │ 718.… │ 736… │  5.59 │ PEN… │
+│ 396 │ 202… │ STEL │ BUY  │ FVG… │ 569.… │ 550… │ 689.… │ 719… │  6.09 │ PEN… │
+│ 395 │ 202… │ STA… │ BUY  │ FVG… │ 550.… │ 539… │ 624.… │ 641… │  6.93 │ PEN… │
+│ 394 │ 202… │ SPA… │ BUY  │ OB_… │ 188.… │ 180… │ 289.… │ 300… │ 13.23 │ PEN… │
+│ 393 │ 202… │ SIR… │ SELL │ OB_… │ 429.… │ 450… │ 385.… │ 353… │  2.11 │ PEN… │
+│ 392 │ 202… │ SHA… │ BUY  │ OB_… │ 884.… │ 860… │ 973.… │ 1,0… │  3.67 │ PEN… │
+│ 391 │ 202… │ SHA… │ BUY  │ OB_… │ 535.… │ 505… │ 743.… │ 787… │  7.01 │ PEN… │
+│ 390 │ 202… │ SBI… │ SELL │ OB_… │ 281.… │ 291… │ 260.… │ 244… │  2.00 │ PEN… │
+│ 389 │ 202… │ SAK… │ BUY  │ FVG… │ 18.49 │ 18.… │ 23.29 │ 23.… │ 19.20 │ PEN… │
+│ 388 │ 202… │ RUC… │ BUY  │ FVG… │ 105.… │ 103… │ 113.… │ 116… │  4.70 │ PEN… │
+│ 387 │ 202… │ ROL… │ BUY  │ OB_… │ 167.… │ 159… │ 189.… │ 201… │  2.59 │ PEN… │
+│ 386 │ 202… │ PVT… │ SELL │ OB_… │ 27.66 │ 28.… │ 26.00 │ 24.… │  2.00 │ PEN… │
+│ 385 │ 202… │ PVT… │ SELL │ OB_… │ 27.98 │ 28.… │ 26.54 │ 25.… │  2.00 │ PEN… │
+│ 384 │ 202… │ PSP… │ BUY  │ FVG… │ 782.… │ 763… │ 1,14… │ 1,1… │ 19.17 │ PEN… │
+│ 383 │ 202… │ PRO… │ SELL │ FVG… │ 53.81 │ 56.… │ 40.69 │ 37.… │  5.36 │ PEN… │
+│ 382 │ 202… │ PON… │ BUY  │ FVG… │ 370.… │ 358… │ 455.… │ 473… │  6.75 │ PEN… │
+│ 381 │ 202… │ POD… │ BUY  │ FVG… │ 270.… │ 256… │ 333.… │ 354… │  4.39 │ PEN… │
+│ 380 │ 202… │ PNG… │ BUY  │ OB_… │ 590.… │ 560… │ 717.… │ 763… │  4.09 │ PEN… │
+│ 379 │ 202… │ PNB… │ BUY  │ FVG… │ 72.77 │ 70.… │ 85.50 │ 88.… │  7.11 │ PEN… │
+│ 378 │ 202… │ PIX… │ BUY  │ FVG… │ 1,80… │ 1,7… │ 2,08… │ 2,1… │  5.39 │ PEN… │
+│ 377 │ 202… │ PGEL │ BUY  │ FVG… │ 523.… │ 498… │ 643.… │ 682… │  4.73 │ PEN… │
+│ 376 │ 202… │ PAL… │ SELL │ OB_… │ 89.52 │ 92.… │ 79.01 │ 74.… │  3.57 │ PEN… │
+│ 375 │ 202… │ ORC… │ BUY  │ OB_… │ 928.… │ 916… │ 1,13… │ 1,1… │ 18.19 │ PEN… │
+│ 374 │ 202… │ NUV… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 1,90… │ 1,9… │  4.73 │ PEN… │
+│ 373 │ 202… │ NLC… │ BUY  │ FVG… │ 251.… │ 244… │ 387.… │ 397… │ 20.28 │ PEN… │
+│ 372 │ 202… │ NIV… │ BUY  │ FVG… │ 76.01 │ 74.… │ 91.40 │ 93.… │  9.44 │ PEN… │
+│ 371 │ 202… │ NIF… │ SELL │ OB_… │ 26.77 │ 28.… │ 23.00 │ 20.… │  2.53 │ PEN… │
+│ 370 │ 202… │ NET… │ BUY  │ FVG… │ 4,71… │ 4,5… │ 5,81… │ 6,0… │  8.82 │ PEN… │
+│ 369 │ 202… │ NAH… │ BUY  │ FVG… │ 131.… │ 128… │ 154.… │ 158… │  8.30 │ PEN… │
+│ 368 │ 202… │ MOR… │ BUY  │ FVG… │ 82.89 │ 81.… │ 97.00 │ 99.… │ 10.61 │ PEN… │
+│ 367 │ 202… │ MOB… │ SELL │ OB_… │ 16.64 │ 17.… │ 15.66 │ 14.… │  2.00 │ PEN… │
+│ 366 │ 202… │ MAN… │ BUY  │ OB_… │ 221.… │ 212… │ 287.… │ 300… │  7.55 │ PEN… │
+│ 365 │ 202… │ MAL… │ SELL │ OB_… │ 32.24 │ 34.… │ 28.20 │ 25.… │  2.15 │ PEN… │
+│ 364 │ 202… │ LXC… │ BUY  │ OB_… │ 176.… │ 169… │ 203.… │ 213… │  4.20 │ PEN… │
+│ 363 │ 202… │ LLO… │ BUY  │ OB_… │ 1,81… │ 1,7… │ 2,12… │ 2,2… │  3.86 │ PEN… │
+│ 362 │ 202… │ LIQ… │ BUY  │ FVG… │ 1,10… │ 1,1… │ 1,12… │ 1,1… │ 14.88 │ PEN… │
+│ 361 │ 202… │ LIQ… │ BUY  │ FVG… │ 1,05… │ 1,0… │ 1,06… │ 1,0… │  2.00 │ PEN… │
+│ 360 │ 202… │ LIC… │ BUY  │ FVG… │ 533.… │ 514… │ 579.… │ 607… │  2.46 │ PEN… │
+│ 359 │ 202… │ LAL… │ BUY  │ OB_… │ 1,88… │ 1,8… │ 2,03… │ 2,0… │  3.90 │ PEN… │
+│ 358 │ 202… │ KFI… │ SELL │ OB_… │ 894.… │ 933… │ 800.… │ 740… │  2.36 │ PEN… │
+│ 357 │ 202… │ KER… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 2,58… │ 2,6… │ 16.37 │ PEN… │
+│ 356 │ 202… │ KAU… │ BUY  │ OB_… │ 823.… │ 793… │ 953.… │ 997… │  4.41 │ PEN… │
+│ 355 │ 202… │ JSW… │ BUY  │ FVG… │ 334.… │ 327… │ 355.… │ 365… │  2.93 │ PEN… │
+│ 354 │ 202… │ JNK… │ BUY  │ OB_… │ 416.… │ 392… │ 558.… │ 594… │  5.81 │ PEN… │
+│ 353 │ 202… │ JKP… │ BUY  │ FVG… │ 390.… │ 377… │ 427.… │ 445… │  2.94 │ PEN… │
+│ 352 │ 202… │ ION… │ BUY  │ FVG… │ 377.… │ 370… │ 461.… │ 471… │ 12.07 │ PEN… │
+│ 351 │ 202… │ INN… │ BUY  │ OB_… │ 1,02… │ 1,0… │ 1,07… │ 1,1… │  2.50 │ PEN… │
+│ 350 │ 202… │ INFY │ SELL │ OB_… │ 1,11… │ 1,1… │ 982.… │ 906… │  2.53 │ PEN… │
+│ 349 │ 202… │ INF… │ SELL │ OB_… │ 163.… │ 168… │ 143.… │ 135… │  3.68 │ PEN… │
+│ 348 │ 202… │ IND… │ BUY  │ OB_… │ 741.… │ 699… │ 826.… │ 889… │  2.00 │ PEN… │
+│ 347 │ 202… │ IDBI │ BUY  │ OB_… │ 83.45 │ 80.… │ 96.25 │ 100… │  4.34 │ PEN… │
+│ 346 │ 202… │ HYB… │ BUY  │ OB_… │ 16.08 │ 15.… │ 22.99 │ 24.… │  8.97 │ PEN… │
+│ 345 │ 202… │ HDF… │ SELL │ OB_… │ 83.80 │ 87.… │ 76.44 │ 70.… │  2.00 │ PEN… │
+│ 344 │ 202… │ HDF… │ SELL │ OB_… │ 28.10 │ 28.… │ 27.10 │ 26.… │  2.00 │ PEN… │
+│ 343 │ 202… │ HDF… │ BUY  │ FVG… │ 1,08… │ 1,0… │ 1,08… │ 1,0… │  2.00 │ PEN… │
+│ 342 │ 202… │ HAL… │ BUY  │ FVG… │ 1,55… │ 1,4… │ 1,74… │ 1,8… │  2.73 │ PEN… │
+│ 341 │ 202… │ GVP… │ BUY  │ OB_… │ 625.… │ 592… │ 1,08… │ 1,1… │ 13.98 │ PEN… │
+│ 340 │ 202… │ GUJ… │ SELL │ OB_… │ 350.… │ 367… │ 300.… │ 275… │  2.97 │ PEN… │
+│ 339 │ 202… │ GSPL │ BUY  │ OB_… │ 300.… │ 291… │ 323.… │ 336… │  2.59 │ PEN… │
+│ 338 │ 202… │ GRO… │ BUY  │ FVG… │ 111.… │ 110… │ 112.… │ 113… │  5.31 │ PEN… │
+│ 337 │ 202… │ GRE… │ BUY  │ OB_… │ 307.… │ 296… │ 334.… │ 350… │  2.53 │ PEN… │
+│ 336 │ 202… │ GNFC │ BUY  │ FVG… │ 572.… │ 542… │ 631.… │ 675… │  2.00 │ PEN… │
+│ 335 │ 202… │ GNA  │ BUY  │ OB_… │ 519.… │ 500… │ 592.… │ 621… │  3.63 │ PEN… │
+│ 334 │ 202… │ GLO… │ SELL │ FVG… │ 50.07 │ 52.… │ 44.52 │ 41.… │  2.50 │ PEN… │
+│ 333 │ 202… │ GIN… │ BUY  │ OB_… │ 41.35 │ 39.… │ 47.29 │ 49.… │  3.32 │ PEN… │
+│ 332 │ 202… │ GHC… │ BUY  │ FVG… │ 129.… │ 125… │ 144.… │ 149… │  4.41 │ PEN… │
+│ 331 │ 202… │ GAT… │ BUY  │ FVG… │  0.53 │ 0.51 │  0.58 │ 0.61 │  2.50 │ PEN… │
+│ 330 │ 202… │ FSL  │ BUY  │ FVG… │ 281.… │ 276… │ 341.… │ 349… │ 12.18 │ PEN… │
+│ 329 │ 202… │ EVI… │ BUY  │ FVG… │ 30.20 │ 29.… │ 35.04 │ 35.… │ 14.24 │ PEN… │
+│ 328 │ 202… │ EPA… │ BUY  │ FVG… │ 243.… │ 229… │ 281.… │ 301… │  2.79 │ PEN… │
+│ 327 │ 202… │ ELI… │ BUY  │ FVG… │ 1,05… │ 1,0… │ 1,05… │ 1,0… │  2.00 │ PEN… │
+│ 326 │ 202… │ ELG… │ BUY  │ FVG… │ 53.64 │ 52.… │ 64.66 │ 66.… │ 11.72 │ PEN… │
+│ 325 │ 202… │ DWA… │ BUY  │ FVG… │ 46.65 │ 44.… │ 59.90 │ 62.… │  7.01 │ PEN… │
+│ 324 │ 202… │ DOL… │ BUY  │ OB_… │ 272.… │ 264… │ 297.… │ 311… │  2.78 │ PEN… │
+│ 323 │ 202… │ DEN… │ BUY  │ FVG… │ 259.… │ 256… │ 372.… │ 377… │ 32.71 │ PEN… │
+│ 322 │ 202… │ DAN… │ BUY  │ FVG… │  3.08 │ 2.95 │  3.61 │ 3.80 │  4.08 │ PEN… │
+│ 321 │ 202… │ CON… │ BUY  │ OB_… │ 592.… │ 560… │ 657.… │ 705… │  2.00 │ PEN… │
+│ 320 │ 202… │ COA… │ SELL │ FVG… │ 418.… │ 422… │ 395.… │ 388… │  4.55 │ PEN… │
+│ 319 │ 202… │ CHE… │ BUY  │ OB_… │ 1,14… │ 1,0… │ 1,24… │ 1,3… │  2.16 │ PEN… │
+│ 318 │ 202… │ CAS… │ BUY  │ FVG… │ 1,08… │ 1,0… │ 1,09… │ 1,1… │  2.00 │ PEN… │
+│ 317 │ 202… │ BSL… │ SELL │ OB_… │ 74.49 │ 78.… │ 67.19 │ 61.… │  2.00 │ PEN… │
+│ 316 │ 202… │ BHA… │ BUY  │ FVG… │ 208.… │ 203… │ 254.… │ 262… │  8.47 │ PEN… │
+│ 315 │ 202… │ BHA… │ BUY  │ FVG… │ 31.96 │ 31.… │ 35.70 │ 36.… │  4.40 │ PEN… │
+│ 314 │ 202… │ BEL… │ BUY  │ OB_… │ 229.… │ 221… │ 268.… │ 280… │  4.56 │ PEN… │
+│ 313 │ 202… │ BEL… │ BUY  │ FVG… │ 232.… │ 228… │ 284.… │ 291… │ 10.61 │ PEN… │
+│ 312 │ 202… │ BAN… │ SELL │ OB_… │ 57.97 │ 60.… │ 53.27 │ 49.… │  2.00 │ PEN… │
+│ 311 │ 202… │ AXI… │ SELL │ OB_… │ 1,28… │ 1,3… │ 1,20… │ 1,1… │  4.99 │ PEN… │
+│ 310 │ 202… │ AVA… │ BUY  │ OB_… │ 2,04… │ 1,9… │ 2,26… │ 2,3… │  2.50 │ PEN… │
+│ 309 │ 202… │ ASI… │ BUY  │ FVG… │ 328.… │ 314… │ 423.… │ 443… │  7.27 │ PEN… │
+│ 308 │ 202… │ APO… │ SELL │ OB_… │ 417.… │ 430… │ 361.… │ 341… │  4.19 │ PEN… │
+│ 307 │ 202… │ APC… │ BUY  │ FVG… │ 587.… │ 580… │ 665.… │ 676… │ 10.49 │ PEN… │
+│ 306 │ 202… │ APA… │ BUY  │ OB_… │ 16,9… │ 15,… │ 18,9… │ 20,… │  2.00 │ PEN… │
+│ 305 │ 202… │ ALK… │ BUY  │ FVG… │ 1,83… │ 1,7… │ 2,11… │ 2,2… │  3.46 │ PEN… │
+│ 304 │ 202… │ ALI… │ SELL │ FVG… │ 1,34… │ 1,3… │ 1,08… │ 1,0… │  9.67 │ PEN… │
+│ 303 │ 202… │ AEG… │ BUY  │ FVG… │ 278.… │ 270… │ 311.… │ 324… │  3.88 │ PEN… │
+│ 302 │ 202… │ ABB… │ BUY  │ FVG… │ 26,0… │ 25,… │ 28,9… │ 29,… │ 11.85 │ PEN… │
+│ 301 │ 202… │ VST… │ SELL │ FVG… │ 4,26… │ 4,3… │ 3,95… │ 3,8… │  3.21 │ PEN… │
+│ 300 │ 202… │ VID… │ BUY  │ FVG… │ 90.80 │ 86.… │ 99.72 │ 105… │  2.18 │ PEN… │
+│ 299 │ 202… │ VEN… │ SELL │ OB_… │ 1,65… │ 1,7… │ 1,35… │ 1,2… │  3.32 │ PEN… │
+│ 298 │ 202… │ USH… │ BUY  │ OB_… │ 482.… │ 461… │ 527.… │ 558… │  2.09 │ PEN… │
+│ 297 │ 202… │ UNI… │ BUY  │ OB_… │ 1,46… │ 1,3… │ 1,77… │ 1,8… │  4.08 │ PEN… │
+│ 296 │ 202… │ UNI… │ BUY  │ FVG… │ 1,38… │ 1,3… │ 1,56… │ 1,5… │ 12.81 │ PEN… │
+│ 295 │ 202… │ UMI… │ BUY  │ FVG… │ 92.31 │ 90.… │ 109.… │ 112… │  8.18 │ PEN… │
+│ 294 │ 202… │ TNP… │ BUY  │ FVG… │ 119.… │ 116… │ 146.… │ 151… │  9.40 │ PEN… │
+│ 293 │ 202… │ TIN… │ BUY  │ FVG… │ 923.… │ 895… │ 1,32… │ 1,3… │ 14.27 │ PEN… │
+│ 292 │ 202… │ TECH │ SELL │ OB_… │ 33.59 │ 34.… │ 28.00 │ 25.… │  4.17 │ PEN… │
+│ 291 │ 202… │ SWA… │ BUY  │ OB_… │ 3,52… │ 3,4… │ 3,76… │ 3,9… │  2.00 │ PEN… │
+│ 290 │ 202… │ SUP… │ SELL │ OB_… │ 3,61… │ 3,7… │ 3,27… │ 3,1… │  3.17 │ PEN… │
+│ 289 │ 202… │ SUN… │ BUY  │ OB_… │ 653.… │ 641… │ 718.… │ 736… │  5.59 │ PEN… │
+│ 288 │ 202… │ STEL │ BUY  │ FVG… │ 569.… │ 550… │ 689.… │ 719… │  6.09 │ PEN… │
+│ 287 │ 202… │ STA… │ BUY  │ FVG… │ 550.… │ 539… │ 624.… │ 641… │  6.93 │ PEN… │
+│ 286 │ 202… │ SPA… │ BUY  │ OB_… │ 188.… │ 180… │ 289.… │ 300… │ 13.23 │ PEN… │
+│ 285 │ 202… │ SIR… │ SELL │ OB_… │ 429.… │ 450… │ 385.… │ 353… │  2.11 │ PEN… │
+│ 284 │ 202… │ SHA… │ BUY  │ OB_… │ 884.… │ 860… │ 973.… │ 1,0… │  3.67 │ PEN… │
+│ 283 │ 202… │ SHA… │ BUY  │ OB_… │ 535.… │ 505… │ 743.… │ 787… │  7.01 │ PEN… │
+│ 282 │ 202… │ SBI… │ SELL │ OB_… │ 281.… │ 291… │ 260.… │ 244… │  2.00 │ PEN… │
+│ 281 │ 202… │ SAK… │ BUY  │ FVG… │ 18.49 │ 18.… │ 23.29 │ 23.… │ 19.20 │ PEN… │
+│ 280 │ 202… │ RUC… │ BUY  │ FVG… │ 105.… │ 103… │ 113.… │ 116… │  4.70 │ PEN… │
+│ 279 │ 202… │ ROL… │ BUY  │ OB_… │ 167.… │ 159… │ 189.… │ 201… │  2.59 │ PEN… │
+│ 278 │ 202… │ PVT… │ SELL │ OB_… │ 27.66 │ 28.… │ 26.00 │ 24.… │  2.00 │ PEN… │
+│ 277 │ 202… │ PVT… │ SELL │ OB_… │ 27.98 │ 28.… │ 26.54 │ 25.… │  2.00 │ PEN… │
+│ 276 │ 202… │ PSP… │ BUY  │ FVG… │ 782.… │ 763… │ 1,14… │ 1,1… │ 19.17 │ PEN… │
+│ 275 │ 202… │ PRO… │ SELL │ FVG… │ 53.81 │ 56.… │ 40.69 │ 37.… │  5.36 │ PEN… │
+│ 274 │ 202… │ PON… │ BUY  │ FVG… │ 370.… │ 358… │ 455.… │ 473… │  6.75 │ PEN… │
+│ 273 │ 202… │ POD… │ BUY  │ FVG… │ 270.… │ 256… │ 333.… │ 354… │  4.39 │ PEN… │
+│ 272 │ 202… │ PNG… │ BUY  │ OB_… │ 590.… │ 560… │ 717.… │ 763… │  4.09 │ PEN… │
+│ 271 │ 202… │ PNB… │ BUY  │ FVG… │ 72.77 │ 70.… │ 85.50 │ 88.… │  7.11 │ PEN… │
+│ 270 │ 202… │ PIX… │ BUY  │ FVG… │ 1,80… │ 1,7… │ 2,08… │ 2,1… │  5.39 │ PEN… │
+│ 269 │ 202… │ PGEL │ BUY  │ FVG… │ 523.… │ 498… │ 643.… │ 682… │  4.73 │ PEN… │
+│ 268 │ 202… │ PAL… │ SELL │ OB_… │ 89.52 │ 92.… │ 79.01 │ 74.… │  3.57 │ PEN… │
+│ 267 │ 202… │ ORC… │ BUY  │ OB_… │ 928.… │ 916… │ 1,13… │ 1,1… │ 18.19 │ PEN… │
+│ 266 │ 202… │ NUV… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 1,90… │ 1,9… │  4.73 │ PEN… │
+│ 265 │ 202… │ NLC… │ BUY  │ FVG… │ 251.… │ 244… │ 387.… │ 397… │ 20.28 │ PEN… │
+│ 264 │ 202… │ NIV… │ BUY  │ FVG… │ 76.01 │ 74.… │ 91.40 │ 93.… │  9.44 │ PEN… │
+│ 263 │ 202… │ NIF… │ SELL │ OB_… │ 26.77 │ 28.… │ 23.00 │ 20.… │  2.53 │ PEN… │
+│ 262 │ 202… │ NET… │ BUY  │ FVG… │ 4,71… │ 4,5… │ 5,81… │ 6,0… │  8.82 │ PEN… │
+│ 261 │ 202… │ NAH… │ BUY  │ FVG… │ 131.… │ 128… │ 154.… │ 158… │  8.30 │ PEN… │
+│ 260 │ 202… │ MOR… │ BUY  │ FVG… │ 82.89 │ 81.… │ 97.00 │ 99.… │ 10.61 │ PEN… │
+│ 259 │ 202… │ MOB… │ SELL │ OB_… │ 16.64 │ 17.… │ 15.66 │ 14.… │  2.00 │ PEN… │
+│ 258 │ 202… │ MAN… │ BUY  │ OB_… │ 221.… │ 212… │ 287.… │ 300… │  7.55 │ PEN… │
+│ 257 │ 202… │ MAL… │ SELL │ OB_… │ 32.24 │ 34.… │ 28.20 │ 25.… │  2.15 │ PEN… │
+│ 256 │ 202… │ LXC… │ BUY  │ OB_… │ 176.… │ 169… │ 203.… │ 213… │  4.20 │ PEN… │
+│ 255 │ 202… │ LLO… │ BUY  │ OB_… │ 1,81… │ 1,7… │ 2,12… │ 2,2… │  3.86 │ PEN… │
+│ 254 │ 202… │ LIQ… │ BUY  │ FVG… │ 1,10… │ 1,1… │ 1,12… │ 1,1… │ 14.88 │ PEN… │
+│ 253 │ 202… │ LIQ… │ BUY  │ FVG… │ 1,05… │ 1,0… │ 1,06… │ 1,0… │  2.00 │ PEN… │
+│ 252 │ 202… │ LIC… │ BUY  │ FVG… │ 533.… │ 514… │ 579.… │ 607… │  2.46 │ PEN… │
+│ 251 │ 202… │ LAL… │ BUY  │ OB_… │ 1,88… │ 1,8… │ 2,03… │ 2,0… │  3.90 │ PEN… │
+│ 250 │ 202… │ KFI… │ SELL │ OB_… │ 894.… │ 933… │ 800.… │ 740… │  2.36 │ PEN… │
+│ 249 │ 202… │ KER… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 2,58… │ 2,6… │ 16.37 │ PEN… │
+│ 248 │ 202… │ KAU… │ BUY  │ OB_… │ 823.… │ 793… │ 953.… │ 997… │  4.41 │ PEN… │
+│ 247 │ 202… │ JSW… │ BUY  │ FVG… │ 334.… │ 327… │ 355.… │ 365… │  2.93 │ PEN… │
+│ 246 │ 202… │ JNK… │ BUY  │ OB_… │ 416.… │ 392… │ 558.… │ 594… │  5.81 │ PEN… │
+│ 245 │ 202… │ JKP… │ BUY  │ FVG… │ 390.… │ 377… │ 427.… │ 445… │  2.94 │ PEN… │
+│ 244 │ 202… │ ION… │ BUY  │ FVG… │ 377.… │ 370… │ 461.… │ 471… │ 12.07 │ PEN… │
+│ 243 │ 202… │ INN… │ BUY  │ OB_… │ 1,02… │ 1,0… │ 1,07… │ 1,1… │  2.50 │ PEN… │
+│ 242 │ 202… │ INFY │ SELL │ OB_… │ 1,11… │ 1,1… │ 982.… │ 906… │  2.53 │ PEN… │
+│ 241 │ 202… │ INF… │ SELL │ OB_… │ 163.… │ 168… │ 143.… │ 135… │  3.68 │ PEN… │
+│ 240 │ 202… │ IND… │ BUY  │ OB_… │ 741.… │ 699… │ 826.… │ 889… │  2.00 │ PEN… │
+│ 239 │ 202… │ IDBI │ BUY  │ OB_… │ 83.45 │ 80.… │ 96.25 │ 100… │  4.34 │ PEN… │
+│ 238 │ 202… │ HYB… │ BUY  │ OB_… │ 16.08 │ 15.… │ 22.99 │ 24.… │  8.97 │ PEN… │
+│ 237 │ 202… │ HDF… │ SELL │ OB_… │ 83.80 │ 87.… │ 76.44 │ 70.… │  2.00 │ PEN… │
+│ 236 │ 202… │ HDF… │ SELL │ OB_… │ 28.10 │ 28.… │ 27.10 │ 26.… │  2.00 │ PEN… │
+│ 235 │ 202… │ HDF… │ BUY  │ FVG… │ 1,08… │ 1,0… │ 1,08… │ 1,0… │  2.00 │ PEN… │
+│ 234 │ 202… │ HAL… │ BUY  │ FVG… │ 1,55… │ 1,4… │ 1,74… │ 1,8… │  2.73 │ PEN… │
+│ 233 │ 202… │ GVP… │ BUY  │ OB_… │ 625.… │ 592… │ 1,08… │ 1,1… │ 13.98 │ PEN… │
+│ 232 │ 202… │ GUJ… │ SELL │ OB_… │ 350.… │ 367… │ 300.… │ 275… │  2.97 │ PEN… │
+│ 231 │ 202… │ GSPL │ BUY  │ OB_… │ 300.… │ 291… │ 323.… │ 336… │  2.59 │ PEN… │
+│ 230 │ 202… │ GRO… │ BUY  │ FVG… │ 111.… │ 110… │ 112.… │ 113… │  5.31 │ PEN… │
+│ 229 │ 202… │ GRE… │ BUY  │ OB_… │ 307.… │ 296… │ 334.… │ 350… │  2.53 │ PEN… │
+│ 228 │ 202… │ GNFC │ BUY  │ FVG… │ 572.… │ 542… │ 631.… │ 675… │  2.00 │ PEN… │
+│ 227 │ 202… │ GNA  │ BUY  │ OB_… │ 519.… │ 500… │ 592.… │ 621… │  3.63 │ PEN… │
+│ 226 │ 202… │ GLO… │ SELL │ FVG… │ 50.07 │ 52.… │ 44.52 │ 41.… │  2.50 │ PEN… │
+│ 225 │ 202… │ GIN… │ BUY  │ OB_… │ 41.35 │ 39.… │ 47.29 │ 49.… │  3.32 │ PEN… │
+│ 224 │ 202… │ GHC… │ BUY  │ FVG… │ 129.… │ 125… │ 144.… │ 149… │  4.41 │ PEN… │
+│ 223 │ 202… │ GAT… │ BUY  │ FVG… │  0.53 │ 0.51 │  0.58 │ 0.61 │  2.50 │ PEN… │
+│ 222 │ 202… │ FSL  │ BUY  │ FVG… │ 281.… │ 276… │ 341.… │ 349… │ 12.18 │ PEN… │
+│ 221 │ 202… │ EVI… │ BUY  │ FVG… │ 30.20 │ 29.… │ 35.04 │ 35.… │ 14.24 │ PEN… │
+│ 220 │ 202… │ EPA… │ BUY  │ FVG… │ 243.… │ 229… │ 281.… │ 301… │  2.79 │ PEN… │
+│ 219 │ 202… │ ELI… │ BUY  │ FVG… │ 1,05… │ 1,0… │ 1,05… │ 1,0… │  2.00 │ PEN… │
+│ 218 │ 202… │ ELG… │ BUY  │ FVG… │ 53.64 │ 52.… │ 64.66 │ 66.… │ 11.72 │ PEN… │
+│ 217 │ 202… │ DWA… │ BUY  │ FVG… │ 46.65 │ 44.… │ 59.90 │ 62.… │  7.01 │ PEN… │
+│ 216 │ 202… │ DOL… │ BUY  │ OB_… │ 272.… │ 264… │ 297.… │ 311… │  2.78 │ PEN… │
+│ 215 │ 202… │ DEN… │ BUY  │ FVG… │ 259.… │ 256… │ 372.… │ 377… │ 32.71 │ PEN… │
+│ 214 │ 202… │ DAN… │ BUY  │ FVG… │  3.08 │ 2.95 │  3.61 │ 3.80 │  4.08 │ PEN… │
+│ 213 │ 202… │ CON… │ BUY  │ OB_… │ 592.… │ 560… │ 657.… │ 705… │  2.00 │ PEN… │
+│ 212 │ 202… │ COA… │ SELL │ FVG… │ 418.… │ 422… │ 395.… │ 388… │  4.55 │ PEN… │
+│ 211 │ 202… │ CHE… │ BUY  │ OB_… │ 1,14… │ 1,0… │ 1,24… │ 1,3… │  2.16 │ PEN… │
+│ 210 │ 202… │ CAS… │ BUY  │ FVG… │ 1,08… │ 1,0… │ 1,09… │ 1,1… │  2.00 │ PEN… │
+│ 209 │ 202… │ BSL… │ SELL │ OB_… │ 74.49 │ 78.… │ 67.19 │ 61.… │  2.00 │ PEN… │
+│ 208 │ 202… │ BHA… │ BUY  │ FVG… │ 208.… │ 203… │ 254.… │ 262… │  8.47 │ PEN… │
+│ 207 │ 202… │ BHA… │ BUY  │ FVG… │ 31.96 │ 31.… │ 35.70 │ 36.… │  4.40 │ PEN… │
+│ 206 │ 202… │ BEL… │ BUY  │ OB_… │ 229.… │ 221… │ 268.… │ 280… │  4.56 │ PEN… │
+│ 205 │ 202… │ BEL… │ BUY  │ FVG… │ 232.… │ 228… │ 284.… │ 291… │ 10.61 │ PEN… │
+│ 204 │ 202… │ BAN… │ SELL │ OB_… │ 57.97 │ 60.… │ 53.27 │ 49.… │  2.00 │ PEN… │
+│ 203 │ 202… │ AXI… │ SELL │ OB_… │ 1,28… │ 1,3… │ 1,20… │ 1,1… │  4.99 │ PEN… │
+│ 202 │ 202… │ AVA… │ BUY  │ OB_… │ 2,04… │ 1,9… │ 2,26… │ 2,3… │  2.50 │ PEN… │
+│ 201 │ 202… │ ASI… │ BUY  │ FVG… │ 328.… │ 314… │ 423.… │ 443… │  7.27 │ PEN… │
+│ 200 │ 202… │ APO… │ SELL │ OB_… │ 417.… │ 430… │ 361.… │ 341… │  4.19 │ PEN… │
+│ 199 │ 202… │ APC… │ BUY  │ FVG… │ 587.… │ 580… │ 665.… │ 676… │ 10.49 │ PEN… │
+│ 198 │ 202… │ APA… │ BUY  │ OB_… │ 16,9… │ 15,… │ 18,9… │ 20,… │  2.00 │ PEN… │
+│ 197 │ 202… │ ALK… │ BUY  │ FVG… │ 1,83… │ 1,7… │ 2,11… │ 2,2… │  3.46 │ PEN… │
+│ 196 │ 202… │ ALI… │ SELL │ FVG… │ 1,34… │ 1,3… │ 1,08… │ 1,0… │  9.67 │ PEN… │
+│ 195 │ 202… │ AEG… │ BUY  │ FVG… │ 278.… │ 270… │ 311.… │ 324… │  3.88 │ PEN… │
+│ 194 │ 202… │ ABB… │ BUY  │ FVG… │ 26,0… │ 25,… │ 28,9… │ 29,… │ 11.85 │ PEN… │
+│ 193 │ 202… │ VST… │ SELL │ FVG… │ 4,26… │ 4,3… │ 3,95… │ 3,8… │  3.21 │ PEN… │
+│ 192 │ 202… │ VID… │ BUY  │ FVG… │ 90.80 │ 86.… │ 99.72 │ 105… │  2.18 │ PEN… │
+│ 191 │ 202… │ VEN… │ SELL │ OB_… │ 1,65… │ 1,7… │ 1,35… │ 1,2… │  3.32 │ PEN… │
+│ 190 │ 202… │ USH… │ BUY  │ OB_… │ 482.… │ 461… │ 527.… │ 558… │  2.09 │ PEN… │
+│ 189 │ 202… │ UNI… │ BUY  │ OB_… │ 1,46… │ 1,3… │ 1,77… │ 1,8… │  4.08 │ PEN… │
+│ 188 │ 202… │ UNI… │ BUY  │ FVG… │ 1,38… │ 1,3… │ 1,56… │ 1,5… │ 12.81 │ PEN… │
+│ 187 │ 202… │ UMI… │ BUY  │ FVG… │ 92.31 │ 90.… │ 109.… │ 112… │  8.18 │ PEN… │
+│ 186 │ 202… │ TNP… │ BUY  │ FVG… │ 119.… │ 116… │ 146.… │ 151… │  9.40 │ PEN… │
+│ 185 │ 202… │ TIN… │ BUY  │ FVG… │ 923.… │ 895… │ 1,32… │ 1,3… │ 14.27 │ PEN… │
+│ 184 │ 202… │ TECH │ SELL │ OB_… │ 33.59 │ 34.… │ 28.00 │ 25.… │  4.17 │ PEN… │
+│ 183 │ 202… │ SWA… │ BUY  │ OB_… │ 3,52… │ 3,4… │ 3,76… │ 3,9… │  2.00 │ PEN… │
+│ 182 │ 202… │ SUP… │ SELL │ OB_… │ 3,61… │ 3,7… │ 3,27… │ 3,1… │  3.17 │ PEN… │
+│ 181 │ 202… │ SUN… │ BUY  │ OB_… │ 653.… │ 641… │ 718.… │ 736… │  5.59 │ PEN… │
+│ 180 │ 202… │ STEL │ BUY  │ FVG… │ 569.… │ 550… │ 689.… │ 719… │  6.09 │ PEN… │
+│ 179 │ 202… │ STA… │ BUY  │ FVG… │ 550.… │ 539… │ 624.… │ 641… │  6.93 │ PEN… │
+│ 178 │ 202… │ SPA… │ BUY  │ OB_… │ 188.… │ 180… │ 289.… │ 300… │ 13.23 │ PEN… │
+│ 177 │ 202… │ SIR… │ SELL │ OB_… │ 429.… │ 450… │ 385.… │ 353… │  2.11 │ PEN… │
+│ 176 │ 202… │ SHA… │ BUY  │ OB_… │ 884.… │ 860… │ 973.… │ 1,0… │  3.67 │ PEN… │
+│ 175 │ 202… │ SHA… │ BUY  │ OB_… │ 535.… │ 505… │ 743.… │ 787… │  7.01 │ PEN… │
+│ 174 │ 202… │ SET… │ SELL │ OB_… │ 258.… │ 269… │ 238.… │ 222… │  2.00 │ PEN… │
+│ 173 │ 202… │ SBI… │ SELL │ OB_… │ 281.… │ 291… │ 260.… │ 244… │  2.00 │ PEN… │
+│ 172 │ 202… │ SAK… │ BUY  │ FVG… │ 18.49 │ 18.… │ 23.29 │ 23.… │ 19.20 │ PEN… │
+│ 171 │ 202… │ RUC… │ BUY  │ FVG… │ 105.… │ 103… │ 113.… │ 116… │  4.70 │ PEN… │
+│ 170 │ 202… │ ROL… │ BUY  │ OB_… │ 167.… │ 159… │ 189.… │ 201… │  2.59 │ PEN… │
+│ 169 │ 202… │ PVT… │ SELL │ OB_… │ 27.66 │ 28.… │ 26.00 │ 24.… │  2.00 │ PEN… │
+│ 168 │ 202… │ PVT… │ SELL │ OB_… │ 27.98 │ 28.… │ 26.54 │ 25.… │  2.00 │ PEN… │
+│ 167 │ 202… │ PSP… │ BUY  │ FVG… │ 782.… │ 763… │ 1,14… │ 1,1… │ 19.17 │ PEN… │
+│ 166 │ 202… │ PRO… │ SELL │ FVG… │ 53.81 │ 56.… │ 40.69 │ 37.… │  5.36 │ PEN… │
+│ 165 │ 202… │ PON… │ BUY  │ FVG… │ 370.… │ 358… │ 455.… │ 473… │  6.75 │ PEN… │
+│ 164 │ 202… │ POD… │ BUY  │ FVG… │ 270.… │ 256… │ 333.… │ 354… │  4.39 │ PEN… │
+│ 163 │ 202… │ PNG… │ BUY  │ OB_… │ 590.… │ 560… │ 717.… │ 763… │  4.09 │ PEN… │
+│ 162 │ 202… │ PNB… │ BUY  │ FVG… │ 72.77 │ 70.… │ 85.50 │ 88.… │  7.11 │ PEN… │
+│ 161 │ 202… │ PIX… │ BUY  │ FVG… │ 1,80… │ 1,7… │ 2,08… │ 2,1… │  5.39 │ PEN… │
+│ 160 │ 202… │ PGEL │ BUY  │ FVG… │ 523.… │ 498… │ 643.… │ 682… │  4.73 │ PEN… │
+│ 159 │ 202… │ PAL… │ SELL │ OB_… │ 89.52 │ 92.… │ 79.01 │ 74.… │  3.57 │ PEN… │
+│ 158 │ 202… │ ORC… │ BUY  │ OB_… │ 928.… │ 916… │ 1,13… │ 1,1… │ 18.19 │ PEN… │
+│ 157 │ 202… │ NUV… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 1,90… │ 1,9… │  4.73 │ PEN… │
+│ 156 │ 202… │ NLC… │ BUY  │ FVG… │ 251.… │ 244… │ 387.… │ 397… │ 20.28 │ PEN… │
+│ 155 │ 202… │ NIV… │ BUY  │ FVG… │ 76.01 │ 74.… │ 91.40 │ 93.… │  9.44 │ PEN… │
+│ 154 │ 202… │ NIF… │ SELL │ OB_… │ 26.77 │ 28.… │ 23.00 │ 20.… │  2.53 │ PEN… │
+│ 153 │ 202… │ NET… │ BUY  │ FVG… │ 4,71… │ 4,5… │ 5,81… │ 6,0… │  8.82 │ PEN… │
+│ 152 │ 202… │ NAH… │ BUY  │ FVG… │ 131.… │ 128… │ 154.… │ 158… │  8.30 │ PEN… │
+│ 151 │ 202… │ MOR… │ BUY  │ FVG… │ 82.89 │ 81.… │ 97.00 │ 99.… │ 10.61 │ PEN… │
+│ 150 │ 202… │ MOB… │ SELL │ OB_… │ 16.64 │ 17.… │ 15.66 │ 14.… │  2.00 │ PEN… │
+│ 149 │ 202… │ MAN… │ BUY  │ OB_… │ 221.… │ 212… │ 287.… │ 300… │  7.55 │ PEN… │
+│ 148 │ 202… │ MAL… │ SELL │ OB_… │ 32.24 │ 34.… │ 28.20 │ 25.… │  2.15 │ PEN… │
+│ 147 │ 202… │ LXC… │ BUY  │ OB_… │ 176.… │ 169… │ 203.… │ 213… │  4.20 │ PEN… │
+│ 146 │ 202… │ LLO… │ BUY  │ OB_… │ 1,81… │ 1,7… │ 2,12… │ 2,2… │  3.86 │ PEN… │
+│ 145 │ 202… │ LIQ… │ BUY  │ OB_… │ 1,10… │ 1,1… │ 1,12… │ 1,1… │  3.37 │ PEN… │
+│ 144 │ 202… │ LIQ… │ BUY  │ FVG… │ 1,05… │ 1,0… │ 1,06… │ 1,0… │  2.00 │ PEN… │
+│ 143 │ 202… │ LIC… │ BUY  │ FVG… │ 533.… │ 514… │ 579.… │ 607… │  2.46 │ PEN… │
+│ 142 │ 202… │ LAL… │ BUY  │ OB_… │ 1,88… │ 1,8… │ 2,03… │ 2,0… │  3.90 │ PEN… │
+│ 141 │ 202… │ KFI… │ SELL │ OB_… │ 894.… │ 933… │ 800.… │ 740… │  2.36 │ PEN… │
+│ 140 │ 202… │ KER… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 2,58… │ 2,6… │ 16.37 │ PEN… │
+│ 139 │ 202… │ KAU… │ BUY  │ OB_… │ 823.… │ 793… │ 953.… │ 997… │  4.41 │ PEN… │
+│ 138 │ 202… │ JSW… │ BUY  │ OB_… │ 334.… │ 316… │ 371.… │ 399… │  2.00 │ PEN… │
+│ 137 │ 202… │ JNK… │ BUY  │ OB_… │ 416.… │ 392… │ 558.… │ 594… │  5.81 │ PEN… │
+│ 136 │ 202… │ JKP… │ BUY  │ FVG… │ 390.… │ 377… │ 427.… │ 445… │  2.94 │ PEN… │
+│ 135 │ 202… │ ION… │ BUY  │ OB_… │ 377.… │ 358… │ 461.… │ 489… │  4.35 │ PEN… │
+│ 134 │ 202… │ INN… │ BUY  │ OB_… │ 1,02… │ 1,0… │ 1,07… │ 1,1… │  2.50 │ PEN… │
+│ 133 │ 202… │ INFY │ SELL │ OB_… │ 1,11… │ 1,1… │ 982.… │ 906… │  2.53 │ PEN… │
+│ 132 │ 202… │ INF… │ SELL │ OB_… │ 163.… │ 168… │ 143.… │ 135… │  3.68 │ PEN… │
+│ 131 │ 202… │ IND… │ BUY  │ OB_… │ 741.… │ 699… │ 826.… │ 889… │  2.00 │ PEN… │
+│ 130 │ 202… │ IDBI │ BUY  │ OB_… │ 83.45 │ 80.… │ 96.25 │ 100… │  4.34 │ PEN… │
+│ 129 │ 202… │ HYB… │ BUY  │ OB_… │ 16.08 │ 15.… │ 22.99 │ 24.… │  8.97 │ PEN… │
+│ 128 │ 202… │ HDF… │ SELL │ OB_… │ 83.80 │ 87.… │ 76.44 │ 70.… │  2.00 │ PEN… │
+│ 127 │ 202… │ HDF… │ SELL │ OB_… │ 28.10 │ 28.… │ 27.10 │ 26.… │  2.00 │ PEN… │
+│ 126 │ 202… │ HDF… │ BUY  │ FVG… │ 1,08… │ 1,0… │ 1,08… │ 1,0… │  2.00 │ PEN… │
+│ 125 │ 202… │ HAL… │ BUY  │ FVG… │ 1,55… │ 1,4… │ 1,74… │ 1,8… │  2.73 │ PEN… │
+│ 124 │ 202… │ GVP… │ BUY  │ OB_… │ 625.… │ 592… │ 1,08… │ 1,1… │ 13.98 │ PEN… │
+│ 123 │ 202… │ GUJ… │ SELL │ OB_… │ 350.… │ 367… │ 300.… │ 275… │  2.97 │ PEN… │
+│ 122 │ 202… │ GSPL │ BUY  │ OB_… │ 300.… │ 291… │ 323.… │ 336… │  2.59 │ PEN… │
+│ 121 │ 202… │ GRO… │ BUY  │ FVG… │ 111.… │ 110… │ 112.… │ 113… │  5.31 │ PEN… │
+│ 120 │ 202… │ GRE… │ BUY  │ OB_… │ 307.… │ 296… │ 334.… │ 350… │  2.53 │ PEN… │
+│ 119 │ 202… │ GNFC │ BUY  │ FVG… │ 572.… │ 542… │ 631.… │ 675… │  2.00 │ PEN… │
+│ 118 │ 202… │ GNA  │ BUY  │ OB_… │ 519.… │ 500… │ 592.… │ 621… │  3.63 │ PEN… │
+│ 117 │ 202… │ GLO… │ SELL │ FVG… │ 50.07 │ 52.… │ 44.52 │ 41.… │  2.50 │ PEN… │
+│ 116 │ 202… │ GIN… │ BUY  │ OB_… │ 41.35 │ 39.… │ 47.29 │ 49.… │  3.32 │ PEN… │
+│ 115 │ 202… │ GHC… │ BUY  │ FVG… │ 129.… │ 125… │ 144.… │ 149… │  4.41 │ PEN… │
+│ 114 │ 202… │ GAT… │ BUY  │ FVG… │  0.53 │ 0.51 │  0.58 │ 0.61 │  2.50 │ PEN… │
+│ 113 │ 202… │ FSL  │ BUY  │ FVG… │ 281.… │ 276… │ 341.… │ 349… │ 12.18 │ PEN… │
+│ 112 │ 202… │ EVI… │ BUY  │ FVG… │ 30.20 │ 29.… │ 35.04 │ 35.… │ 14.24 │ PEN… │
+│ 111 │ 202… │ EPA… │ BUY  │ FVG… │ 243.… │ 229… │ 281.… │ 301… │  2.79 │ PEN… │
+│ 110 │ 202… │ ELI… │ BUY  │ OB_… │ 1,05… │ 1,0… │ 1,07… │ 1,0… │  2.00 │ PEN… │
+│ 109 │ 202… │ ELG… │ BUY  │ FVG… │ 53.64 │ 52.… │ 64.66 │ 66.… │ 11.72 │ PEN… │
+│ 108 │ 202… │ DWA… │ BUY  │ FVG… │ 46.65 │ 44.… │ 59.90 │ 62.… │  7.01 │ PEN… │
+│ 107 │ 202… │ DOL… │ BUY  │ OB_… │ 272.… │ 264… │ 297.… │ 311… │  2.78 │ PEN… │
+│ 106 │ 202… │ DEN… │ BUY  │ FVG… │ 259.… │ 256… │ 372.… │ 377… │ 32.71 │ PEN… │
+│ 105 │ 202… │ DAN… │ BUY  │ FVG… │  3.08 │ 2.95 │  3.61 │ 3.80 │  4.08 │ PEN… │
+│ 104 │ 202… │ CON… │ BUY  │ OB_… │ 592.… │ 560… │ 657.… │ 705… │  2.00 │ PEN… │
+│ 103 │ 202… │ COA… │ SELL │ OB_… │ 418.… │ 434… │ 385.… │ 361… │  2.00 │ PEN… │
+│ 102 │ 202… │ CHE… │ BUY  │ OB_… │ 1,14… │ 1,0… │ 1,24… │ 1,3… │  2.16 │ PEN… │
+│ 101 │ 202… │ CAS… │ BUY  │ OB_… │ 1,08… │ 1,0… │ 1,09… │ 1,1… │  2.08 │ PEN… │
+│ 100 │ 202… │ BSL… │ SELL │ OB_… │ 74.49 │ 78.… │ 67.19 │ 61.… │  2.00 │ PEN… │
+│ 99  │ 202… │ BHA… │ BUY  │ FVG… │ 208.… │ 203… │ 254.… │ 262… │  8.47 │ PEN… │
+│ 98  │ 202… │ BHA… │ BUY  │ FVG… │ 31.96 │ 31.… │ 35.70 │ 36.… │  4.40 │ PEN… │
+│ 97  │ 202… │ BEL… │ BUY  │ OB_… │ 229.… │ 221… │ 268.… │ 280… │  4.56 │ PEN… │
+│ 96  │ 202… │ BEL… │ BUY  │ FVG… │ 232.… │ 228… │ 284.… │ 291… │ 10.61 │ PEN… │
+│ 95  │ 202… │ BAN… │ SELL │ OB_… │ 57.97 │ 60.… │ 53.27 │ 49.… │  2.00 │ PEN… │
+│ 94  │ 202… │ AXI… │ SELL │ OB_… │ 1,28… │ 1,3… │ 1,20… │ 1,1… │  4.99 │ PEN… │
+│ 93  │ 202… │ AVA… │ BUY  │ OB_… │ 2,04… │ 1,9… │ 2,26… │ 2,3… │  2.50 │ PEN… │
+│ 92  │ 202… │ ASI… │ BUY  │ FVG… │ 328.… │ 314… │ 423.… │ 443… │  7.27 │ PEN… │
+│ 91  │ 202… │ APO… │ SELL │ OB_… │ 417.… │ 430… │ 361.… │ 341… │  4.19 │ PEN… │
+│ 90  │ 202… │ APC… │ BUY  │ FVG… │ 587.… │ 580… │ 665.… │ 676… │ 10.49 │ PEN… │
+│ 89  │ 202… │ APA… │ BUY  │ OB_… │ 16,9… │ 15,… │ 18,9… │ 20,… │  2.00 │ PEN… │
+│ 88  │ 202… │ ALK… │ BUY  │ FVG… │ 1,83… │ 1,7… │ 2,11… │ 2,2… │  3.46 │ PEN… │
+│ 87  │ 202… │ ALI… │ SELL │ FVG… │ 1,34… │ 1,3… │ 1,08… │ 1,0… │  9.67 │ PEN… │
+│ 86  │ 202… │ AEG… │ BUY  │ FVG… │ 278.… │ 270… │ 311.… │ 324… │  3.88 │ PEN… │
+│ 85  │ 202… │ ABB… │ BUY  │ FVG… │ 26,0… │ 25,… │ 28,9… │ 29,… │ 11.85 │ PEN… │
+│ 84  │ 202… │ VID… │ BUY  │ FVG… │ 90.80 │ 86.… │ 99.72 │ 105… │  2.18 │ PEN… │
+│ 83  │ 202… │ UNI… │ BUY  │ FVG… │ 1,38… │ 1,3… │ 1,56… │ 1,5… │ 12.81 │ PEN… │
+│ 82  │ 202… │ UMI… │ BUY  │ FVG… │ 92.31 │ 90.… │ 109.… │ 112… │  8.18 │ PEN… │
+│ 81  │ 202… │ TNP… │ BUY  │ FVG… │ 119.… │ 116… │ 146.… │ 151… │  9.40 │ PEN… │
+│ 80  │ 202… │ TIN… │ BUY  │ FVG… │ 923.… │ 895… │ 1,32… │ 1,3… │ 14.27 │ PEN… │
+│ 79  │ 202… │ STEL │ BUY  │ FVG… │ 569.… │ 550… │ 689.… │ 719… │  6.09 │ PEN… │
+│ 78  │ 202… │ STA… │ BUY  │ FVG… │ 550.… │ 539… │ 624.… │ 641… │  6.93 │ PEN… │
+│ 77  │ 202… │ SET… │ SELL │ OB_… │ 258.… │ 269… │ 238.… │ 222… │  2.00 │ PEN… │
+│ 76  │ 202… │ SAK… │ BUY  │ FVG… │ 18.49 │ 18.… │ 23.29 │ 23.… │ 19.20 │ PEN… │
+│ 75  │ 202… │ RUC… │ BUY  │ FVG… │ 105.… │ 103… │ 113.… │ 116… │  4.70 │ PEN… │
+│ 74  │ 202… │ PSP… │ BUY  │ FVG… │ 782.… │ 763… │ 1,14… │ 1,1… │ 19.17 │ PEN… │
+│ 73  │ 202… │ PON… │ BUY  │ FVG… │ 370.… │ 358… │ 455.… │ 473… │  6.75 │ PEN… │
+│ 72  │ 202… │ POD… │ BUY  │ FVG… │ 270.… │ 256… │ 333.… │ 354… │  4.39 │ PEN… │
+│ 71  │ 202… │ PNB… │ BUY  │ FVG… │ 72.77 │ 70.… │ 85.50 │ 88.… │  7.11 │ PEN… │
+│ 70  │ 202… │ PIX… │ BUY  │ FVG… │ 1,80… │ 1,7… │ 2,08… │ 2,1… │  5.39 │ PEN… │
+│ 69  │ 202… │ PGEL │ BUY  │ FVG… │ 523.… │ 498… │ 643.… │ 682… │  4.73 │ PEN… │
+│ 68  │ 202… │ NUV… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 1,90… │ 1,9… │  4.73 │ PEN… │
+│ 67  │ 202… │ NLC… │ BUY  │ FVG… │ 251.… │ 244… │ 387.… │ 397… │ 20.28 │ PEN… │
+│ 66  │ 202… │ NIV… │ BUY  │ FVG… │ 76.01 │ 74.… │ 91.40 │ 93.… │  9.44 │ PEN… │
+│ 65  │ 202… │ NET… │ BUY  │ FVG… │ 4,71… │ 4,5… │ 5,81… │ 6,0… │  8.82 │ PEN… │
+│ 64  │ 202… │ NAH… │ BUY  │ FVG… │ 131.… │ 128… │ 154.… │ 158… │  8.30 │ PEN… │
+│ 63  │ 202… │ MOR… │ BUY  │ FVG… │ 82.89 │ 81.… │ 97.00 │ 99.… │ 10.61 │ PEN… │
+│ 62  │ 202… │ LIQ… │ BUY  │ OB_… │ 1,10… │ 1,0… │ 1,12… │ 1,1… │  2.29 │ PEN… │
+│ 61  │ 202… │ LIQ… │ BUY  │ FVG… │ 1,05… │ 1,0… │ 1,06… │ 1,0… │  2.00 │ PEN… │
+│ 60  │ 202… │ LIC… │ BUY  │ FVG… │ 533.… │ 514… │ 579.… │ 607… │  2.46 │ PEN… │
+│ 59  │ 202… │ KER… │ BUY  │ FVG… │ 1,71… │ 1,6… │ 2,58… │ 2,6… │ 16.37 │ PEN… │
+│ 58  │ 202… │ JSW… │ BUY  │ OB_… │ 334.… │ 316… │ 371.… │ 399… │  2.00 │ PEN… │
+│ 57  │ 202… │ JKP… │ BUY  │ FVG… │ 390.… │ 377… │ 427.… │ 445… │  2.94 │ PEN… │
+│ 56  │ 202… │ ION… │ BUY  │ OB_… │ 377.… │ 358… │ 461.… │ 489… │  4.35 │ PEN… │
+│ 55  │ 202… │ HDF… │ BUY  │ FVG… │ 1,08… │ 1,0… │ 1,08… │ 1,0… │  2.00 │ PEN… │
+│ 54  │ 202… │ HAL… │ BUY  │ FVG… │ 1,55… │ 1,4… │ 1,74… │ 1,8… │  2.73 │ PEN… │
+│ 53  │ 202… │ GRO… │ BUY  │ FVG… │ 111.… │ 110… │ 112.… │ 113… │  5.31 │ PEN… │
+│ 52  │ 202… │ GNFC │ BUY  │ FVG… │ 572.… │ 542… │ 631.… │ 675… │  2.00 │ PEN… │
+│ 51  │ 202… │ GHC… │ BUY  │ FVG… │ 129.… │ 125… │ 144.… │ 149… │  4.41 │ PEN… │
+│ 50  │ 202… │ GAT… │ BUY  │ FVG… │  0.53 │ 0.51 │  0.58 │ 0.61 │  2.50 │ PEN… │
+│ 49  │ 202… │ FSL  │ BUY  │ FVG… │ 281.… │ 276… │ 341.… │ 349… │ 12.18 │ PEN… │
+│ 48  │ 202… │ EVI… │ BUY  │ FVG… │ 30.20 │ 29.… │ 35.04 │ 35.… │ 14.24 │ PEN… │
+│ 47  │ 202… │ EPA… │ BUY  │ FVG… │ 243.… │ 229… │ 281.… │ 301… │  2.79 │ PEN… │
+│ 46  │ 202… │ ELI… │ BUY  │ OB_… │ 1,05… │ 1,0… │ 1,07… │ 1,0… │  2.00 │ PEN… │
+│ 45  │ 202… │ ELG… │ BUY  │ FVG… │ 53.64 │ 52.… │ 64.66 │ 66.… │ 11.72 │ PEN… │
+│ 44  │ 202… │ DWA… │ BUY  │ FVG… │ 46.65 │ 44.… │ 59.90 │ 62.… │  7.01 │ PEN… │
+│ 43  │ 202… │ DEN… │ BUY  │ FVG… │ 259.… │ 256… │ 372.… │ 377… │ 32.71 │ PEN… │
+│ 42  │ 202… │ DAN… │ BUY  │ FVG… │  3.08 │ 2.95 │  3.61 │ 3.80 │  4.08 │ PEN… │
+│ 41  │ 202… │ COA… │ SELL │ OB_… │ 418.… │ 434… │ 385.… │ 361… │  2.00 │ PEN… │
+│ 40  │ 202… │ CAS… │ BUY  │ FVG… │ 1,08… │ 1,0… │ 1,09… │ 1,1… │  2.00 │ PEN… │
+│ 39  │ 202… │ BHA… │ BUY  │ FVG… │ 208.… │ 203… │ 254.… │ 262… │  8.47 │ PEN… │
+│ 38  │ 202… │ BHA… │ BUY  │ FVG… │ 31.96 │ 31.… │ 35.70 │ 36.… │  4.40 │ PEN… │
+│ 37  │ 202… │ BEL… │ BUY  │ FVG… │ 232.… │ 228… │ 284.… │ 291… │ 10.61 │ PEN… │
+│ 36  │ 202… │ ASI… │ BUY  │ FVG… │ 328.… │ 314… │ 423.… │ 443… │  7.27 │ PEN… │
+│ 35  │ 202… │ APC… │ BUY  │ FVG… │ 587.… │ 580… │ 665.… │ 676… │ 10.49 │ PEN… │
+│ 34  │ 202… │ ALK… │ BUY  │ FVG… │ 1,83… │ 1,7… │ 2,11… │ 2,2… │  3.46 │ PEN… │
+│ 33  │ 202… │ AEG… │ BUY  │ FVG… │ 278.… │ 270… │ 311.… │ 324… │  3.88 │ PEN… │
+│ 32  │ 202… │ ABB… │ BUY  │ FVG… │ 26,0… │ 25,… │ 28,9… │ 29,… │ 11.85 │ PEN… │
+│ 31  │ 202… │ URB… │ BUY  │ FVG… │ 120.… │ 116… │ 128.… │ 132… │  2.00 │ PEN… │
+│ 30  │ 202… │ TRI… │ BUY  │ FVG… │ 365.… │ 352… │ 391.… │ 404… │  2.00 │ PEN… │
+│ 29  │ 202… │ TIT… │ BUY  │ FVG… │ 4,19… │ 4,0… │ 4,42… │ 4,5… │  2.00 │ PEN… │
+│ 28  │ 202… │ SPL… │ BUY  │ FVG… │ 668.… │ 647… │ 708.… │ 729… │  2.00 │ PEN… │
+│ 27  │ 202… │ SCH… │ BUY  │ FVG… │ 146.… │ 143… │ 151.… │ 154… │  2.00 │ PEN… │
+│ 26  │ 202… │ SAS… │ BUY  │ FVG… │ 284.… │ 272… │ 309.… │ 321… │  2.00 │ PEN… │
+│ 25  │ 202… │ PVR… │ BUY  │ FVG… │ 966.… │ 941… │ 1,01… │ 1,0… │  2.00 │ PEN… │
+│ 24  │ 202… │ PAR… │ BUY  │ FVG… │  1.90 │ 1.68 │  2.34 │ 2.56 │  2.00 │ PEN… │
+│ 23  │ 202… │ OIL  │ BUY  │ FVG… │ 481.… │ 459… │ 524.… │ 545… │  2.00 │ PEN… │
+│ 22  │ 202… │ NTP… │ BUY  │ FVG… │ 99.78 │ 97.… │ 104.… │ 106… │  2.00 │ PEN… │
+│ 21  │ 202… │ NOC… │ BUY  │ FVG… │ 155.… │ 144… │ 178.… │ 190… │  2.00 │ PEN… │
+│ 20  │ 202… │ NAT… │ BUY  │ FVG… │ 378.… │ 371… │ 391.… │ 398… │  2.00 │ PEN… │
+│ 19  │ 202… │ MRPL │ BUY  │ FVG… │ 151.… │ 148… │ 158.… │ 161… │  2.00 │ PEN… │
+│ 18  │ 202… │ MOP… │ BUY  │ FVG… │ 102.… │ 99.… │ 106.… │ 108… │  2.00 │ PEN… │
+│ 17  │ 202… │ MOD… │ BUY  │ FVG… │ 46.67 │ 45.… │ 49.31 │ 50.… │  2.00 │ PEN… │
+│ 16  │ 202… │ MAN… │ BUY  │ FVG… │ 59.94 │ 51.… │ 77.72 │ 86.… │  2.00 │ PEN… │
+│ 15  │ 202… │ KSO… │ BUY  │ FVG… │ 274.… │ 268… │ 285.… │ 290… │  2.00 │ PEN… │
+│ 14  │ 202… │ JSW… │ BUY  │ FVG… │ 126.… │ 120… │ 137.… │ 143… │  2.00 │ PEN… │
+│ 13  │ 202… │ IRB  │ BUY  │ FVG… │ 20.65 │ 20.… │ 21.45 │ 21.… │  2.00 │ PEN… │
+│ 12  │ 202… │ IEX  │ BUY  │ FVG… │ 118.… │ 117… │ 121.… │ 122… │  2.00 │ PEN… │
+│ 11  │ 202… │ HEG  │ BUY  │ FVG… │ 526.… │ 506… │ 566.… │ 586… │  2.00 │ PEN… │
+│ 10  │ 202… │ GLO… │ BUY  │ FVG… │ 160.… │ 155… │ 168.… │ 172… │  2.00 │ PEN… │
+│  9  │ 202… │ GAL… │ BUY  │ FVG… │ 621.… │ 571… │ 720.… │ 769… │  2.00 │ PEN… │
+│  8  │ 202… │ ELG… │ BUY  │ FVG… │ 44.88 │ 41.… │ 52.32 │ 56.… │  2.00 │ PEN… │
+│  7  │ 202… │ ELE… │ BUY  │ FVG… │ 71.94 │ 62.… │ 90.10 │ 99.… │  2.00 │ PEN… │
+│  6  │ 202… │ DMCC │ BUY  │ FVG… │ 245.… │ 223… │ 289.… │ 311… │  2.00 │ PEN… │
+│  5  │ 202… │ DMA… │ BUY  │ FVG… │ 4,06… │ 3,9… │ 4,33… │ 4,4… │  2.00 │ PEN… │
+│  4  │ 202… │ DCX… │ BUY  │ FVG… │ 183.… │ 176… │ 198.… │ 205… │  2.00 │ PEN… │
+│  3  │ 202… │ BUT… │ BUY  │ FVG… │ 652.… │ 637… │ 684.… │ 699… │  2.00 │ PEN… │
+│  2  │ 202… │ BHA… │ BUY  │ FVG… │ 203.… │ 185… │ 238.… │ 255… │  2.00 │ PEN… │
+│  1  │ 202… │ AXI… │ BUY  │ FVG… │ 237.… │ 15.… │ 681.… │ 903… │  2.00 │ PEN… │
+└─────┴──────┴──────┴──────┴──────┴───────┴──────┴───────┴──────┴───────┴──────┘
+----- exit=0 duration=3.79s finished=2026-10-28T15:59:30.542236+05:30 -----
+
+============================================================
+COMMAND: python main.py repair-ta
+STARTED: 2026-10-28T15:59:30.545106+05:30
+============================================================
+SKIPPED repair-ta: destructive or live-network, no safe dry-run.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:30.545106+05:30 -----
+
+============================================================
+COMMAND: python main.py dq-check
+STARTED: 2026-10-28T15:59:30.545134+05:30
+============================================================
+SKIPPED dq-check: destructive, no dry-run flag (writes inactive_symbols.csv to historical directory and audit logs to logs/dq).
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:30.545134+05:30 -----
+
+============================================================
+COMMAND: python main.py menu
+STARTED: 2026-10-28T15:59:30.545140+05:30
+============================================================
+SKIPPED menu: interactive-menu only, not scriptable.
+----- exit=SKIPPED duration=0.0s finished=2026-10-28T15:59:30.545140+05:30 -----
+
+============================================================
+COMMAND: timeout 120 python -c "from src.cli.menus import _pre_flight_check; _pre_flight_check()" 2>&1
+STARTED: 2026-10-28T15:59:30.545145+05:30
+============================================================
+15:59:33 [WARNING] src.nse_bhavcopy.fyers_fetcher: FyersFetcher: no access token found. Set FYERS_ACCESS_TOKEN env var or call set_token().
+
+  [PRE-FLIGHT CHECK]
+  ✓ yfinance:  OK (Latency 374ms)
+  ✗ fyers:     FAILED (Token Expired / Missing)
+  ✓ bhavcopy:  OK (NSE server reachable, 357ms)
+----- exit=0 duration=4.03s finished=2026-10-28T15:59:34.579243+05:30 -----
+
+============================================================
+SECTION 6 — SKIPPED / NOT-RUN LIST
+============================================================
+Discovered CLI Subcommands Skipped:
+* build-master: SKIPPED: destructive or live-network, no safe dry-run.
+* sync-history: SKIPPED: destructive or live-network, no safe dry-run.
+* screen: SKIPPED: destructive or live-network, no safe dry-run.
+* backtest: SKIPPED: destructive or live-network, no safe dry-run.
+* ml-anomaly: SKIPPED: destructive or live-network, no safe dry-run.
+* fo-ban: SKIPPED: destructive or live-network, no safe dry-run.
+* bhavcopy-sync: SKIPPED: destructive or live-network, no safe dry-run.
+* fyers-login: SKIPPED: destructive or live-network, no safe dry-run.
+* fyers-token: SKIPPED: destructive or live-network, no safe dry-run.
+* train-ml: SKIPPED: destructive or live-network, no safe dry-run.
+* optimize: SKIPPED: destructive or live-network, no safe dry-run.
+* smc-scan: SKIPPED: destructive or live-network, no safe dry-run.
+* repair-ta: SKIPPED: destructive or live-network, no safe dry-run.
+* dq-check: SKIPPED: destructive, no dry-run flag (writes inactive_symbols.csv to historical directory and audit logs to logs/dq).
+* menu: SKIPPED: interactive-menu only, not scriptable.
+
+Interactive-Menu Only Features (Reachable only via 'python main.py menu'):
+* menu_build_master (Option 1): SKIPPED: interactive-menu only, not scriptable (Build / Refresh Equity Master — downloads sec_list + index data).
+* menu_sync_history (Option 2): SKIPPED: interactive-menu only, not scriptable (Sync Historical — All Symbols).
+* menu_sync_filtered (Option 3): SKIPPED: interactive-menu only, not scriptable (Sync Historical — Filtered by cap, index, or count).
+* menu_screen (Option 4): SKIPPED: interactive-menu only, not scriptable (Run Technical Screener — final / swing / super lists).
+* menu_status (Option 5): SKIPPED: interactive-menu only, not scriptable (Parquet Sync Status — rows, date ranges per symbol).
+* menu_registry (Option 6): SKIPPED: interactive-menu only, not scriptable (Sync Registry — pending / failed / ok breakdown).
+* menu_ta_dashboard (Option 7): SKIPPED: interactive-menu only, not scriptable (TA Dashboard — Single Stock).
+* menu_recompute_ta (Option 8): SKIPPED: interactive-menu only, not scriptable (Recompute TA Indicators — refresh all local Parquet files).
+* menu_liquid_etf (Option 9): SKIPPED: interactive-menu only, not scriptable (Liquid ETF Screener — top liquid ETFs per sector).
+* menu_minervini (Option 10): SKIPPED: interactive-menu only, not scriptable (Mark Minervini Template — VCP, RS Rating & Trend Screen).
+* menu_sector_rotation (Option 11): SKIPPED: interactive-menu only, not scriptable (Sector Rotation Chart — JdK RS-Ratio Quadrant Analysis).
+* menu_correlation (Option 12): SKIPPED: interactive-menu only, not scriptable (Correlation Matrix — Cross-asset return correlation).
+* menu_heatmap (Option 13): SKIPPED: interactive-menu only, not scriptable (Nifty Indices Heatmap — Constituents performance).
+* menu_mmi (Option 14): SKIPPED: interactive-menu only, not scriptable (Market Mood Index (MMI) — Live sentiment scraper).
+* menu_ma_slope (Option 15): SKIPPED: interactive-menu only, not scriptable (Moving Average Slope — Trend angle analyzer).
+* menu_squeeze (Option 16): SKIPPED: interactive-menu only, not scriptable (Momentum Squeeze Indicator — BB / KC coiled-spring detector).
+* menu_nse_live (Option 17): SKIPPED: interactive-menu only, not scriptable (Live NSE Data Hub — Pre-market, price info, option chain).
+* menu_pair_scanner (Option 18): SKIPPED: interactive-menu only, not scriptable (Cointegration Pair Scanner — Engle-Granger pairs from local universe).
+* menu_backtest (Option 19): SKIPPED: interactive-menu only, not scriptable (ML Classifier Backtester — Random Forest & Event Backtest on symbol).
+* menu_fo_ban (Option 20): SKIPPED: interactive-menu only, not scriptable (View F&O Ban List — Fetch current NSE F&O ban securities).
+* menu_bhavcopy_sync (Option 21): SKIPPED: interactive-menu only, not scriptable (Bhavcopy Incremental Sync — Batch OHLCV update).
+* menu_fyers_token (Option 22): SKIPPED: interactive-menu only, not scriptable (Set Fyers API Token — Configure Fyers access token).
+* menu_ml_anomaly (Option 23): SKIPPED: interactive-menu only, not scriptable (ML Data Anomaly Detector — Identify bad ticks).
+* menu_strategy_inspector (Option 24): SKIPPED: interactive-menu only, not scriptable (Strategy Inspector — All 13 strategy signals for one stock).
+* menu_consensus_leaderboard (Option 25): SKIPPED: interactive-menu only, not scriptable (Consensus Leaderboard — Top stocks ranked by multi-strategy agreement).
+* menu_data_quality (Option 26): SKIPPED: interactive-menu only, not scriptable (Data Quality & Auto-Healer — Scan master symbols and fix data gaps).
+* menu_configure_alerts (Option 27): SKIPPED: interactive-menu only, not scriptable (Configure Telegram Alerts — Set bot token & chat ID).
+* menu_send_alerts (Option 28): SKIPPED: interactive-menu only, not scriptable (Send Screener Results via Telegram — Push today's CSVs to Telegram).
+* menu_unified_scanner (Option 29): SKIPPED: interactive-menu only, not scriptable (Run Unified Multi-Scanner — Grouped multi-strategy market scanner).
+* menu_query_engine (Option 30): SKIPPED: interactive-menu only, not scriptable (DuckDB SQL Engine — Interactive SQL prompt for Parquet data).
+* menu_train_ml (Option 31): SKIPPED: interactive-menu only, not scriptable (Train ML Models — Train classifiers using historical data).
+* menu_run_optimizer (Option 32): SKIPPED: interactive-menu only, not scriptable (Run Strategy Optimizer — Optimize TA strategies with Optuna).
+* menu_nifty_ki_dukan (Option 33): SKIPPED: interactive-menu only, not scriptable (Nifty Ki Dukan — Discount screener for Nifty 50/500 stocks).
+* menu_smc_scan (Option 34): SKIPPED: interactive-menu only, not scriptable (SMC Live Scan & Calls — Order Blocks, FVGs, Sweeps & R:R signals).
+* menu_smc_calls (Option 35): SKIPPED: interactive-menu only, not scriptable (SMC Signals Ledger — Review saved institutional setups & calls).
+* menu_lux_regimes (Option 36): SKIPPED: interactive-menu only, not scriptable (LuxAlgo Regime & Structure Hub — Weinstein Stages, iFVGs, VSA & NWE).
+* menu_llm_dossier (Option 37): SKIPPED: interactive-menu only, not scriptable (Export Symbol LLM Dossier — Comprehensive Markdown analysis for AI/LLMs).
+
+============================================================
+SECTION 7 — FOOTER
+============================================================
+Commands run:     2
+Commands skipped: 15
+Commands timed out: 0
+Wall time:        74.82s
+Non-zero exits:   none

@@ -11,6 +11,7 @@ from src.cli.actions import (
     cmd_backtest,
     cmd_bhavcopy_sync,
     cmd_build_master,
+    cmd_data_check,
     cmd_dq_check,
     cmd_fo_ban,
     cmd_fyers_login,
@@ -103,7 +104,31 @@ def _build_parser() -> argparse.ArgumentParser:
     p_screen.add_argument("--cap-filter", choices=["Large", "Mid", "Small", "Other"])
     p_screen.add_argument("--index-filter")
     p_screen.add_argument("--limit", type=int)
+    p_screen.add_argument(
+        "--offline", action="store_true", default=False, help="Disable network calls"
+    )
+    p_screen.add_argument(
+        "--fill-from-raw",
+        action="store_true",
+        default=False,
+        help="Build missing parquets from raw",
+    )
+    p_screen.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Abort if any universe symbol missing",
+    )
     p_screen.set_defaults(func=cmd_screen)
+
+    # data-check
+    p_dcheck = sub.add_parser(
+        "data-check", help="Check historical data coverage across symbols."
+    )
+    p_dcheck.add_argument("--symbols", required=True, help="Comma-separated symbol list")
+    p_dcheck.add_argument("--start", default="2026-01-01", help="Start date (YYYY-MM-DD)")
+    p_dcheck.add_argument("--end", default=None, help="End date (YYYY-MM-DD)")
+    p_dcheck.set_defaults(func=cmd_data_check)
 
     # backtest
     p_backtest = sub.add_parser("backtest", help="Run ML backtest.")
