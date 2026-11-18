@@ -27,13 +27,38 @@ def run_liquid_etf_screener() -> list[Signal]:
     df = nse.get_etf_list()
 
     if df is None or df.empty:
-        print("Failed to fetch ETF data from NSE.")
-        return []
-
-    df = df[["symbol", "assets", "open", "high", "low", "ltP", "qty"]]
-    df.columns = pd.Index(
-        ["ETF", "Underlying", "Open", "High", "Low", "Close", "Volume"]
-    )
+        # Offline-first fallback: Build from local parquet lake
+        import glob
+        from pathlib import Path
+        etf_files = sorted(glob.glob("data/historical/1d/*BEES.parquet") + glob.glob("data/historical/1d/*ETF.parquet"))
+        if not etf_files:
+            return []
+        rows = []
+        for fp in etf_files:
+            try:
+                p = Path(fp)
+                pdf = pd.read_parquet(p)
+                if not pdf.empty and len(pdf) >= 1:
+                    last = pdf.iloc[-1]
+                    rows.append({
+                        "ETF": p.stem,
+                        "Underlying": p.stem,
+                        "Open": float(last.get("Open", 0.0)),
+                        "High": float(last.get("High", 0.0)),
+                        "Low": float(last.get("Low", 0.0)),
+                        "Close": float(last.get("Close", 0.0)),
+                        "Volume": float(last.get("Volume", 0.0)),
+                    })
+            except Exception:
+                continue
+        if not rows:
+            return []
+        df = pd.DataFrame(rows)
+    else:
+        df = df[["symbol", "assets", "open", "high", "low", "ltP", "qty"]]
+        df.columns = pd.Index(
+            ["ETF", "Underlying", "Open", "High", "Low", "Close", "Volume"]
+        )
 
     # Data Cleanup
     df = df[df["Volume"] != "-"].copy()
@@ -130,15 +155,15 @@ def run_liquid_etf_screener() -> list[Signal]:
         "Nifty Energy Index": "ENERGY",
     }
 
-    def get_benchmark(underlying: Any) -> str:
-        """Map underlying name to category"""
-        under_str = str(underlying).upper()
+    def get_benchmark(row: Any) -> str:
+        """Map underlying name or ETF symbol to category."""
+        under_str = f"{row.get('Underlying', '')} {row.get('ETF', '')}".upper()
         for search_str, value in cross_ref.items():
             if search_str.upper() in under_str:
                 return value
         return "Unknown"
 
-    df["Category"] = df["Underlying"].apply(get_benchmark)
+    df["Category"] = df.apply(get_benchmark, axis=1)
     df = df[~df["Category"].isin(["Unknown"])]
 
     # Retain the top ETF per category based on highest weight

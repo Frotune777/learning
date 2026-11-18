@@ -66,7 +66,12 @@ class HistoricalSync:
             from src.core.data_sources import get_data_source_manager
             self.fetcher = get_data_source_manager().get_price_fetcher()
 
+        from src.storage.sync_ledger import SyncLedger
+        ledger_db = os.path.join(os.path.dirname(os.path.abspath(data_dir)), "sync_ledger.db")
+        self.ledger = SyncLedger(db_path=ledger_db)
+
         self._tf_dir: str = os.path.join(data_dir, timeframe)
+
         os.makedirs(self._tf_dir, exist_ok=True)
 
     def _parquet_path(self, symbol: str) -> str:
@@ -121,6 +126,13 @@ class HistoricalSync:
             os.replace(tmp_path, final_path)
             tmp_path = None
             LOGGER.debug("Saved %d rows → %s", len(df), final_path)
+            try:
+                f_d = df.index.min().date()
+                l_d = df.index.max().date()
+                src = getattr(self.fetcher, "__class__", type(self.fetcher)).__name__.lower()
+                self.ledger.update_symbol(symbol, f_d, l_d, len(df), status="OK", source=src, timeframe=self.timeframe)
+            except Exception:
+                pass
         except Exception as exc:
             LOGGER.error("Failed to save Parquet for %s: %s", symbol, exc)
             raise
@@ -204,12 +216,19 @@ class HistoricalSync:
             )
         except FyersAuthError:
             self._trip_circuit_breaker(symbol)
-            df = self.fetcher.fetch(
-                symbol,
-                timeframe=self.timeframe,
-                from_date=int(from_dt.timestamp()),
-                to_date=int(to_dt.timestamp()),
-            )
+            try:
+                df = self.fetcher.fetch(
+                    symbol,
+                    timeframe=self.timeframe,
+                    from_date=int(from_dt.timestamp()),
+                    to_date=int(to_dt.timestamp()),
+                )
+            except Exception as exc:
+                LOGGER.warning("Secondary fetch failed for %s: %s", symbol, exc)
+                return pd.DataFrame()
+        except Exception as exc:
+            LOGGER.warning("Full fetch failed for %s: %s", symbol, exc)
+            return pd.DataFrame()
 
         if getattr(self.fetcher, "access_token", "not_fyers") is None:
             self._trip_circuit_breaker(symbol)
@@ -238,10 +257,12 @@ class HistoricalSync:
             LOGGER.info("%s is already up to date.", symbol)
             return existing
 
-        # Check for corporate action split/bonus adjustments
+        # Check for corporate action split/bonus adjustments on settled historical dates
         overlap_dates = existing.index.intersection(new_data.index)
-        if not overlap_dates.empty:
-            overlap_date = overlap_dates[-1]
+        today_date = date.today()
+        settled_overlaps = [d for d in overlap_dates if getattr(d, "date", lambda: d)() < today_date]
+        if settled_overlaps:
+            overlap_date = settled_overlaps[-1]
             old_val = existing.loc[overlap_date, "Close"]
             new_val = new_data.loc[overlap_date, "Close"]
             if isinstance(old_val, pd.Series):
@@ -277,7 +298,8 @@ class HistoricalSync:
                             ratio,
                             symbol,
                         )
-                        return self._fetch_full(symbol)
+                        full_df = self._fetch_full(symbol)
+                        return full_df if not full_df.empty else existing
         else:
             # Check gap ratio between last existing close and first new close
             last_existing_close = existing["Close"].iloc[-1]
@@ -310,7 +332,9 @@ class HistoricalSync:
                             ratio,
                             symbol,
                         )
-                        return self._fetch_full(symbol)
+                        full_df = self._fetch_full(symbol)
+                        return full_df if not full_df.empty else existing
+
 
         merged = pd.concat([existing, new_data])
         merged = merged[~merged.index.duplicated(keep="last")].sort_index()
@@ -510,6 +534,18 @@ class HistoricalSync:
 
         When resume=True, already-current symbols are skipped with ZERO I/O.
         """
+        from src.core.config import network_enabled
+
+        with network_enabled():
+            return self._sync_impl(symbols, resume=resume, registry=registry, save_every=save_every)
+
+    def _sync_impl(
+        self,
+        symbols: list[str],
+        resume: bool = True,
+        registry: SyncRegistry | None = None,
+        save_every: int = 50,
+    ) -> dict[str, bool]:
         if registry is None:
             registry = SyncRegistry(
                 registry_dir=self.data_dir, timeframe=self.timeframe
@@ -592,10 +628,59 @@ class HistoricalSync:
         For YFinance, groups up to 50 symbols per single HTTP request.
         For non-bulk fetchers (e.g. Fyers), falls back to sequential sync_one.
         """
+        from src.core.config import network_enabled
+
+        with network_enabled():
+            return self._sync_batch_impl(symbols, chunk_size=chunk_size, registry=registry, pbar=pbar)
+
+    def _sync_batch_impl(
+        self,
+        symbols: list[str],
+        chunk_size: int = 50,
+        registry: SyncRegistry | None = None,
+        pbar: Any = None,
+    ) -> dict[str, bool]:
         results: dict[str, bool] = {}
         total = len(symbols)
         if total == 0:
             return results
+
+        target_date = _last_trading_day()
+        stale_symbols = self.ledger.get_stale_symbols(symbols, target_date=target_date)
+        already_current = [s for s in symbols if s.strip().upper() not in stale_symbols]
+
+        if not stale_symbols:
+            LOGGER.info(
+                "SyncLedger: All %d symbols already current through %s. Zero network requests needed.",
+                total,
+                target_date,
+            )
+            self.ledger.log_etl_run({
+                "action": "sync_batch",
+                "symbols_requested": total,
+                "symbols_stale": 0,
+                "symbols_skipped": total,
+                "target_date": str(target_date),
+                "status": "ALL_CURRENT",
+            })
+            if pbar is not None:
+                pbar.update(total)
+            return {s: True for s in symbols}
+
+        LOGGER.info(
+            "SyncLedger: %d/%d symbols require sync (%d already current, skipped).",
+            len(stale_symbols),
+            total,
+            len(already_current),
+        )
+        for s in already_current:
+            results[s] = True
+        if pbar is not None and len(already_current) > 0:
+            pbar.update(len(already_current))
+
+        symbols = stale_symbols
+
+
 
         if getattr(self.fetcher, "access_token", "not_fyers") is None:
             self._trip_circuit_breaker(symbols[0])
@@ -715,6 +800,17 @@ class HistoricalSync:
 
             if self.rate_delay > 0:
                 time.sleep(self.rate_delay)
+
+        self.ledger.log_etl_run({
+            "action": "sync_batch",
+            "symbols_requested": total,
+            "symbols_processed": len(stale_symbols),
+            "symbols_skipped": len(already_current),
+            "succeeded": sum(1 for v in results.values() if v),
+            "failed": sum(1 for v in results.values() if not v),
+            "target_date": str(target_date),
+            "status": "COMPLETED",
+        })
 
         return results
 
@@ -867,3 +963,40 @@ class HistoricalSync:
                     }
                 )
         return pd.DataFrame(rows).sort_values("symbol")
+
+    def sync_intraday_1h(
+        self,
+        symbols: list[str],
+        period: str = "60d",
+        pbar: Any = None,
+    ) -> dict[str, bool]:
+        """
+        Synchronize 1-hour historical OHLCV Parquet files for a scoped universe (e.g. NIFTY 500).
+        Stores output in {data_dir}/1h/{SYMBOL}.parquet and tracks in sync_ledger with timeframe='1h'.
+        """
+        intraday_syncer = HistoricalSync(
+            data_dir=self.data_dir,
+            timeframe="1h",
+            rate_delay=self.rate_delay,
+            fetcher=self.fetcher,
+        )
+
+        results: dict[str, bool] = {}
+        for sym in symbols:
+            s = sym.strip().upper()
+            try:
+                df = intraday_syncer.fetcher.fetch(s, timeframe="1h", period=period)
+                if df is not None and not df.empty:
+                    intraday_syncer._save(s, df)
+                    results[s] = True
+                else:
+                    results[s] = False
+            except Exception as exc:
+                LOGGER.warning("1h sync failed for %s: %s", s, exc)
+                results[s] = False
+            finally:
+                if pbar is not None:
+                    pbar.update(1)
+
+        return results
+

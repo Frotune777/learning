@@ -1,6 +1,6 @@
-# NSE Quantitative Platform — Sharegenius
+# Fortune Analytical Decision-Support System (Fortune ADSS)
 
-An **institutional-grade, local-first Python trading platform** for the National Stock Exchange (NSE) of India. It downloads NSE Bhavcopy data, maintains a per-symbol OHLCV Parquet data lake, runs a 13-strategy technical screener with ML-enhanced consensus scoring, and ships a premium dark-mode Streamlit dashboard — all from a single interactive CLI.
+An **institutional-grade, local-first Python quantitative analysis platform** for the National Stock Exchange (NSE) of India. Built for offline-first research and screening: on startup, it verifies data recency across the local Parquet data lake (~2,900+ symbols), alerts the user to data currency, and optionally pulls updates via a 3-tier fallback cascade (1st Yahoo Finance, 2nd Fyers if authenticated, 3rd NSE website charting). All technical screeners, Smart Money Concepts (SMC) engines, and machine learning models execute directly against the stored local data lake until switched to live mode.
 
 ---
 
@@ -8,14 +8,18 @@ An **institutional-grade, local-first Python trading platform** for the National
 
 | Layer | Details |
 |---|---|
-| **Data Source** | NSE Bhavcopy ZIPs (1 call/day) + Fyers REST API |
-| **Universe** | All NSE EQ equities (~2 400+ symbols) |
+| **App Name** | **Fortune Analytical Decision-Support System** (Fortune ADSS) |
+| **Operating Mode** | **Offline-First (Stored Data Lake by Default)**; optional Live Mode toggle |
+| **Data Sources** | 3-Tier Fallback: **1st YFinance → 2nd Fyers API v3 (if connected) → 3rd NSE Charting** |
+| **Startup Check** | Auto-inspects local Parquet lake recency; prompts user to pull new data if behind |
+| **Universe** | All NSE EQ equities (~2,900+ symbols stored locally) |
 | **Strategies** | 13 (VCP, TTM Squeeze, Dual SuperTrend, Lorentzian ML, RDX, Candle Patterns, +7 more) |
+| **Smart Money (SMC)** | Order Blocks, FVGs, Sweeps, BOS/CHoCH, Dealing-range Premium/Discount |
 | **Scoring** | Multi-factor weighted consensus engine + AI narrative |
-| **ML** | Random Forest classifier, Anomaly Detector, Lorentzian KNN |
-| **Dashboard** | 4-page Streamlit dark-mode UI (Signals · Portfolio · Backtest · Inspector) |
-| **CLI** | 28-option interactive REPL + subcommand mode |
-| **Alerts** | Telegram push notifications (bot token via @BotFather) |
+| **ML Layer** | Random Forest classifier, Isolation Forest Anomaly Detector, Lorentzian KNN |
+| **Dashboard** | Streamlit dark-mode visual cockpit (SMC Studio, Screener, Risk, Macro, Backtest) |
+| **CLI** | 38-option interactive REPL with startup recency auditing |
+
 
 ---
 

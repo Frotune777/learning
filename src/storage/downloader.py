@@ -174,6 +174,17 @@ class BhavcopyDownloader:
             raise config.OfflineError("Bhavcopy download blocked: OFFLINE mode is active")
 
         date_str: str = date_obj.strftime("%Y%m%d")
+
+        # Tier A: Try official NSE direct download via jugaad-data
+        try:
+            from jugaad_data.nse import full_bhavcopy_raw
+            csv_text = full_bhavcopy_raw(date_obj.date() if hasattr(date_obj, "date") else date_obj)
+            if csv_text and len(csv_text) > 1000:
+                LOGGER.info("Successfully fetched %d bytes via jugaad-data full_bhavcopy", len(csv_text))
+                return csv_text.encode("utf-8")
+        except Exception as exc:
+            LOGGER.debug("jugaad-data bhavcopy fetch failed (%s), falling back to archive URL", exc)
+
         url: str = (
             f"https://nsearchives.nseindia.com/content/cm/"
             f"BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
@@ -207,50 +218,18 @@ class BhavcopyDownloader:
 
     def save_raw_bhavcopy(self, date_obj: datetime, file_bytes: bytes) -> str:
         """
-        Save raw downloaded ZIP file bytes to the configured directory.
+        Save raw downloaded ZIP or CSV file bytes to the configured directory.
         Saves the file to local disk for record keeping.
-
-        Logic:
-            Step 1: Build the output file name using the date string.
-            Step 2: Write binary file to the raw downloads directory.
-            Step 3: Return the absolute file path.
-
-        Parameters:
-            date_obj (datetime): Date of the Bhavcopy. | Must be valid datetime.
-            file_bytes (bytes): ZIP archive binary content. | Non-empty bytes.
-
-        Returns:
-            str: Path to the saved zip file.
-
-        Raises:
-            OSError: If writing to the filesystem fails.
-
-        Example:
-            >>> downloader = BhavcopyDownloader()
-            >>> # path = downloader.save_raw_bhavcopy(datetime(2026, 5, 26), raw_bytes)
-
-        Performance:
-            Time Complexity: O(M) [Linear write operation depending on file size M]
-            Space Complexity: O(1) [No memory structures instantiated during write]
-
-        Edge Cases Handled:
-            - Empty file bytes (writes empty ZIP file to disk).
-            - Read-only partition or disk full (throws OSError).
-
-        TODO:
-            - [ ] Validate zip integrity before saving (MEDIUM 1.5h)
-
-        Notes:
-            Files are saved using the exact date format in the file name.
         """
         date_str: str = date_obj.strftime("%Y%m%d")
-        filename: str = f"BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
+        ext = "zip" if file_bytes.startswith(b"PK\x03\x04") else "csv"
+        filename: str = f"BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.{ext}"
         filepath: str = os.path.join(self.raw_dir, filename)
 
         with open(filepath, "wb") as f:
             f.write(file_bytes)
 
-        LOGGER.info("Raw zip saved locally at: %s", filepath)
+        LOGGER.info("Raw Bhavcopy saved locally at: %s", filepath)
         return filepath
 
     def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -441,22 +420,24 @@ class BhavcopyDownloader:
         Notes:
             Processed files are saved in data/processed directory as top_250_<date>.csv.
         """
-        if not file_bytes.startswith(b"PK\x03\x04"):
-            LOGGER.error("Invalid ZIP file bytes: Magic header PK\\x03\\x04 not found.")
-            raise zipfile.BadZipFile("Invalid raw ZIP file bytes.")
-
         date_str: str = date_obj.strftime("%Y%m%d")
         processed_filename: str = f"top_{self.top_n}_{date_str}.csv"
         processed_filepath: str = os.path.join(self.processed_dir, processed_filename)
 
-        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-            csv_files: list[str] = [n for n in z.namelist() if n.endswith(".csv")]
-            if not csv_files:
-                LOGGER.error("No CSV file found inside Zip archive.")
-                raise ValueError("No CSV file found in Zip archive.")
-            csv_filename: str = csv_files[0]
-            with z.open(csv_filename) as f:
-                df: pd.DataFrame = pd.read_csv(f)
+        if file_bytes.startswith(b"PK\x03\x04"):
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                csv_files: list[str] = [n for n in z.namelist() if n.endswith(".csv")]
+                if not csv_files:
+                    LOGGER.error("No CSV file found inside Zip archive.")
+                    raise ValueError("No CSV file found in Zip archive.")
+                csv_filename: str = csv_files[0]
+                with z.open(csv_filename) as f:
+                    df: pd.DataFrame = pd.read_csv(f)
+        elif any(file_bytes.startswith(h) for h in [b"SYMBOL", b"TckrSymb", b"DATE", b"TradDt", b"\"SYMBOL\"", b"\"TradDt\""]):
+            df = pd.read_csv(io.BytesIO(file_bytes))
+        else:
+            LOGGER.error("Invalid ZIP file bytes: Magic header PK\\x03\\x04 not found.")
+            raise zipfile.BadZipFile("Invalid raw ZIP file bytes.")
 
         cleaned_df: pd.DataFrame = self._clean_dataframe(df)
 
@@ -515,17 +496,19 @@ class BhavcopyDownloader:
             - Missing Volume column → filled with 0.
             - Non-numeric OHLCV values → coerced, NaN rows dropped.
         """
-        if not file_bytes.startswith(b"PK\x03\x04"):
+        if file_bytes.startswith(b"PK\x03\x04"):
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                csv_files = [n for n in z.namelist() if n.endswith(".csv")]
+                if not csv_files:
+                    LOGGER.error("No CSV inside ZIP for parse_bhavcopy_ohlcv.")
+                    raise KeyError("No CSV file found in Bhavcopy ZIP.")
+                with z.open(csv_files[0]) as f:
+                    raw_df: pd.DataFrame = pd.read_csv(f)
+        elif any(file_bytes.startswith(h) for h in [b"SYMBOL", b"TckrSymb", b"DATE", b"TradDt", b"\"SYMBOL\"", b"\"TradDt\""]):
+            raw_df = pd.read_csv(io.BytesIO(file_bytes))
+        else:
             LOGGER.error("Invalid ZIP magic bytes in parse_bhavcopy_ohlcv.")
             raise zipfile.BadZipFile("Invalid raw ZIP file bytes.")
-
-        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-            csv_files = [n for n in z.namelist() if n.endswith(".csv")]
-            if not csv_files:
-                LOGGER.error("No CSV inside ZIP for parse_bhavcopy_ohlcv.")
-                raise KeyError("No CSV file found in Bhavcopy ZIP.")
-            with z.open(csv_files[0]) as f:
-                raw_df: pd.DataFrame = pd.read_csv(f)
 
         raw_df.columns = [c.strip() for c in raw_df.columns]
 
@@ -614,6 +597,14 @@ class BhavcopyDownloader:
         else:
             out["Turnover"] = 0.0
 
+        # Optional Delivery columns from full Bhavcopy
+        deliv_qty_col = next((c for c in ["DELIV_QTY", "DELIVERY QTY", "DlvryQty"] if c in raw_df.columns), None)
+        deliv_pct_col = next((c for c in ["DELIV_PER", "DELIVERY %", "DlvryPer"] if c in raw_df.columns), None)
+        if deliv_qty_col:
+            out["Delivery_Qty"] = pd.to_numeric(raw_df[deliv_qty_col], errors="coerce").fillna(0)
+        if deliv_pct_col:
+            out["Delivery_Pct"] = pd.to_numeric(raw_df[deliv_pct_col], errors="coerce").fillna(0)
+
         out = out.dropna(subset=["Close", "Open", "High", "Low"])
         out = out.reset_index(drop=True)
         LOGGER.info(
@@ -624,49 +615,19 @@ class BhavcopyDownloader:
         return out
 
     def get_eq_symbols(self, file_bytes: bytes) -> list[str]:
-        """
-        Extract the full EQ symbol list from a Bhavcopy ZIP without top_n limit.
-
-        Logic:
-            Step 1: Open ZIP bytes and parse CSV.
-            Step 2: Run _clean_dataframe to filter EQ series.
-            Step 3: Return sorted uppercase list of all SYMBOL values.
-
-        Parameters:
-            file_bytes (bytes): Valid Bhavcopy ZIP binary. | Non-empty bytes.
-
-        Returns:
-            list[str]: Sorted list of all EQ symbols that traded that day.
-
-        Raises:
-            zipfile.BadZipFile: If bytes are not a valid ZIP.
-            KeyError: If mandatory columns are missing.
-
-        Example:
-            >>> dl = BhavcopyDownloader()
-            >>> symbols = dl.get_eq_symbols(zip_bytes)
-            >>> print(len(symbols))  # ~1800
-
-        Performance:
-            Time Complexity: O(N)
-            Space Complexity: O(N)
-
-        Edge Cases Handled:
-            - Returns empty list on any parse failure.
-        """
-        if not file_bytes.startswith(b"PK\x03\x04"):
-            LOGGER.error("Invalid ZIP file bytes for get_eq_symbols.")
-            raise zipfile.BadZipFile("Invalid raw ZIP file bytes.")
+        """Extract the full EQ symbol list from a Bhavcopy ZIP or CSV."""
         try:
-            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-                csv_files = [n for n in z.namelist() if n.endswith(".csv")]
-                if not csv_files:
-                    LOGGER.error("No CSV in ZIP for get_eq_symbols.")
-                    return []
-                with z.open(csv_files[0]) as f:
-                    df: pd.DataFrame = pd.read_csv(f)
+            if file_bytes.startswith(b"PK\x03\x04"):
+                with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                    csv_files = [n for n in z.namelist() if n.endswith(".csv")]
+                    if not csv_files:
+                        return []
+                    with z.open(csv_files[0]) as f:
+                        df: pd.DataFrame = pd.read_csv(f)
+            else:
+                df = pd.read_csv(io.BytesIO(file_bytes))
             cleaned = self._clean_dataframe(df)
             return sorted(cleaned["SYMBOL"].str.strip().str.upper().tolist())
         except Exception as exc:
-            LOGGER.error("get_eq_symbols failed: %s", exc)
+            LOGGER.debug("Could not parse EQ symbols from Bhavcopy: %s", exc)
             return []

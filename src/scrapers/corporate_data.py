@@ -37,8 +37,11 @@ class CorporateDataScraper:
     def fetch_and_cache_all(self, force_refresh: bool = False):
         """
         Pull 30 days of history and future events. Cache to avoid NSE rate limits.
+        When OFFLINE mode is active, uses the newest local cache files without hitting NSE.
         """
-        LOGGER.info("Fetching corporate data from NSE...")
+        import glob
+        import src.core.config as config
+        is_offline = config.OFFLINE or config.Config.OFFLINE
 
         # Define cache paths
         actions_path = os.path.join(self.CACHE_DIR, f"actions_{self.today_str}.parquet")
@@ -48,49 +51,57 @@ class CorporateDataScraper:
         events_path = os.path.join(self.CACHE_DIR, f"events_{self.today_str}.parquet")
         insider_path = os.path.join(self.CACHE_DIR, f"insider_{self.today_str}.parquet")
 
+        def _load_or_fetch(cache_path: str, glob_pattern: str, fetch_fn):
+            if not force_refresh and os.path.exists(cache_path):
+                return pd.read_parquet(cache_path)
+            if is_offline:
+                candidates = sorted(glob.glob(os.path.join(self.CACHE_DIR, glob_pattern)), reverse=True)
+                if candidates:
+                    return pd.read_parquet(candidates[0])
+                return pd.DataFrame()
+            try:
+                df = fetch_fn()
+                if df is not None and not df.empty:
+                    df.to_parquet(cache_path)
+                return df if df is not None else pd.DataFrame()
+            except Exception as exc:
+                LOGGER.warning("Could not fetch corporate data (%s): %s", glob_pattern, exc)
+                return pd.DataFrame()
+
+        if is_offline:
+            LOGGER.info("Offline mode: Loading corporate data from local cache...")
+        else:
+            LOGGER.info("Fetching corporate data from NSE...")
+
         from_date = (datetime.now() - timedelta(days=30)).strftime("%d-%m-%Y")
         to_date = (datetime.now() + timedelta(days=30)).strftime("%d-%m-%Y")
         today = self.today_str
 
         # 1. Actions
-        if not force_refresh and os.path.exists(actions_path):
-            self.df_actions = pd.read_parquet(actions_path)
-        else:
-            self.df_actions = self.nse.get_corporate_action(
-                from_date_str=from_date, to_date_str=to_date
-            )
-            if self.df_actions is not None and not self.df_actions.empty:
-                self.df_actions.to_parquet(actions_path)
+        self.df_actions = _load_or_fetch(
+            actions_path, "actions_*.parquet",
+            lambda: self.nse.get_corporate_action(from_date_str=from_date, to_date_str=to_date)
+        )
 
         # 2. Announcements
-        if not force_refresh and os.path.exists(ann_path):
-            self.df_announcements = pd.read_parquet(ann_path)
-        else:
-            self.df_announcements = self.nse.get_corporate_announcement(
-                from_date_str=from_date, to_date_str=to_date
-            )
-            if self.df_announcements is not None and not self.df_announcements.empty:
-                self.df_announcements.to_parquet(ann_path)
+        self.df_announcements = _load_or_fetch(
+            ann_path, "announcements_*.parquet",
+            lambda: self.nse.get_corporate_announcement(from_date_str=from_date, to_date_str=to_date)
+        )
 
         # 3. Events Calendar
-        if not force_refresh and os.path.exists(events_path):
-            self.df_events = pd.read_parquet(events_path)
-        else:
-            self.df_events = self.nse.get_event_calendar()
-            if self.df_events is not None and not self.df_events.empty:
-                self.df_events.to_parquet(events_path)
+        self.df_events = _load_or_fetch(
+            events_path, "events_*.parquet",
+            lambda: self.nse.get_event_calendar()
+        )
 
         # 4. Insider Trading
-        if not force_refresh and os.path.exists(insider_path):
-            self.df_insider = pd.read_parquet(insider_path)
-        else:
-            self.df_insider = self.nse.get_insider_trading(
-                from_date=from_date, to_date=today
-            )
-            if self.df_insider is not None and not self.df_insider.empty:
-                self.df_insider.to_parquet(insider_path)
+        self.df_insider = _load_or_fetch(
+            insider_path, "insider_*.parquet",
+            lambda: self.nse.get_insider_trading(from_date=from_date, to_date=today)
+        )
 
-        LOGGER.info("Corporate data fetch complete.")
+        LOGGER.info("Corporate data ready.")
 
     def get_upcoming_actions(self, symbol: str) -> str:
         """Returns string indicating upcoming Dividend, Split, or Bonus."""

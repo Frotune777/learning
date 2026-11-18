@@ -320,6 +320,10 @@ class FyersFetcher(AbstractPriceFetcher):
             f"&state=nse_pipeline"
         )
 
+    def get_login_url(self, redirect_uri: str = "https://127.0.0.1") -> str:
+        """Alias for login_url() for backward compatibility."""
+        return self.login_url(redirect_uri=redirect_uri)
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

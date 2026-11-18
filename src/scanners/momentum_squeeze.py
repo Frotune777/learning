@@ -60,10 +60,24 @@ def momentum_squeeze(
     Raises:
         ValueError: If downloaded data is empty.
     """
-    # Fix symbol name for indices if they start with ^
-    clean_sym = symbol.replace("^", "")
-    path = os.path.join(hist_dir, f"{clean_sym.upper()}.parquet")
-    
+    # Fix symbol name: strip exchange suffixes (.NS, .BO) and index prefix (^)
+    clean_sym = symbol.strip().upper().replace("^", "").replace(".NS", "").replace(".BO", "")
+    path = os.path.join(hist_dir, f"{clean_sym}.parquet")
+
+    if not os.path.exists(path):
+        # Index-to-liquid-ETF fallback mapping in offline lake
+        index_map = {
+            "NSEI": "NIFTYBEES",
+            "NIFTY": "NIFTYBEES",
+            "NIFTY50": "NIFTYBEES",
+            "NSEBANK": "BANKBEES",
+            "BANKNIFTY": "BANKBEES",
+        }
+        if clean_sym in index_map:
+            alt_path = os.path.join(hist_dir, f"{index_map[clean_sym]}.parquet")
+            if os.path.exists(alt_path):
+                path = alt_path
+
     if not os.path.exists(path):
         raise ValueError(f"No local data returned for symbol '{symbol}' at {path}.")
         

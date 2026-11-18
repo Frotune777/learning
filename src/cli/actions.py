@@ -813,3 +813,13 @@ def cmd_dq_check(args: argparse.Namespace) -> None:
         raise DataQualityHalt(
             f"Failure rate {batch_result.failure_pct:.1%} exceeded threshold {gate.halt_if_failure_pct:.1%}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Re-exported Menu Codes & Legacy Aliases
+# ---------------------------------------------------------------------------
+from src.cli.menus import (
+    ARCHIVE_MENU_SECTIONS,
+    LEGACY_MENU_ALIASES,
+    PRIMARY_MENU_SECTIONS,
+)

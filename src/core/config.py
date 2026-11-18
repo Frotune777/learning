@@ -13,11 +13,108 @@ from typing import Any, ClassVar
 import structlog
 
 
+from contextlib import contextmanager
+
 OFFLINE: bool = False
+DATA_MODE: str = "offline"  # "offline" (stored data) or "live"
 
 
 class OfflineError(RuntimeError):
     """Raised when a network operation is attempted in offline mode."""
+
+
+@contextmanager
+def network_enabled():
+    """Temporarily permit network access during explicit user sync/download calls."""
+    global OFFLINE
+    prev_offline = OFFLINE
+    prev_cfg = Config.OFFLINE
+    OFFLINE = False
+    Config.OFFLINE = False
+    try:
+        yield
+    finally:
+        OFFLINE = prev_offline
+        Config.OFFLINE = prev_cfg
+
+
+
+def get_stored_data_info(hist_dir: str = "data/historical/1d") -> dict[str, Any]:
+    """
+    Inspect local Parquet data lake and return recency and coverage metrics.
+    Runs fast (~0.05s) by sampling benchmark tickers first.
+    """
+    p = Path(hist_dir)
+    if not p.exists():
+        return {
+            "latest_date": None,
+            "symbol_count": 0,
+            "is_up_to_date": False,
+            "days_behind": 0,
+            "mode": DATA_MODE,
+        }
+
+    parquets = list(p.glob("*.parquet"))
+    if not parquets:
+        return {
+            "latest_date": None,
+            "symbol_count": 0,
+            "is_up_to_date": False,
+            "days_behind": 0,
+            "mode": DATA_MODE,
+        }
+
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        pq = None  # type: ignore[assignment]
+
+    latest_dates: list[str] = []
+    benchmarks = ["RELIANCE.parquet", "TCS.parquet", "INFY.parquet", "HDFCBANK.parquet"]
+    for b in benchmarks:
+        f = p / b
+        if f.exists() and pq is not None:
+            try:
+                t = pq.read_table(f, columns=["Date"])
+                dates = t["Date"].to_pylist()
+                if dates:
+                    latest_dates.append(str(dates[-1])[:10])
+            except Exception:
+                pass
+
+    if not latest_dates and pq is not None:
+        for f in parquets[:5]:
+            try:
+                t = pq.read_table(f, columns=["Date"])
+                dates = t["Date"].to_pylist()
+                if dates:
+                    latest_dates.append(str(dates[-1])[:10])
+            except Exception:
+                pass
+
+    latest_str = max(latest_dates) if latest_dates else None
+    days_behind = 0
+    from datetime import datetime as dt_datetime
+    from src.storage.sync_ledger import get_latest_settled_trading_day, is_nse_market_settled
+    ref_day = get_latest_settled_trading_day()
+
+    if latest_str:
+        try:
+            latest_dt = dt_datetime.strptime(latest_str, "%Y-%m-%d").date()
+            days_behind = max(0, (ref_day - latest_dt).days)
+        except Exception:
+            days_behind = 0
+
+    return {
+        "latest_date": latest_str,
+        "symbol_count": len(parquets),
+        "last_trading_day": ref_day.isoformat(),
+        "is_market_settled": is_nse_market_settled(),
+        "days_behind": days_behind,
+        "is_up_to_date": days_behind == 0,
+        "mode": DATA_MODE,
+    }
+
 
 
 class Config:
@@ -74,6 +171,16 @@ class Config:
         "adx_trending": 25,
         "cci_overbought": 100,
         "cci_oversold": -100,
+    }
+
+    # Screener defaults
+    SCREENER_DEFAULTS: ClassVar[dict[str, Any]] = {
+        "tolerance_pct": 0.03,
+        "buffer_pct": 0.02,
+        "max_diff_200_dma_pct": 0.05,
+        "min_close": 20.0,
+        "max_close": 50000.0,
+        "min_car_rating": "Average",
     }
 
     @classmethod

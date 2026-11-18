@@ -137,3 +137,29 @@ The screener runs a comprehensive multi-methodology framework executing 9 robust
 - **Logic**: Pure momentum following without SL limits.
 - **Condition**: CMP > 200 SMA and CMP > 50 SMA. Triggers when the 50 SMA moves above the 200 SMA (`50 SMA Breakout` / Golden Cross analog).
 - **Target/SL**: Target = Fixed `6.28%`, SL = None.
+
+### 10. Volatility Contraction Pattern (VCP)
+- **Logic**: Mark Minervini multi-stage contraction pattern ($T_1 > T_2 > T_3$).
+- **Condition**: Wave depth reduction $\ge 40\%$ per stage, volume dry-up ($< 50\text{D Average}$), breakout test.
+- **Target/SL**: Target = Pivot $+ 15-25\%$, SL = Low of final contraction base.
+
+### 11. TTM Squeeze
+- **Logic**: Bollinger Bands (20, 2.0) fully enclosed within Keltner Channels (20, 1.5).
+- **Condition**: Fires upon breakout with positive momentum histogram expansion.
+- **Target/SL**: Dynamic trailing exit until momentum histogram shifts direction.
+
+### 12. Dual SuperTrend
+- **Logic**: Multi-parameter trend agreement.
+- **Condition**: SuperTrend (10, 2.0) and SuperTrend (10, 3.0) simultaneously green.
+- **Target/SL**: Trend continuation ride, SL at the slow SuperTrend line.
+
+### 13. Lorentzian Classification (Machine Learning)
+- **Logic**: KNN classification in 5D feature space using Lorentzian distance metric $d(u,v) = \sum \ln(1 + |u_i - v_i|)$.
+- **Condition**: $\ge 75\%$ nearest historical neighbors predict positive forward returns.
+
+---
+
+## 6. Capsule Academy 5-Star & SMC Integration
+
+For complete multi-timeframe rules (Monthly Farms, Weekly Sunflowers, Daily Seeds, Train No. 920/130, and Smart Money Capsule 1.0 overlaps), refer to the comprehensive strategy manual at [strategies.md](file:///mnt/Data/Python%20Project/learning/docs/strategies.md).
+

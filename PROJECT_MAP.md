@@ -1,6 +1,14 @@
-# Project Map
+# Project Map: Fortune Analytical Decision-Support System (Fortune ADSS)
 
-_Last updated on 2026-10-16 (Unit 15)_
+_Last synchronized on: **2026-11-18 17:22:24** | Commit: `376aeda` (50 modified/untracked files)_
+
+## ⚡ System Status & Operational Boundaries
+- **App Name:** Fortune Analytical Decision-Support System (Fortune ADSS)
+- **Default Mode:** 📁 **OFFLINE (Stored Data Lake)**
+- **Local Data Lake:** **2,966** symbols stored through **2026-11-18** (0 days behind exchange)
+- **Data Source Order:** **1st Yahoo Finance → 2nd Fyers API v3 (if connected) → 3rd NSE Website Chart Scraper**
+- **Trading Boundary:** 100% Decision-Support & Screening — strictly ZERO live broker order execution
+- **Startup Recency Check:** Prompts to pull new data only when behind; operates offline on stored data by default
 
 ## Canonical package: `src/`
 
@@ -124,7 +132,8 @@ _Last updated on 2026-10-16 (Unit 15)_
 - [x] Unit 13 — CLI bugs (--resume, --processed-dir) fixed
 - [x] Unit 14 — Data quality audit of all 2,699 Parquet files (read-only)
 - [x] Unit 15 — Add holidays config, fix health fallback, fix SyncRegistry date typing, incremental 1d bhavcopy sync
-- [ ] Unit 16 — Revive parts of _archive/legacy_root/fyers/ if needed
+- [x] Unit 16 — Modularize CLI menus into presentation renderers and domain handlers; reorganize CLI into logical category codes (10s Data, 20s Screeners, 30s Inspection/Alerts, 90 Archive toggle) with dual-key legacy 1-43 aliases
+- [ ] Unit 17 — Revive parts of _archive/legacy_root/fyers/ if needed
 - [ ] Ongoing — Any issues found during real usage
 
 ## Credentials policy

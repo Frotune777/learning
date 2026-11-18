@@ -215,47 +215,87 @@ class VisualUI:
     # =========================================================================
 
     def render_menu(
-        self, title: str, sections: dict[str, list[dict[str, Any]]]
+        self,
+        title: str,
+        sections: dict[str, list[dict[str, Any]]],
+        status_bar: str = "",
     ) -> None:
-        """Print a categorized menu with rounded box borders."""
+        """Render a compact 2-column side-by-side grid of category panels."""
         self.console.print()
-        w = self.width
+        if status_bar:
+            self.console.print(f" {status_bar}")
+        elif title:
+            self.console.print(f" [bold cyan]{title}[/bold cyan]")
 
-        self.console.print("╭" + "─" * (w - 2) + "╮", style="cyan")
-        title_line = f"│   {title}" + " " * (w - len(title) - 7) + "│"
-        self.console.print(title_line, style="bold white")
+        color_map = {
+            "10": "cyan",
+            "DATA": "cyan",
+            "20": "magenta",
+            "CAPSULE": "magenta",
+            "30": "yellow",
+            "INSPECTION": "yellow",
+            "40": "blue",
+            "QUANTITATIVE": "blue",
+            "50": "bright_magenta",
+            "ML": "bright_magenta",
+            "60": "cyan",
+            "STORAGE": "cyan",
+            "90": "green",
+            "SYSTEM": "green",
+            "NAVIGATION": "green",
+            "EXIT": "green",
+        }
 
+        panels: list[Panel] = []
         for section_name, options in sections.items():
-            self.console.print("├" + "─" * (w - 2) + "┤", style="cyan")
-            self.console.print(
-                f"│   [magenta]📋 {section_name}[/magenta]"
-                + " " * (w - len(section_name) - 11)
-                + "│"
+            border_col = "white"
+            for k, col in color_map.items():
+                if k in section_name.upper():
+                    border_col = col
+                    break
+
+            inner_grid = Table.grid(padding=(0, 1), expand=True)
+            inner_grid.add_column(ratio=1)
+            inner_grid.add_column(ratio=1)
+
+            for i in range(0, len(options), 2):
+                opt1 = options[i]
+                c1 = opt1.get("id", "")
+                n1 = opt1.get("name", "")
+                tag1 = opt1.get("tag", "")
+                tag_str1 = f" [dim]{tag1}[/dim]" if tag1 else ""
+                t1 = f"[bold cyan]{c1:>2}[/bold cyan] [white]{n1}[/white]{tag_str1}"
+
+                if i + 1 < len(options):
+                    opt2 = options[i + 1]
+                    c2 = opt2.get("id", "")
+                    n2 = opt2.get("name", "")
+                    tag2 = opt2.get("tag", "")
+                    tag_str2 = f" [dim]{tag2}[/dim]" if tag2 else ""
+                    t2 = f"[bold cyan]{c2:>2}[/bold cyan] [white]{n2}[/white]{tag_str2}"
+                else:
+                    t2 = ""
+
+                inner_grid.add_row(t1, t2)
+
+            disp_title = section_name.replace("CATEGORY ", "").strip()
+            panels.append(
+                Panel(inner_grid, title=f"[bold]{disp_title}[/bold]", border_style=border_col, padding=(0, 1))
             )
 
-            for opt in options:
-                num = opt.get("id", "")
-                name = opt.get("name", "")
-                emoji = opt.get("emoji", "")
-                status = opt.get("status", "")
-                details = opt.get("details", "")
+        outer_grid = Table.grid(padding=(0, 1), expand=True)
+        outer_grid.add_column(ratio=1)
+        outer_grid.add_column(ratio=1)
 
-                status_colored = (
-                    f"[green]{status}[/green]"
-                    if status == "Ready"
-                    else f"[dim]{status}[/dim]"
-                )
-                line = f"│  [cyan]{num:>3}.[/cyan] {emoji} {name}  {status_colored}"
+        even_count = len(panels) - (len(panels) % 2)
+        for i in range(0, even_count, 2):
+            outer_grid.add_row(panels[i], panels[i + 1])
 
-                details_text = f"[dim]{details}[/dim]"
-                # Right-align details
-                clean_len = len(f"│  {num:>3}. {emoji} {name}   {status}") + 2
-                padding = max(1, w - clean_len - len(details) - 2)
-                self.console.print(line + " " * padding + details_text + "│")
+        self.console.print(outer_grid)
+        if len(panels) % 2 == 1:
+            self.console.print(panels[-1])
 
-        self.console.print("╰" + "─" * (w - 2) + "╯", style="cyan")
-        self.console.print()
-        self.console.print("[cyan][?][/cyan] Enter your choice: ", end="")
+        self.console.print(" [cyan][?][/cyan] Enter your choice: ", end="")
 
     # =========================================================================
     # Format 3: Screener Summary Table
@@ -301,10 +341,10 @@ class VisualUI:
         for i, (_, row) in enumerate(df.head(max_rows).iterrows(), 1):
             rank = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else str(i)
 
-            cmp_val = row.get("CMP", float("nan"))
+            cmp_val = row.get("CMP") if pd.notna(row.get("CMP")) else row.get("Close", float("nan"))
             cmp_str = f"{cmp_val:,.2f}" if pd.notna(cmp_val) else "—"
 
-            trend = str(row.get("TREND_STATUS", ""))
+            trend = str(row.get("TREND_STATUS") or row.get("Action", ""))
             trend_text = Text(trend)
             if "Bull" in trend:
                 trend_text.stylize("green")
@@ -313,11 +353,11 @@ class VisualUI:
             else:
                 trend_text.stylize("dim")
 
-            car = str(row.get("CAR_RATING", ""))
+            car = str(row.get("CAR_RATING") or row.get("Stars", ""))
             car_text = Text(car)
             car_text.stylize("green" if "Buy" in car else "dim")
 
-            score = row.get("CONSENSUS_SCORE", 0)
+            score = row.get("CONSENSUS_SCORE") if pd.notna(row.get("CONSENSUS_SCORE")) else row.get("Star_Count", 0)
             try:
                 score_int = int(score)
             except (ValueError, TypeError):
@@ -327,7 +367,7 @@ class VisualUI:
                 "bold green" if score_int >= 4 else "yellow" if score_int > 0 else "dim"
             )
 
-            callout = str(row.get("CONSENSUS_CALLOUT", ""))
+            callout = str(row.get("CONSENSUS_CALLOUT") or row.get("Action", ""))
             callout_text = Text(callout[:38])
             if "HIGH CONVICTION BUY" in callout:
                 callout_text.stylize("bold green")
@@ -341,7 +381,7 @@ class VisualUI:
             tech_score = row.get("TECH_SCORE", float("nan"))
             stars = self._score_to_stars(tech_score, max_val=10.0)
 
-            rsi = row.get("RSI_14", float("nan"))
+            rsi = row.get("RSI_14") if pd.notna(row.get("RSI_14")) else row.get("RSI_D", float("nan"))
             rsi_str = f"{rsi:.1f}" if pd.notna(rsi) else "—"
             rsi_text = Text(rsi_str)
             if pd.notna(rsi):
@@ -352,9 +392,10 @@ class VisualUI:
             deliv = row.get("DELIV_PCT", float("nan"))
             deliv_str = f"{deliv:.1f}" if pd.notna(deliv) else "—"
 
+            sym_str = str(row.get("SYMBOL") or row.get("Symbol", ""))
             table.add_row(
                 rank,
-                str(row.get("SYMBOL", "")),
+                sym_str,
                 cmp_str,
                 trend_text,
                 car_text,

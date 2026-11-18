@@ -158,10 +158,13 @@ def _pause() -> None:
     input(dim("  Press Enter to return to the menu… "))
 
 
-def _confirm(prompt: str = "Proceed?") -> bool:
-    """Ask a yes/no question; default is No."""
-    answer = input(f"  {prompt} {dim('[y/N]')} ").strip().lower()
-    return answer == "y"
+def _confirm(prompt: str = "Proceed?", default: bool = False) -> bool:
+    """Ask a yes/no question; default is configurable."""
+    hint = "[Y/n]" if default else "[y/N]"
+    answer = input(f"  {prompt} {dim(hint)} ").strip().lower()
+    if not answer:
+        return default
+    return answer in ("y", "yes")
 
 
 def _ask(prompt: str, default: str) -> str:

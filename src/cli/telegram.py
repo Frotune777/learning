@@ -63,9 +63,13 @@ class TelegramService:
         """Build the full API endpoint URL for a given method."""
         return _BASE_URL.format(token=self.bot_token, method=method)
 
+    def is_configured(self) -> bool:
+        """Return True only if both token and chat_id are non-empty."""
+        return bool(self.bot_token and self.chat_id)
+
     def _is_configured(self) -> bool:
         """Return True only if both token and chat_id are non-empty."""
-        if not self.bot_token or not self.chat_id:
+        if not self.is_configured():
             LOGGER.warning(
                 "Telegram not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID."
             )

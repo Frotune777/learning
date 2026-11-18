@@ -224,24 +224,28 @@ class ScanOrchestrator(SignalEmitter):
         if choice in universe_map:
             universe = universe_map[choice]
             self.console.print(
-                f"\n🤖 Training models for {universe}...\nThis will run in the foreground. Press Ctrl+C to cancel.\n"
+                f"\n🤖 Training ML Classifiers for {universe}...\nPress Ctrl+C to cancel.\n"
             )
             try:
-                result = subprocess.run(
-                    [
-                        "uv",
-                        "run",
-                        "python",
-                        "train_all_models.py",
-                        "--universe",
-                        universe,
-                    ],
-                    cwd=os.getcwd(),
+                from src.ml.ml_classifier import MLClassifier
+                from src.data.fetchers import Fetcher
+
+                symbols = (
+                    ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "ITC", "LT", "SBIN", "BHARTIARTL", "KOTAKBANK"]
+                    if choice == "1"
+                    else ["BEL", "HAL", "VEDL", "IOC", "PIDILITIND", "TRENT", "GAIL", "CANBK", "RECLTD", "PFC"]
                 )
-                if result.returncode == 0:
-                    self.console.print("\n✅ Training completed successfully!")
-                else:
-                    self.console.print("\n⚠️ Training completed with some errors")
+                clf = MLClassifier(n_estimators=50, max_depth=4)
+                fetcher = Fetcher()
+                trained = 0
+                for sym in symbols:
+                    df = fetcher.fetch_data(sym)
+                    if df is not None and len(df) >= 60:
+                        X, y = clf.prepare_features(df)
+                        clf.train(X, y)
+                        self.console.print(f"  ✔ Model trained for [bold]{sym}[/bold] ({len(X)} bars)")
+                        trained += 1
+                self.console.print(f"\n✅ Training completed successfully for {trained} symbols!")
             except KeyboardInterrupt:
                 self.console.print("\n\n⚠️ Training interrupted by user")
             except Exception as e:

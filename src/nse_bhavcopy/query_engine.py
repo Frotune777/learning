@@ -52,35 +52,33 @@ class DuckDBQueryEngine:
         Example:
             >>> engine = DuckDBQueryEngine(data_dir="data/historical/1d")
         """
-        self.data_dir: str = data_dir
-        if not os.path.exists(data_dir):
-            LOGGER.warning("Data directory %s does not exist yet.", data_dir)
+        target_dir = os.path.join(data_dir, "1d") if os.path.isdir(os.path.join(data_dir, "1d")) else data_dir
+        self.data_dir: str = target_dir
+        if not os.path.exists(target_dir):
+            LOGGER.warning("Data directory %s does not exist yet.", target_dir)
 
         # Connect to in-memory database
         self.conn: duckdb.DuckDBPyConnection = duckdb.connect(database=":memory:")
         self._register_views()
 
     def _register_views(self) -> None:
-        """Register the prices view pointing to the parquet path."""
-        # Use regexp_extract to parse symbol from the parquet file path
-        # E.g. data/historical/1d/TCS.parquet -> TCS
+        """Register the prices and market_data views pointing to the parquet path."""
         pattern = os.path.join(self.data_dir, "*.parquet")
         escaped_pattern = pattern.replace("'", "''")
 
-        # We construct the SQL query to create a view
-        # The filename column contains the full path of the parquet file
         sql_create_view = f"""
         CREATE OR REPLACE VIEW prices AS
         SELECT
-            regexp_extract(filename, '([^/\\\\]+)\\.parquet$', 1) AS symbol,
+            regexp_extract(replace(filename, '\\\\', '/'), '([^/]+)[.]parquet$', 1) AS symbol,
             *
-        FROM read_parquet('{escaped_pattern}', filename=True)
+        FROM read_parquet('{escaped_pattern}', filename=True);
+        CREATE OR REPLACE VIEW market_data AS SELECT * FROM prices;
         """
         try:
             self.conn.execute(sql_create_view)
-            LOGGER.info("Registered 'prices' view in DuckDB.")
+            LOGGER.info("Registered 'prices' and 'market_data' views in DuckDB.")
         except Exception as exc:
-            LOGGER.warning("Could not register 'prices' view: %s", exc)
+            LOGGER.warning("Could not register views: %s", exc)
 
     def query(self, sql: str, params: list[Any] | None = None) -> pd.DataFrame:
         """
@@ -95,21 +93,17 @@ class DuckDBQueryEngine:
 
         Raises:
             Exception: If query execution fails.
-
-        Complexity:
-            Time: O(N) where N is data returned by query.
-            Space: O(N) for storing the pandas DataFrame.
-
-        Example:
-            >>> engine = DuckDBQueryEngine()
-            >>> df = engine.query("SELECT * FROM prices LIMIT 5")
         """
         try:
             relation = self.conn.execute(sql, params)
             return relation.df()
         except Exception as exc:
-            LOGGER.error("DuckDB query failed: %s\nSQL: %s", exc, sql)
-            raise exc
+            LOGGER.error("Query failed: %s | Error: %s", sql, exc)
+            raise
+
+    def execute_query(self, sql: str, params: list[Any] | None = None) -> pd.DataFrame:
+        """Alias for query() for backward compatibility."""
+        return self.query(sql, params=params)
 
     def get_prices(
         self,

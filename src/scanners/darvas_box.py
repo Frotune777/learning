@@ -262,9 +262,15 @@ def scan_darvas_breakouts(
         action_int = _map_action(sig_str)
         if action_int != 0:
             row_data = analyzed_df[analyzed_df["SYMBOL"] == symbol]
-            cmp_val = float(row_data["CMP"].iloc[0]) if not row_data.empty else np.nan
+            cmp_val = (
+                float(row_data["CMP"].iloc[0])
+                if not row_data.empty and "CMP" in row_data.columns
+                else np.nan
+            )
             tech = (
-                float(row_data["TECH_SCORE"].iloc[0]) if not row_data.empty else np.nan
+                float(row_data["TECH_SCORE"].iloc[0])
+                if not row_data.empty and "TECH_SCORE" in row_data.columns
+                else np.nan
             )
 
             # Conviction: 1.0 if volume confirmed, 0.5 if not

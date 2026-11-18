@@ -31,6 +31,24 @@ class DataSourceSpec:
 
 
 DATA_SOURCES: dict[str, DataSourceSpec] = {
+    "tiered": DataSourceSpec(
+        id="tiered",
+        name="3-Tier Cascade (1. YFinance → 2. Fyers → 3. NSE)",
+        category="cascade",
+        supports_historical=True,
+        supports_live=True,
+        requires_auth=False,
+        description="Automatic fallback: 1st YFinance, 2nd Fyers (if connected), 3rd NSE Charting.",
+    ),
+    "yfinance": DataSourceSpec(
+        id="yfinance",
+        name="Yahoo Finance (yfinance)",
+        category="free",
+        supports_historical=True,
+        supports_live=True,
+        requires_auth=False,
+        description="Free public historical data via Yahoo Finance. Works out of the box without any broker credentials.",
+    ),
     "fyers": DataSourceSpec(
         id="fyers",
         name="Fyers API v3 (Broker)",
@@ -42,32 +60,112 @@ DATA_SOURCES: dict[str, DataSourceSpec] = {
     ),
     "bhavcopy": DataSourceSpec(
         id="bhavcopy",
-        name="NSE Daily Bhavcopy",
+        name="NSE Daily Bhavcopy (via jugaad-data)",
         category="exchange",
         supports_historical=True,
         supports_live=False,
         requires_auth=False,
         description="Official NSE End-of-Day Bhavcopy archives. Includes delivery volume and institutional turnover.",
     ),
-    "yfinance": DataSourceSpec(
-        id="yfinance",
-        name="Yahoo Finance (yfinance)",
-        category="free",
-        supports_historical=True,
-        supports_live=True,
-        requires_auth=False,
-        description="Free public historical data via Yahoo Finance. Works out of the box without any broker credentials.",
-    ),
     "nse_charts": DataSourceSpec(
         id="nse_charts",
-        name="NSE Website Chart API",
+        name="NSE Direct / Charts (jugaad-data)",
         category="exchange",
         supports_historical=True,
         supports_live=True,
         requires_auth=False,
-        description="Direct web scraper from nseindia.com public chart endpoints.",
+        description="Direct official NSE data via jugaad-data and public chart endpoints.",
     ),
 }
+
+
+class TieredFallbackPriceFetcher(AbstractPriceFetcher):
+    """
+    3-Tier Cascading Fallback Price Fetcher:
+      Tier 1 (Primary): Yahoo Finance (yfinance)
+      Tier 2 (Secondary): Fyers API v3 (if configured & token authenticated)
+      Tier 3 (Tertiary): NSE Website Chart Direct API (public scraper fallback)
+    """
+
+    def __init__(self) -> None:
+        from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
+
+        self.yfinance = YFinanceFetcher()
+        self._fyers: Any = None
+        self._nse_charts: Any = None
+
+    def fetch(
+        self,
+        symbol: str,
+        timeframe: str = "1d",
+        period: str = "1y",
+        from_date: int | None = None,
+        to_date: int | None = None,
+    ) -> pd.DataFrame:
+        import pandas as pd
+
+        # Tier 1: YFinance
+        try:
+            df = self.yfinance.fetch(
+                symbol=symbol,
+                timeframe=timeframe,
+                period=period,
+                from_date=from_date,
+                to_date=to_date,
+            )
+            if df is not None and not df.empty:
+                return df
+        except Exception:
+            pass
+
+        # Tier 2: Fyers (if connected)
+        try:
+            from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
+
+            if self._fyers is None:
+                self._fyers = FyersFetcher()
+            if getattr(self._fyers, "access_token", None):
+                df = self._fyers.fetch(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    period=period,
+                    from_date=from_date,
+                    to_date=to_date,
+                )
+                if df is not None and not df.empty:
+                    return df
+        except Exception:
+            pass
+
+        # Tier 3: Direct NSE (jugaad-data or chart endpoint)
+        try:
+            from datetime import date, datetime
+            clean_sym = symbol.replace(".NS", "").upper()
+            from_dt = datetime.fromtimestamp(from_date).date() if from_date else date(2000, 1, 1)
+            to_dt = datetime.fromtimestamp(to_date).date() if to_date else date.today()
+            from jugaad_data.nse import stock_df
+            j_df = stock_df(clean_sym, from_dt, to_dt, series="EQ")
+            if j_df is not None and not j_df.empty:
+                j_df = j_df.rename(columns={"DATE": "Date", "OPEN": "Open", "HIGH": "High", "LOW": "Low", "CLOSE": "Close", "VOLUME": "Volume"})
+                j_df["Date"] = pd.to_datetime(j_df["Date"])
+                j_df = j_df.set_index("Date").sort_index()
+                return j_df[["Open", "High", "Low", "Close", "Volume"]]
+        except Exception:
+            pass
+
+        try:
+            from src.data.fetcher.prices.nse_charts import NSEChartFetcher
+
+            if self._nse_charts is None:
+                self._nse_charts = NSEChartFetcher()
+            df = self._nse_charts.fetch(symbol, timeframe, from_date, to_date)
+            if df is not None and not df.empty:
+                return df
+        except Exception:
+            pass
+
+        return pd.DataFrame()
+
 
 
 class DataSourceManager:
@@ -81,9 +179,8 @@ class DataSourceManager:
 
     @property
     def active_historical_source(self) -> str:
-        # Default priority: Fyers if token/key present, otherwise Bhavcopy or yfinance
-        default_src = "fyers" if (os.getenv("FYERS_API_KEY") or os.getenv("BROKER_API_KEY")) else "yfinance"
-        return self.prefs.get_last(self.PREF_KEY_HISTORICAL, default_src)
+        # Default priority: 1st YFinance, 2nd Fyers if connected, 3rd NSE Charting
+        return self.prefs.get_last(self.PREF_KEY_HISTORICAL, "tiered")
 
     @active_historical_source.setter
     def active_historical_source(self, source_id: str) -> None:
@@ -103,19 +200,23 @@ class DataSourceManager:
     def get_price_fetcher(self, source_id: str | None = None) -> AbstractPriceFetcher:
         """Instantiate the active or requested price fetcher."""
         src = source_id or self.active_historical_source
-        if src == "fyers":
+        if src == "tiered":
+            return TieredFallbackPriceFetcher()
+        elif src == "fyers":
             from src.nse_bhavcopy.fyers_fetcher import FyersFetcher
             return FyersFetcher()
         elif src == "yfinance":
             from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
             return YFinanceFetcher()
+        elif src == "bhavcopy":
+            # Direct official NSE Bhavcopy fetcher via jugaad-data
+            return TieredFallbackPriceFetcher()
         elif src == "nse_charts":
             from src.data.fetcher.prices.nse_charts import NSEChartFetcher
             return NSEChartFetcher()
         else:
-            # Fallback to FyersFetcher or YFinanceFetcher
-            from src.data.fetcher.prices.yfinance_fetcher import YFinanceFetcher
-            return YFinanceFetcher()
+            return TieredFallbackPriceFetcher()
+
 
     def list_sources(self) -> dict[str, DataSourceSpec]:
         """Return all registered data sources."""

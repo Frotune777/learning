@@ -24,7 +24,7 @@ from streamlit_option_menu import option_menu
 
 try:
     st.set_page_config(
-        page_title="Sharegenius — Institutional Trading Terminal",
+        page_title="Fortune Analytical Decision-Support System",
         page_icon="⚡",
         layout="wide",
         initial_sidebar_state="collapsed",
@@ -32,6 +32,7 @@ try:
 except Exception:
     pass
 
+from src.core.config import get_stored_data_info
 from src.dashboard.theme import CSS_THEME, NAV_STYLES
 from src.dashboard.views.backtest_view import render_backtest_view
 from src.dashboard.views.dossier_view import render_dossier_view
@@ -45,19 +46,50 @@ from src.dashboard.views.smc_view import render_smc_view
 # 1. Inject Premium Theme CSS
 st.markdown(CSS_THEME, unsafe_allow_html=True)
 
-# 2. Top Application Brand Bar
-st.markdown("""
+# 2. Check Local Data Lake Status
+data_info = get_stored_data_info("data/historical/1d")
+stored_date = data_info.get("latest_date") or "None"
+n_symbols = data_info.get("symbol_count", 0)
+days_behind = data_info.get("days_behind", 0)
+
+# Initialize Session State Mode
+if "data_mode" not in st.session_state:
+    st.session_state["data_mode"] = "OFFLINE"
+
+# 3. Top Application Brand Bar
+st.markdown(f"""
 <div class="top-brand-bar">
     <div class="brand-title">
-        <span>⚡ SHAREGENIUS</span>
-        <span class="brand-badge">INSTITUTIONAL QUANT</span>
+        <span>⚡ FORTUNE ADSS</span>
+        <span class="brand-badge">DECISION-SUPPORT</span>
     </div>
     <div style="display:flex; align-items:center; gap:16px;">
-        <span style="font-size:0.8rem; color:#94a3b8;"><span style="color:#10b981;">●</span> LIVE SYSTEM READY</span>
-        <span style="font-size:0.8rem; color:#64748b; font-family:'JetBrains Mono', monospace;">NSE PIPELINE v3</span>
+        <span style="font-size:0.8rem; color:#94a3b8;">
+            <span style="color:#10b981;">●</span> MODE: <strong>{st.session_state['data_mode']}</strong> · Stored Through: <strong>{stored_date}</strong> ({n_symbols} symbols)
+        </span>
+        <span style="font-size:0.8rem; color:#64748b; font-family:'JetBrains Mono', monospace;">FORTUNE v3.2</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+# Mode & Data Refresh Control Sub-bar
+col_ctl1, col_ctl2, col_spacer = st.columns([1.5, 1.5, 5])
+with col_ctl1:
+    mode_toggle = st.segmented_control(
+        "Operating Mode",
+        options=["📁 Stored Data (Offline)", "🔴 Live Data"],
+        default="📁 Stored Data (Offline)",
+        label_visibility="collapsed",
+    )
+    st.session_state["data_mode"] = "OFFLINE" if "Offline" in (mode_toggle or "") else "LIVE"
+
+with col_ctl2:
+    if st.button("🔄 Pull New Data (Cascade)", help="1st YFinance → 2nd Fyers → 3rd NSE Charting"):
+        with st.spinner("Initiating 3-tier sync fallback..."):
+            from src.storage.historical_sync import HistoricalSync
+            hs = HistoricalSync(timeframe="1d")
+            st.info("Sync started. You can also run full batch sync via CLI: `python main.py sync-history`.")
+
 
 # 3. Top Horizontal Menu (Replacing Clumsy Sidebar)
 selected_tab = option_menu(

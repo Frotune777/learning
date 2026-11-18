@@ -69,7 +69,7 @@ def generate_daily_report(
     lines = []
     lines.append("=" * 80)
     lines.append(
-        f"     SHAREGENIUS PYTHON TRADING INTELLIGENCE SYSTEM (SPTIS) - {date_str}"
+        f"     FORTUNE ANALYTICAL DECISION-SUPPORT SYSTEM (FORTUNE ADSS) - {date_str}"
     )
     lines.append("=" * 80)
     lines.append("")

@@ -30,6 +30,7 @@ dependencies = [
     "streamlit-option-menu>=0.4.0",
     "scipy>=1.17.1",
     "powernse>=0.7.0",
+    "jugaad-data>=0.37.1",
 ]
 
 [dependency-groups]

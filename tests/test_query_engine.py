@@ -73,6 +73,13 @@ def test_duckdb_query_engine(tmp_path: Path) -> None:
     assert "MOCKA" in symbols
     assert "MOCKB" in symbols
 
+    # Test market_data view and execute_query alias
+    res_mkt = engine.execute_query("SELECT symbol, close, volume FROM market_data WHERE close >= 100 LIMIT 5")
+    assert not res_mkt.empty
+    assert "symbol" in res_mkt.columns
+    assert "Close" in res_mkt.columns or "close" in res_mkt.columns
+    assert res_mkt["symbol"].iloc[0] in ["MOCKA", "MOCKB"]
+
     # Test get_prices for a single symbol
     prices_a = engine.get_prices(symbol="MOCKA")
     assert len(prices_a) == 3

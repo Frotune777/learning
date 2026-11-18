@@ -106,6 +106,12 @@ class YFinanceFetcher(AbstractPriceFetcher):
         ticker_str = self._normalize_symbol(symbol)
         interval = self.INTERVAL_MAP.get(timeframe, "1d")
 
+        # Guard against integer/epoch timestamp accidentally passed as period positionally
+        if isinstance(period, (int, float)) and from_date is None:
+            from_date, period = int(period), "1y"
+        elif not isinstance(period, str):
+            period = "1y"
+
         try:
             ticker = yf.Ticker(ticker_str)
 
